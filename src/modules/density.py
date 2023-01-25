@@ -19,13 +19,14 @@ from torch.profiler import profile, record_function, ProfilerActivity
 from ..kernels import kernel, kernelGradient
 from ..module import Module
 from ..parameter import Parameter
+from ..util import *
 
 
 # @torch.jit.script
 @torch.jit.script
 def computeDensity(radialDistances, areas, neighbors, support):
     with record_function("sph - density 2"): 
-        rho =  scatter(kernel(radialDistances, support) * areas[neighbors[0]], neighbors[1], dim=0, dim_size=areas.shape[0], reduce="add")
+        rho =  scatter_sum(kernel(radialDistances, support) * areas[neighbors[1]], neighbors[0], dim=0, dim_size=areas.shape[0])
         return rho
 
 
