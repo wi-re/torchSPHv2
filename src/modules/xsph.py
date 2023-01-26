@@ -55,6 +55,7 @@ class xsphModule(Module):
         
         self.fluidCoefficient = simulationConfig['xsph']['fluidViscosity']
         self.boundaryCoefficient = simulationConfig['xsph']['boundaryViscosity']
+        self.boundaryScheme = simulationConfig['simulation']['boundaryScheme']
         return
     
     def fluidTerm(self, simulationState, simulation):
@@ -80,17 +81,19 @@ class xsphModule(Module):
 
             return correction
     def boundaryTerm(self, simulationState, simulation):
-        with record_function('solidBC - friction'):
+        with record_function('xsph - friction'):
             # print(state)
             # print(state['boundaryNeighbors'])
-            if 'fluidToGhostNeighbors' in simulationState and simulationState['fluidToGhostNeighbors'] != None:
-                neighbors = simulationState['fluidToGhostNeighbors']
+
+            
+            if self.boundaryScheme == 'SDF' and 'fluidToGhostNeighbors' in simulationState['sdfBoundary'] and simulationState['sdfBoundary']['fluidToGhostNeighbors'] != None:
+                neighbors = simulationState['sdfBoundary']['fluidToGhostNeighbors']
                 i = neighbors[0]
                 j = neighbors[1]
-                b = simulationState['ghostParticleBodyAssociation']
+                b = simulationState['sdfBoundary']['ghostParticleBodyAssociation']
                 
-                sdfs = simulationState['ghostParticleDistance']
-                sdfgrads = simulationState['ghostParticleGradient']
+                sdfs = simulationState['sdfBoundary']['ghostParticleDistance']
+                sdfgrads = simulationState['sdfBoundary']['ghostParticleGradient']
 
             #     print(i.shape)
             #     print(b.shape)
@@ -107,8 +110,8 @@ class xsphModule(Module):
             #     print(fluidVelocityOrthogonal)
             #     print(fluidVelocityParallel)
                 velocities = []
-                for bb in simulationState['solidBC']:
-                    sb = simulationState['solidBC'][bb]
+                for bb in simulationState['sdfBoundary']['bodies']:
+                    sb = simulationState['sdfBoundary']['bodies'][bb]
                     if 'velocity' in sb:
                         velocities.append(torch.tensor(sb['velocity'],device=simulation.device,dtype=self.dtype))
                     else:
@@ -121,7 +124,7 @@ class xsphModule(Module):
 
                 v_ib = boundaryVelocities[b] - fluidVelocityParallel
 
-                k = simulationState['ghostParticleKernelIntegral']
+                k = simulationState['sdfBoundary']['ghostParticleKernelIntegral']
 
                 term = (fac / (rho_i + rho_b))[:,None] * v_ib
 
@@ -130,9 +133,11 @@ class xsphModule(Module):
 
     #             state['fluidVelocity'] += correction
                 force = -correction / simulationState['dt'] * (simulationState['fluidArea'] * simulationState['fluidRestDensity'])[:,None]
-                simulationState['boundaryFrictionForce'] = scatter(force[i], b, dim = 0, dim_size = len(simulationState['solidBC']), reduce = "add")
+                simulationState['sdfBoundary']['boundaryFrictionForce'] = scatter(force[i], b, dim = 0, dim_size = len(simulationState['sdfBoundary']['bodies']), reduce = "add")
 
                 return correction
+        return torch.zeros_like(simulationState['fluidVelocity'])
+                
 
         
 

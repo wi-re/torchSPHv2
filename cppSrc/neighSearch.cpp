@@ -92,6 +92,7 @@ std::vector<torch::Tensor> sortPointSet( torch::Tensor points, torch::Tensor sup
 
 std::pair<int32_t, int32_t> queryHashMap(int32_t qIDx, int32_t qIDy, at::TensorAccessor<int32_t,2> hashTable, at::TensorAccessor<int32_t,1> cellIndices, at::TensorAccessor<int32_t,1> cumCell,  at::TensorAccessor<int32_t,1> cellSpan, int32_t cellsX, 
   int32_t hashMapLength){
+    if(qIDx < 0 || qIDy < 0) return {-1,-1};
     auto qLin = qIDx + cellsX * qIDy;
     auto qHash = (qIDx * 3 +  qIDy * 5)%  hashMapLength;
     auto hashEntries = hashTable[qHash];
@@ -125,7 +126,7 @@ std::pair<torch::Tensor,torch::Tensor> countNeighborsCUDAImpl(
     torch::Tensor sort_,
     torch::Tensor qMin_,
     float hMax,
-    int32_t cellsX, int32_t hashMapLength);
+    int32_t cellsX, int32_t hashMapLength, int32_t searchRadius);
 
 std::pair<torch::Tensor,torch::Tensor> constructNeighborsCUDAImpl(
     torch::Tensor queryParticles_, torch::Tensor support_,
@@ -137,7 +138,7 @@ std::pair<torch::Tensor,torch::Tensor> constructNeighborsCUDAImpl(
     torch::Tensor counters,
     torch::Tensor offsets,
     float hMax,
-    int32_t cellsX, int32_t hashMapLength);
+    int32_t cellsX, int32_t hashMapLength, int32_t searchRadius);
 
 std::vector<torch::Tensor> buildNeighborListCUDA(
     torch::Tensor queryParticles_, torch::Tensor support_,
@@ -147,7 +148,7 @@ std::vector<torch::Tensor> buildNeighborListCUDA(
     torch::Tensor sort_,
     torch::Tensor qMin_,
     float hMax,
-    int32_t cellsX, int32_t hashMapLength)
+    int32_t cellsX, int32_t hashMapLength, int32_t searchRadius)
 {
   CHECK_INPUT(queryParticles_);
   CHECK_INPUT(support_);
@@ -160,10 +161,10 @@ std::vector<torch::Tensor> buildNeighborListCUDA(
   CHECK_INPUT(sort_);
   CHECK_INPUT(qMin_);
 
-  auto neighCount = countNeighborsCUDAImpl(queryParticles_, support_, sortedParticles, sortedSupport, hashTable_, cellIndices_, cumCell_, cellSpan_, sort_, qMin_, hMax, cellsX, hashMapLength);
+  auto neighCount = countNeighborsCUDAImpl(queryParticles_, support_, sortedParticles, sortedSupport, hashTable_, cellIndices_, cumCell_, cellSpan_, sort_, qMin_, hMax, cellsX, hashMapLength, searchRadius);
   // return {neighCount.first, neighCount.second};
 
-  auto neighborList = constructNeighborsCUDAImpl(queryParticles_, support_, sortedParticles, sortedSupport, hashTable_, cellIndices_, cumCell_, cellSpan_, sort_, qMin_, neighCount.first, neighCount.second, hMax, cellsX, hashMapLength);
+  auto neighborList = constructNeighborsCUDAImpl(queryParticles_, support_, sortedParticles, sortedSupport, hashTable_, cellIndices_, cumCell_, cellSpan_, sort_, qMin_, neighCount.first, neighCount.second, hMax, cellsX, hashMapLength, searchRadius);
 
   return {neighCount.first, neighCount.second, neighborList.first, neighborList.second};
 }
@@ -173,8 +174,9 @@ std::vector<torch::Tensor> buildNeighborList(
     torch::Tensor hashTable_,
     torch::Tensor cellIndices_, torch::Tensor cumCell_, torch::Tensor cellSpan_,
     torch::Tensor sort_,
-    int32_t cellsX, int32_t hashMapLength)
+    int32_t cellsX, int32_t hashMapLength, int32_t searchRadius)
 {
+ 
 // std::cout << "Number of Threads: " << at::get_num_threads() << std::endl;
 // omp_set_num_threads(16);
 //   #pragma omp parallel
@@ -208,8 +210,8 @@ std::vector<torch::Tensor> buildNeighborList(
         auto qIDx = cell % cellsX;
         auto qIDy = cell / cellsX;
         auto indexPair = queryHashMap(qIDx, qIDy, hashTable, cellIndices, cumCell, cellSpan, cellsX, hashMapLength);
-        for (int32_t xx = -1; xx<= 1; ++xx){
-          for (int32_t yy = -1; yy<= 1; ++yy){
+        for (int32_t xx = -searchRadius; xx<= searchRadius; ++xx){
+          for (int32_t yy = -searchRadius; yy<= searchRadius; ++yy){
             auto currentIndexPair = queryHashMap(qIDx + xx, qIDy + yy, hashTable, cellIndices, cumCell, cellSpan, cellsX, hashMapLength);
             if(currentIndexPair.first == -1) continue;
             for(int32_t i = indexPair.first; i < indexPair.second; ++i){
@@ -227,7 +229,9 @@ std::vector<torch::Tensor> buildNeighborList(
           }
         }
       }
+      if(rows.size() > 0)
       {
+    // std::cout << rows.size() << std::endl;
         std::lock_guard<std::mutex> lg(m);
         globalRows.push_back(rows);
         globalCols.push_back(cols);
@@ -237,7 +241,12 @@ std::vector<torch::Tensor> buildNeighborList(
     int32_t totalElements = 0;
     for (const auto &v : globalRows)
         totalElements += (int32_t)v.size();
+    if (totalElements == 0)
+      return {at::empty({0},  torch::TensorOptions().dtype(torch::kInt)), at::empty({0},  torch::TensorOptions().dtype(torch::kInt))};
 
+    // std::cout << totalElements << std::endl;
+    
+        // return {at::empty({0},  torch::TensorOptions().dtype(torch::kInt)), at::empty({0},  torch::TensorOptions().dtype(torch::kInt))};
     auto rowTensor = at::empty({totalElements}, torch::TensorOptions().dtype(torch::kInt));
     auto colTensor = at::empty({totalElements}, torch::TensorOptions().dtype(torch::kInt));
     std::size_t offset = 0;
@@ -255,7 +264,7 @@ std::vector<torch::Tensor> buildNeighborListUnsortedPerParticle(
     torch::Tensor hashTable_,
     torch::Tensor cellIndices_, torch::Tensor cumCell_, torch::Tensor cellSpan_,
     torch::Tensor sort_,
-    int32_t cellsX, int32_t hashMapLength, torch::Tensor qMin_, float hMax)
+    int32_t cellsX, int32_t hashMapLength, torch::Tensor qMin_, float hMax,int32_t searchRadius)
 {
     auto inputParticles = inputParticles_.accessor<float, 2>();
     auto inputSupport = inputSupport_.accessor<float, 1>();
@@ -281,8 +290,8 @@ std::vector<torch::Tensor> buildNeighborListUnsortedPerParticle(
         int32_t qIDx = ceil((xi[0] - qMin[0]) / hMax);
         int32_t qIDy = ceil((xi[1] - qMin[1]) / hMax);
 
-        for (int32_t xx = -1; xx<= 1; ++xx){
-          for (int32_t yy = -1; yy<= 1; ++yy){
+        for (int32_t xx = -searchRadius; xx<= searchRadius; ++xx){
+          for (int32_t yy = -searchRadius; yy<= searchRadius; ++yy){
             auto currentIndexPair = queryHashMap(qIDx + xx, qIDy + yy, hashTable, cellIndices, cumCell, cellSpan, cellsX, hashMapLength);
             if(currentIndexPair.first == -1) continue;
             for(int32_t j = currentIndexPair.first; j < currentIndexPair.second; ++j){
@@ -296,6 +305,7 @@ std::vector<torch::Tensor> buildNeighborListUnsortedPerParticle(
           }
         }
       }
+      if(rows.size() > 0)
       {
         std::lock_guard<std::mutex> lg(m);
         globalRows.push_back(rows);
@@ -306,6 +316,8 @@ std::vector<torch::Tensor> buildNeighborListUnsortedPerParticle(
     int32_t totalElements = 0;
     for (const auto &v : globalRows)
         totalElements += (int32_t)v.size();
+    if (totalElements == 0)
+      return {at::empty({0},  torch::TensorOptions().dtype(torch::kInt)), at::empty({0},  torch::TensorOptions().dtype(torch::kInt))};
 
     auto rowTensor = at::empty({totalElements}, torch::TensorOptions().dtype(torch::kInt));
     auto colTensor = at::empty({totalElements}, torch::TensorOptions().dtype(torch::kInt));

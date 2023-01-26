@@ -22,29 +22,29 @@ from ..parameter import Parameter
 from ..util import *
 
 @torch.jit.script
-def precomputeMLS(queryPositions, fluidPosition, fluidArea, fluidDensity, support):
+def precomputeMLS(queryPositions, fluidPosition, fluidArea, fluidDensity, support, neighbors, radialDistances):
     with record_function("MLS - precomputeMLS"): 
         # queryPositions = simulationState['fluidPosition']
         # queryPosition = pb
-        # support = simulation.config['particle']['support'] * 2
 
-        neighbors = radius(fluidPosition, queryPositions, support, max_num_neighbors = 256)
+#         i = neighbors[0]
+#         j = neighbors[1]
+# #         neighbors = torch.stack([i, j], dim = 0)
+
+#     #     debugPrint(neighbors)
+#         # debugPrint(torch.min(neighbors[0]))
+#         # debugPrint(torch.max(neighbors[0]))
+#         # debugPrint(torch.min(neighbors[1]))
+#         # debugPrint(torch.max(neighbors[1]))
+
+#         distances = (fluidPosition[j] - queryPositions[i])
+#         radialDistances = torch.linalg.norm(distances,dim=1)
+
+#         distances[radialDistances < 1e-5,:] = 0
+#         distances[radialDistances >= 1e-5,:] /= radialDistances[radialDistances >= 1e-5,None]
+#         radialDistances /= support
         i = neighbors[0]
         j = neighbors[1]
-#         neighbors = torch.stack([i, j], dim = 0)
-
-    #     debugPrint(neighbors)
-        # debugPrint(torch.min(neighbors[0]))
-        # debugPrint(torch.max(neighbors[0]))
-        # debugPrint(torch.min(neighbors[1]))
-        # debugPrint(torch.max(neighbors[1]))
-
-        distances = (fluidPosition[j] - queryPositions[i])
-        radialDistances = torch.linalg.norm(distances,dim=1)
-
-        distances[radialDistances < 1e-5,:] = 0
-        distances[radialDistances >= 1e-5,:] /= radialDistances[radialDistances >= 1e-5,None]
-        radialDistances /= support
 
         kernel = kernel(radialDistances, support)
 
@@ -54,8 +54,10 @@ def precomputeMLS(queryPositions, fluidPosition, fluidArea, fluidDensity, suppor
 
         Mpartial = 2 * torch.einsum('nu, nv -> nuv', bij, bij) * \
                 ((fluidArea / fluidDensity)[j] * kernel)[:,None,None]
-
+        # print(Mpartial.shape)
         M = scatter(Mpartial, i, dim=0, dim_size = queryPositions.shape[0], reduce='add')
+        # print(M.shape)
+        # print(M)
         Minv = torch.linalg.pinv(M)
     #     debugPrint(Minv)
 
@@ -70,7 +72,7 @@ def precomputeMLS(queryPositions, fluidPosition, fluidArea, fluidDensity, suppor
 #         pG = scatter(pGpartial, i, dim=0, dim_size = queryPositions.shape[0], reduce='add')
     #     debugPrint(pG)
 
-        return pGpartial, neighbors
+        return pGpartial
 
 @torch.jit.script
 def computeFluidAcceleration(fluidArea, fluidDensity, fluidRestDensity, fluidPressure2, fluidNeighbors, fluidDistances, fluidRadialDistances, support):
@@ -227,16 +229,36 @@ class dfsphModule(Module):
     
         self.backgroundPressure = simulationConfig['fluid']['backgroundPressure']
         
+        self.boundaryScheme = simulationConfig['simulation']['boundaryScheme']
         self.boundaryCounter = len(simulationConfig['solidBC']) if 'solidBC' in simulationConfig else 0
+
+        self.pressureScheme = simulationConfig['simulation']['pressureTerm'] 
         
         
     def computeAlpha(self, simulationState, simulation, density = True):
         with record_function("DFSPH - alpha"): 
             kSum1, kSum2 = computeAlphaFluidTerm(simulationState['fluidArea'], simulationState['fluidRestDensity'], simulationState['fluidActualArea'], simulationState['fluidNeighbors'], simulationState['fluidRadialDistances'], simulationState['fluidDistances'], self.support)
 
-            if density and 'fluidToGhostNeighbors' in simulationState and simulationState['fluidToGhostNeighbors'] != None:
-                kSum1 += scatter(simulationState['ghostParticleGradientIntegral'], simulationState['fluidToGhostNeighbors'][0], dim=0, dim_size=simulationState['numParticles'],reduce='add')
+            if density and self.boundaryScheme == 'SDF' and 'fluidToGhostNeighbors' in simulationState['sdfBoundary'] and simulationState['sdfBoundary']['fluidToGhostNeighbors'] != None:
+                kSum1 += scatter(simulationState['sdfBoundary']['ghostParticleGradientIntegral'], simulationState['sdfBoundary']['fluidToGhostNeighbors'][0], dim=0, dim_size=simulationState['numParticles'],reduce='add')
+            if density and self.boundaryScheme == 'Akinci' and 'boundaryToFluidNeighbors' in simulationState['akinciBoundary'] and simulationState['akinciBoundary']['boundaryToFluidNeighbors'] != None:
+                bb,bf = simulationState['akinciBoundary']['boundaryToFluidNeighbors']
+                boundaryDistances = simulationState['akinciBoundary']['boundaryToFluidNeighborDistances']
+                boundaryRadialDistances = simulationState['akinciBoundary']['boundaryToFluidNeighborRadialDistances']
+                boundaryActualArea = simulationState['akinciBoundary']['boundaryActualArea']
+                boundaryArea = simulationState['akinciBoundary']['boundaryVolume']
+                boundaryRestDensity = simulationState['akinciBoundary']['boundaryRestDensity']
 
+                grad = kernelGradient(boundaryRadialDistances, boundaryDistances, self.support)
+                grad2 = torch.einsum('nd, nd -> n', grad, grad)
+
+                termFluid = (boundaryActualArea**2 / (boundaryArea * boundaryRestDensity))[bb] * grad2
+                termBoundary = (simulationState['fluidActualArea']**2 / (simulationState['fluidArea'] * simulationState['fluidRestDensity']))[bf] * grad2
+
+                kSum2 += scatter(termFluid, bf, dim=0, dim_size=simulationState['numParticles'],reduce='add')
+                simulationState['akinciBoundary']['boundaryAlpha'] = -simulationState['dt']**2 * boundaryActualArea * scatter(termBoundary, bb, dim=0, dim_size=boundaryArea.shape[0],reduce='add')
+
+            
             return computeAlphaFinal(kSum1, kSum2, simulationState['dt'], simulationState['fluidArea'], simulationState['fluidActualArea'], simulationState['fluidRestDensity'])
         
 
@@ -245,19 +267,60 @@ class dfsphModule(Module):
         with record_function("DFSPH - source"): 
             source = computeSourceTermFluid(simulationState['fluidActualArea'], simulationState['fluidPredictedVelocity'], simulationState['fluidNeighbors'], simulationState['fluidRadialDistances'], simulationState['fluidDistances'], self.support, simulationState['dt'])
             
-            if density and 'fluidToGhostNeighbors' in simulationState and simulationState['fluidToGhostNeighbors'] != None:
-                boundaryTerm = scatter(simulationState['ghostParticleGradientIntegral'], simulationState['fluidToGhostNeighbors'][0], dim=0, dim_size=simulationState['numParticles'],reduce='add')
+            if density and self.boundaryScheme == 'SDF' and 'fluidToGhostNeighbors' in simulationState['sdfBoundary'] and simulationState['sdfBoundary']['fluidToGhostNeighbors'] != None:
+                boundaryTerm = scatter(simulationState['sdfBoundary']['ghostParticleGradientIntegral'], simulationState['sdfBoundary']['fluidToGhostNeighbors'][0], dim=0, dim_size=simulationState['numParticles'],reduce='add')
                 
                 source = source - simulationState['dt'] * torch.einsum('nd, nd -> n',  simulationState['fluidPredictedVelocity'],  boundaryTerm)
+            if density and self.boundaryScheme == 'Akinci' and 'boundaryToFluidNeighbors' in simulationState['akinciBoundary'] and simulationState['akinciBoundary']['boundaryToFluidNeighbors'] != None:
+                bb,bf = simulationState['akinciBoundary']['boundaryToFluidNeighbors']
+                boundaryDistances = simulationState['akinciBoundary']['boundaryToFluidNeighborDistances']
+                boundaryRadialDistances = simulationState['akinciBoundary']['boundaryToFluidNeighborRadialDistances']
+                boundaryActualArea = simulationState['akinciBoundary']['boundaryActualArea']
+                boundaryArea = simulationState['akinciBoundary']['boundaryVolume']
+                boundaryRestDensity = simulationState['akinciBoundary']['boundaryRestDensity']
+                boundaryPredictedVelocity = simulationState['akinciBoundary']['boundaryPredictedVelocity']
+                
+                grad = kernelGradient(boundaryRadialDistances, boundaryDistances, self.support)
+                velDifference = boundaryPredictedVelocity[bb] - simulationState['fluidPredictedVelocity'][bf]
+                prod = torch.einsum('nd, nd -> n',  velDifference,  grad)
 
+
+                source = source - simulationState['dt'] * scatter(boundaryActualArea[bb] *prod, bf, dim = 0, dim_size = simulationState['numParticles'], reduce= 'add')
+                boundarySource = - simulationState['dt'] * scatter(simulationState['fluidActualArea'][bf] *prod, bb, dim = 0, dim_size = boundaryArea.shape[0], reduce= 'add')
+                simulationState['akinciBoundary']['boundarySource'] = 1. - simulationState['akinciBoundary']['boundaryDensity'] + boundarySource if density else boundarySource 
+
+                                
             return 1. - simulationState['fluidDensity'] + source if density else source            
         
         
     def computeUpdatedPressure(self, simulationState, simulation, density = True):
         with record_function("DFSPH - pressure"): 
             kernelSum = computeUpdatedPressureFluidSum(simulationState['fluidActualArea'], simulationState['fluidPredAccel'], simulationState['fluidNeighbors'], simulationState['fluidRadialDistances'], simulationState['fluidDistances'], self.support, simulationState['dt'])
-            if 'fluidToGhostNeighbors' in simulationState:
-                kernelSum += computeUpdatedPressureBoundarySum(simulationState['fluidToGhostNeighbors'], simulationState['ghostParticleGradientIntegral'], simulationState['fluidPredAccel'], simulationState['dt'])
+            if density and self.boundaryScheme == 'SDF' and 'fluidToGhostNeighbors' in simulationState['sdfBoundary'] and simulationState['sdfBoundary']['fluidToGhostNeighbors'] != None:
+                kernelSum += computeUpdatedPressureBoundarySum(simulationState['sdfBoundary']['fluidToGhostNeighbors'], simulationState['sdfBoundary']['ghostParticleGradientIntegral'], simulationState['fluidPredAccel'], simulationState['dt'])
+
+            if density and self.boundaryScheme == 'Akinci' and 'boundaryToFluidNeighbors' in simulationState['akinciBoundary'] and simulationState['akinciBoundary']['boundaryToFluidNeighbors'] != None:
+                bb,bf = simulationState['akinciBoundary']['boundaryToFluidNeighbors']
+                boundaryDistances = simulationState['akinciBoundary']['boundaryToFluidNeighborDistances']
+                boundaryRadialDistances = simulationState['akinciBoundary']['boundaryToFluidNeighborRadialDistances']
+                boundaryActualArea = simulationState['akinciBoundary']['boundaryActualArea']
+                boundaryArea = simulationState['akinciBoundary']['boundaryVolume']
+                boundaryRestDensity = simulationState['akinciBoundary']['boundaryRestDensity']
+                boundaryPredictedVelocity = simulationState['akinciBoundary']['boundaryPredictedVelocity']
+                
+                grad = kernelGradient(boundaryRadialDistances, boundaryDistances, self.support)
+
+
+                facFluid = simulationState['dt']**2 * simulationState['fluidActualArea'][bb]
+                facBoundary = simulationState['dt']**2 * boundaryActualArea[bb]
+                aij = simulationState['fluidPredAccel'][bf]
+
+                boundaryKernelSum = scatter_sum(torch.einsum('nd, nd -> n', facBoundary[:,None] * aij, -grad), bb, dim=0, dim_size=boundaryArea.shape[0])
+
+                kernelSum += scatter_sum(torch.einsum('nd, nd -> n', -facFluid[:,None] * aij, grad), bf, dim=0, dim_size=simulationState['fluidActualArea'].shape[0])
+
+
+
 
             residual = kernelSum - simulationState['fluidSourceTerm']
 
@@ -275,14 +338,57 @@ class dfsphModule(Module):
         with record_function("DFSPH - accel"):
             fluidAccelTerm = computeFluidAcceleration(simulationState['fluidArea'], simulationState['fluidDensity'], simulationState['fluidRestDensity'], simulationState['fluidPressure2'], simulationState['fluidNeighbors'], simulationState['fluidDistances'], simulationState['fluidRadialDistances'], self.support)
             
-            if density and 'fluidToGhostNeighbors' in simulationState and simulationState['fluidToGhostNeighbors'] != None:
-                simulationState['boundaryPressure'], boundaryAccelTerm, simulationState['boundaryPressureForce'] = \
-                    computeBoundaryAccelTerm(simulationState['fluidArea'], simulationState['fluidDensity'], simulationState['fluidRestDensity'], simulationState['fluidPressure2'], simulationState['pgPartial'], \
-                                             simulationState['ghostToFluidNeighbors2'], simulationState['fluidToGhostNeighbors'], simulationState['ghostParticleBodyAssociation'], simulationState['ghostParticleGradientIntegral'], \
-                                             self.boundaryCounter, mlsPressure = True, computeBodyForces = True)
+            if density and self.boundaryScheme == 'SDF' and 'fluidToGhostNeighbors' in simulationState['sdfBoundary'] and simulationState['sdfBoundary']['fluidToGhostNeighbors'] != None:
+                simulationState['sdfBoundary']['boundaryPressure'], boundaryAccelTerm, simulationState['sdfBoundary']['boundaryPressureForce'] = \
+                    computeBoundaryAccelTerm(simulationState['fluidArea'], simulationState['fluidDensity'], simulationState['fluidRestDensity'], simulationState['fluidPressure2'], simulationState['sdfBoundary']['pgPartial'], \
+                                             simulationState['sdfBoundary']['ghostToFluidNeighbors2'], simulationState['sdfBoundary']['fluidToGhostNeighbors'], simulationState['sdfBoundary']['ghostParticleBodyAssociation'], simulationState['sdfBoundary']['ghostParticleGradientIntegral'], \
+                                             self.boundaryCounter, mlsPressure = self.pressureScheme == "deltaMLS", computeBodyForces = True)
 
 
                 return fluidAccelTerm + boundaryAccelTerm
+
+            if density and self.boundaryScheme == 'Akinci' and 'boundaryToFluidNeighbors' in simulationState['akinciBoundary'] and simulationState['akinciBoundary']['boundaryToFluidNeighbors'] != None:
+                bb,bf = simulationState['akinciBoundary']['boundaryToFluidNeighbors']
+                boundaryDistances = simulationState['akinciBoundary']['boundaryToFluidNeighborDistances']
+                boundaryRadialDistances = simulationState['akinciBoundary']['boundaryToFluidNeighborRadialDistances']
+                boundaryActualArea = simulationState['akinciBoundary']['boundaryActualArea']
+                boundaryArea = simulationState['akinciBoundary']['boundaryVolume']
+                boundaryRestDensity = simulationState['akinciBoundary']['boundaryRestDensity']
+                boundaryPredictedVelocity = simulationState['akinciBoundary']['boundaryPredictedVelocity']
+                
+                grad = -kernelGradient(boundaryRadialDistances, boundaryDistances, self.support)
+
+                fac = -(boundaryArea * boundaryRestDensity)[bb]
+                
+                pi = (simulationState['fluidPressure2'] / (simulationState['fluidDensity'] * simulationState['fluidRestDensity'])**2)[bf]
+
+                if self.pressureScheme == "mirrored":
+                    simulationState['akinciBoundary']['boundaryPressure2'] = 0
+                    pb = simulationState['fluidPressure2'][bf]
+
+                    
+                if self.pressureScheme == "deltaMLS":
+                    neighbors2 = simulationState['akinciBoundary']['boundaryToFluidNeighbors2']
+                    
+                    simulationState['akinciBoundary']['boundaryPressure2'] = scatter(simulationState['akinciBoundary']['pgPartial'] * simulationState['fluidPressure2'][neighbors2[1]], neighbors2[0], dim=0, dim_size = boundaryArea.shape[0], reduce='add')
+
+                    pb = simulationState['akinciBoundary']['boundaryPressure2'][bb]
+
+
+                pb =  pb / ((simulationState['akinciBoundary']['boundaryDensity'] * simulationState['akinciBoundary']['boundaryRestDensity'])**2)[bb]
+                term = (fac * (pi + pb))[:,None] * grad
+
+                # debugPrint(fac)
+                # debugPrint(pi)
+                # debugPrint(pb)
+                # debugPrint(term)
+                # debugPrint(grad)
+
+                boundaryAccelTerm = scatter_sum(term, bf, dim=0, dim_size = simulationState['fluidArea'].shape[0])
+
+                return fluidAccelTerm + boundaryAccelTerm
+
+
 
             return fluidAccelTerm
 
@@ -351,8 +457,27 @@ class dfsphModule(Module):
                 simulationState['fluidActualArea'] = simulationState['fluidArea'] / simulationState['fluidDensity']
 
             with record_function("DFSPH - compute alpha"): 
-                if density:
-                    simulationState['pgPartial'], simulationState['ghostToFluidNeighbors2'] = precomputeMLS(simulationState['ghostParticlePosition'], simulationState['fluidPosition'], simulationState['fluidArea'], simulationState['fluidDensity'], self.support * 2)
+                if density and self.boundaryScheme == 'SDF' and 'fluidToGhostNeighbors' in simulationState['sdfBoundary'] and simulationState['sdfBoundary']['fluidToGhostNeighbors'] != None: 
+                    if self.pressureScheme == "deltaMLS":
+                        support = simulation.config['particle']['support']
+                        supports = torch.ones(simulationState['sdfBoundary']['ghostParticlePosition'].shape[0], device = simulationState['fluidActualArea'].device, dtype = simulationState['fluidActualArea'].dtype) * support
+
+                        neighbors, distances, radialDistances = simulation.neighborSearch.searchExisting(simulationState['sdfBoundary']['ghostParticlePosition'], supports * 2, simulationState, simulation, searchRadius = 2)
+                        simulationState['sdfBoundary']['ghostToFluidNeighbors2'] = neighbors
+                        simulationState['sdfBoundary']['pgPartial'] = precomputeMLS(simulationState['sdfBoundary']['ghostParticlePosition'], simulationState['fluidPosition'], simulationState['fluidArea'], simulationState['fluidDensity'], self.support * 2, neighbors, radialDistances)
+
+                if density and self.boundaryScheme == 'Akinci' and 'boundaryToFluidNeighbors' in simulationState['akinciBoundary'] and simulationState['akinciBoundary']['boundaryToFluidNeighbors'] != None:
+                    simulationState['akinciBoundary']['boundaryPressure'] = torch.zeros_like(simulationState['akinciBoundary']['boundaryVolume'])
+                    simulationState['akinciBoundary']['boundaryPressure2'] = torch.zeros_like(simulationState['akinciBoundary']['boundaryVolume'])
+                    simulationState['akinciBoundary']['boundaryActualArea'] = simulationState['akinciBoundary']['boundaryVolume'] / simulationState['akinciBoundary']['boundaryDensity']
+                    simulationState['akinciBoundary']['fluidPredAccel'] = torch.zeros(simulationState['akinciBoundary']['positions'].shape, dtype = simulationState['fluidPosition'].dtype, device = simulationState['fluidPosition'].device)
+                    simulationState['akinciBoundary']['boundaryPredictedVelocity'] = simulationState['akinciBoundary']['boundaryVelocity'] + simulationState['dt'] * simulationState['akinciBoundary']['boundaryAcceleration']
+                    if self.pressureScheme == "deltaMLS":
+                        neighbors, distances, radDistances = simulation.neighborSearch.searchExisting(simulationState['akinciBoundary']['positions'], simulationState['akinciBoundary']['boundarySupport'] * 2, simulationState, simulation, searchRadius = 2)
+                        simulationState['akinciBoundary']['boundaryToFluidNeighbors2'] = neighbors  
+        # neighbors = radius(fluidPosition, queryPositions, support, max_num_neighbors = 256)
+                        simulationState['akinciBoundary']['pgPartial'], simulationState['sdfBoundary']['boundaryToFluidNeighbors2'] = precomputeMLS(simulationState['akinciBoundary']['positions'], simulationState['fluidPosition'], simulationState['fluidArea'], simulationState['fluidDensity'], self.support * 2, neighbors, simulation)
+        
 
                 simulationState['fluidAlpha'] = self.computeAlpha(simulationState, simulation, density)
                 simulation.periodicBC.syncQuantity(simulationState['fluidAlpha'], simulationState, simulation)

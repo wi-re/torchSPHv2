@@ -76,6 +76,8 @@ using scalarPtr_t = torch::PackedTensorAccessor32<scalar_t,1,torch::RestrictPtrT
 __device__ ::std::pair<int64_t, int64_t> queryHashMapCUDA(int32_t qIDx, int32_t qIDy, 
   const int2Ptr_t hashTable, const intPtr_t cellIndices, const intPtr_t cumCell,  const intPtr_t cellSpan, int32_t cellsX, 
   int32_t hashMapLength){
+    
+    if(qIDx < 0 || qIDy < 0) return {-1,-1};
     auto qLin = qIDx + cellsX * qIDy;
     auto qHash = (qIDx * 3 +  qIDy * 5)%  hashMapLength;
     auto hashEntries = hashTable[qHash];
@@ -110,7 +112,7 @@ __global__ void neighborSearchCUDAKernel(
     intPtr_t counter,
     const scalarPtr_t<scalar_t> qMin,
     float hMax,
-    const int32_t cellsX, int32_t hashMapLength, int32_t numParticles) {
+    const int32_t cellsX, int32_t hashMapLength, int32_t numParticles, int32_t searchRadius) {
 
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if(idx > numParticles)
@@ -123,8 +125,8 @@ __global__ void neighborSearchCUDAKernel(
 
       int32_t numNeighbors = 0;
 
-      for (int32_t xx = -1; xx<= 1; ++xx){
-        for (int32_t yy = -1; yy<= 1; ++yy){
+      for (int32_t xx = -searchRadius; xx<= searchRadius; ++xx){
+        for (int32_t yy = -searchRadius; yy<= searchRadius; ++yy){
           auto currentIndexPair = queryHashMapCUDA(qIDx + xx, qIDy + yy, hashTable, cellIndices, cumCell, cellSpan, cellsX, hashMapLength);
           if(currentIndexPair.first == -1) continue;
           for(int32_t j = currentIndexPair.first; j < currentIndexPair.second; ++j){
@@ -171,7 +173,7 @@ __global__ void constructNeighborhoodsCUDA(
     intPtr_t neighborListI,
     intPtr_t neighborListJ,
     float hMax,
-    const int32_t cellsX, int32_t hashMapLength, int32_t numParticles) {
+    const int32_t cellsX, int32_t hashMapLength, int32_t numParticles, int32_t searchRadius) {
 
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if(idx > numParticles)
@@ -185,8 +187,8 @@ __global__ void constructNeighborhoodsCUDA(
 
       int32_t numNeighbors = 0;
 
-      for (int32_t xx = -1; xx<= 1; ++xx){
-        for (int32_t yy = -1; yy<= 1; ++yy){
+      for (int32_t xx = -searchRadius; xx<= searchRadius; ++xx){
+        for (int32_t yy = -searchRadius; yy<= searchRadius; ++yy){
           auto currentIndexPair = queryHashMapCUDA(qIDx + xx, qIDy + yy, hashTable, cellIndices, cumCell, cellSpan, cellsX, hashMapLength);
           if(currentIndexPair.first == -1) continue;
           for(int32_t j = currentIndexPair.first; j < currentIndexPair.second; ++j){
@@ -217,7 +219,7 @@ std::pair<torch::Tensor,torch::Tensor> countNeighborsCUDAImpl(
     torch::Tensor sort_,
     torch::Tensor qMin_,
     float hMax,
-    int32_t cellsX, int32_t hashMapLength){
+    int32_t cellsX, int32_t hashMapLength, int32_t searchRadius){
       auto counter = torch::zeros({support_.size(0)}, torch::TensorOptions()
           .dtype(torch::kInt32)
           .layout(torch::kStrided)
@@ -243,7 +245,7 @@ std::pair<torch::Tensor,torch::Tensor> countNeighborsCUDAImpl(
         sort_.packed_accessor32<int32_t,1,torch::RestrictPtrTraits>(),
         counter.packed_accessor32<int32_t,1,torch::RestrictPtrTraits>(),
         qMin_.packed_accessor32<scalar_t,1,torch::RestrictPtrTraits>(),        
-        hMax, cellsX, hashMapLength, numParticles);
+        hMax, cellsX, hashMapLength, numParticles, searchRadius);
   }));
   auto offsets  = torch::cumsum(counter, 0);
   offsets = offsets.to(torch::kInt);
@@ -260,7 +262,7 @@ std::pair<torch::Tensor,torch::Tensor> constructNeighborsCUDAImpl(
     torch::Tensor counter,
     torch::Tensor offset,
     float hMax,
-    int32_t cellsX, int32_t hashMapLength){
+    int32_t cellsX, int32_t hashMapLength, int32_t searchRadius){
 
       int32_t numElements = torch::max(offset).item<int32_t>();
 
@@ -298,7 +300,7 @@ std::pair<torch::Tensor,torch::Tensor> constructNeighborsCUDAImpl(
         offset.packed_accessor32<int32_t,1,torch::RestrictPtrTraits>(),      
         neighborListI.packed_accessor32<int32_t,1,torch::RestrictPtrTraits>(),      
         neighborListJ.packed_accessor32<int32_t,1,torch::RestrictPtrTraits>(),        
-        hMax, cellsX, hashMapLength, numParticles);
+        hMax, cellsX, hashMapLength, numParticles, searchRadius);
   }));
   // auto offsets  = torch::cumsum(counter, 0) - counter[0];
         return {neighborListI, neighborListJ};

@@ -8,7 +8,7 @@ from .module import Module
 from .parameter import Parameter
 from .util import *
 from .kernels import getKernelFunctions
-from .modules.solidBC import sdPolyDerAndIntegral
+from .modules.sdfBoundary import sdPolyDerAndIntegral
 
 class SPHSimulation():
     def getBasicParameters(self):
@@ -17,7 +17,9 @@ class SPHSimulation():
         ]
         
         basicSimulationParameters = [
-            Parameter('simulation', 'scheme', 'string', 'dfsph', required = False, export = True, hint = '')
+            Parameter('simulation', 'scheme', 'string', 'dfsph', required = False, export = True, hint = ''),
+            Parameter('simulation', 'pressureTerm', 'str', 'mirrored', required = False, export = True, hint = ''),
+            Parameter('simulation', 'boundaryScheme', 'string', 'SDF', required = False, export = True, hint = '')
         ]
         
         basicKernelParameters = [
@@ -212,8 +214,12 @@ class SPHSimulation():
             if emitter['adjust']:
                 spacing = self.config['particle']['spacing'] * self.config['particle']['support']
                 packing = self.config['particle']['packing'] * self.config['particle']['support']
-                emitter[        'min'] = [emitter['min'][0] + spacing, emitter['min'][1] + spacing]
-                emitter[        'max'] = [emitter['max'][0] - spacing, emitter['max'][1] - spacing]
+                if self.config['simulation']['boundaryScheme'] == 'SDF':
+                    emitter[        'min'] = [emitter['min'][0] + spacing, emitter['min'][1] + spacing]
+                    emitter[        'max'] = [emitter['max'][0] - spacing, emitter['max'][1] - spacing]
+                else:                    
+                    emitter[        'min'] = [emitter['min'][0] + packing / 2, emitter['min'][1] + packing / 2]
+                    emitter[        'max'] = [emitter['max'][0] - packing / 2, emitter['max'][1] - packing / 2]
                 
                         
             minCompression = min(minCompression, emitter['compression'])
@@ -304,12 +310,13 @@ class SPHSimulation():
                 
 
                 if 'solidBC' in self.config:
-                    for bdy in self.config['solidBC']:
-                        b = self.config['solidBC'][bdy]
-                        polyDist, polyDer, bIntegral, bGrad = sdPolyDerAndIntegral(b['polygon'], emitterPositions, self.config['particle']['support'], inverted = b['inverted'])
-                        # print('Particle count before filtering: ', particles.shape[0])
-                        emitterPositions = emitterPositions[polyDist >= self.config['particle']['spacing'] * self.config['particle']['support'] * 0.99,:]
-                        # print('Particle count after filtering: ', particles.shape[0])
+                    if self.config['simulation']['boundaryScheme'] == 'SDF':
+                        for bdy in self.config['solidBC']:
+                            b = self.config['solidBC'][bdy]
+                            polyDist, polyDer, bIntegral, bGrad = sdPolyDerAndIntegral(b['polygon'], emitterPositions, self.config['particle']['support'], inverted = b['inverted'])
+                            # print('Particle count before filtering: ', particles.shape[0])
+                            emitterPositions = emitterPositions[polyDist >= self.config['particle']['spacing'] * self.config['particle']['support'] * 0.99,:]
+                            # print('Particle count after filtering: ', particles.shape[0])
 
                 if emitter['shape'] == 'sphere':
                     center = (torch.tensor(emitter['max'], dtype = self.dtype, device = self.device) + \
@@ -434,11 +441,11 @@ class SPHSimulation():
         self.config['particle']['area'] = np.pi * self.config['particle']['radius']**2
         self.config['particle']['support'] = np.single(np.sqrt(self.config['particle']['area'] / np.pi * self.config['kernel']['targetNeighbors']))
         
-        print('Computing packing and spacing parameters')
-        self.config['particle']['packing'] = minimize(lambda x: self.evalPacking(x), 0.5, method="nelder-mead").x[0]        
-        print('Optimized packing: %g' % self.config['particle']['packing'])
-        self.config['particle']['spacing'] = -minimize(lambda x: self.evalSpacing(x), 0., method="nelder-mead").x[0]
-        print('Optimized spacing: %g' % self.config['particle']['spacing'])
+        # print('Computing packing and spacing parameters')
+        self.config['particle']['packing'] = np.float32(0.399023) # minimize(lambda x: self.evalPacking(x), 0.5, method="nelder-mead").x[0]        
+        # print('Optimized packing: %g' % self.config['particle']['packing'])
+        self.config['particle']['spacing'] = np.float32(0.316313)# -minimize(lambda x: self.evalSpacing(x), 0., method="nelder-mead").x[0]
+        # print('Optimized spacing: %g' % self.config['particle']['spacing'])
                 
         if self.config['domain']['adjustParticle']:
             print('Adjusting particle size to better match domain size')
@@ -451,8 +458,8 @@ class SPHSimulation():
             radius = np.sqrt(area / np.pi)
 
             print('Updated Radius  %g (%g : %g)' % (radius, config['particle']['radius'], radius - config['particle']['radius']))
-            print('Updated Area    %g (%g : %g)' % (radius, config['particle']['area'], radius - config['particle']['area']))
-            print('Updated Support %g (%g : %g)' % (radius, config['particle']['support'], radius - config['particle']['support']))
+            print('Updated Area    %g (%g : %g)' % (area, config['particle']['area'], area - config['particle']['area']))
+            print('Updated Support %g (%g : %g)' % (h, config['particle']['support'], h - config['particle']['support']))
 
             self.config['particle']['radius'] = radius
             self.config['particle']['area'] = area

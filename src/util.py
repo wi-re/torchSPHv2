@@ -80,22 +80,32 @@ def genParticles(minCoord, maxCoord, radius, packing, support, dtype, device):
         gen_position = lambda r, i, j: torch.tensor([r * i, r * j], dtype=dtype, device = device)
         
     #     packing *= support
-        
+        # debugPrint(minCoord)
+        # debugPrint(maxCoord)
         diff = maxCoord - minCoord
         requiredSlices = torch.ceil(diff / packing / support).type(torch.int64)
+        xi = torch.arange(requiredSlices[0] ).type(dtype).to(device)
+        yi = torch.arange(requiredSlices[1] ).type(dtype).to(device)
         
-    #     print(requiredSlices)
-        generatedParticles = []
-        for i in range(requiredSlices[0]+1):
-            for j in range(requiredSlices[1]+1):
-                p = minCoord
-                g = gen_position(packing * support,i,j)
-                pos = p + g
-                if pos[0] <= maxCoord[0] + support * 0.2 and pos[1] <= maxCoord[1] + support * 0.2:
-                    generatedParticles.append(pos)
-        particles = torch.stack(generatedParticles)
+        xx, yy = torch.meshgrid(xi,yi, indexing = 'xy')
+        positions = (packing * support) * torch.vstack((xx.flatten(), yy.flatten()))
+        positions[:] += minCoord[:,None]
+        # debugPrint(torch.min(positions))
+        # debugPrint(torch.max(positions))
+        return positions.mT
 
-        return particles
+    # #     print(requiredSlices)
+    #     generatedParticles = []
+    #     for i in range(requiredSlices[0]+1):
+    #         for j in range(requiredSlices[1]+1):
+    #             p = minCoord
+    #             g = gen_position(packing * support,i,j)
+    #             pos = p + g
+    #             if pos[0] <= maxCoord[0] + support * 0.2 and pos[1] <= maxCoord[1] + support * 0.2:
+    #                 generatedParticles.append(pos)
+    #     particles = torch.stack(generatedParticles)
+
+    #     return particles
 
 
 

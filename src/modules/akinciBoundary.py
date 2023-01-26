@@ -21,231 +21,12 @@ from ..module import Module
 from ..parameter import Parameter
 from ..util import *
 
+from ..ghostParticles import *
 
-@torch.jit.script
-def k(dr, l2 : float = np.log(2)):
-#     d = torch.complex(torch.abs(dr), torch.zeros_like(dr))
-    d = torch.abs(dr)
-    d[torch.abs(dr) < 1e-5] = 1
-    
-    d2 = d**2
-    d3 = d * d2
-    d5 = d3 * d2
-    d7 = d5 * d2
-    srt = torch.sqrt(1-d2)
-    integral = ((
-        (-15*d7-126*d5)*torch.log(2*srt+2)
-        +(15*d7+126*d5)*torch.log(d)
-        +6*torch.arccos(d)
-        +15*l2*d7
-        +srt*(97*d5+60*d3-22*d)
-        +126*l2*d5
-    )/(6*np.pi))
-    integral[dr < 0] = 1 - integral[dr < 0]
-    integral[torch.abs(dr) < 1e-5] = 1/2 
-    
-    gammaScale = 2.0
-#     gamma = 1
-    gamma = 1 + (1 - dr / 2) ** gammaScale   
-    return integral * gamma
-@torch.jit.script
-def gradK(dr, l2 : float = np.log(2)):    
-    d = torch.complex(torch.abs(dr), torch.zeros_like(dr))
-    d[torch.abs(dr) < 1e-5] = 1    
-    integral = (
-        (-3675*d**10-47250*d**8-25200*d**6+3360*d**4)*torch.log(2j*torch.sqrt(d**2-1)+2)
-        +(3675*d**10+47250*d**8+25200*d**6-3360*d**4)*torch.log(d)
-        +3675*l2*d**10
-        +torch.sqrt(d**2-1)*(29093j*d**8+48604j*d**6-5412j*d**4+640j*d**2-160j)
-        +47250*l2*d**8
-        +25200*l2*d**6
-        -3360*l2*d**4
-    )/(80*np.pi)
-    integral = integral.real
-    integral[torch.abs(dr) < 1e-5] = 2 / np.pi
-    return integral
-@torch.jit.script
-def numGradK(dr, h:float = 1e-2):
-    xl = k(dr - h)
-#     xc = k(dr)
-    xr = k(dr)
-    return (xl - xr) / (h)
-@torch.jit.script
-def integralAndDer(dr, support : float):
-    h = 1e-2
-#     xl = k(dr - h)
-    xc = k(dr)
-    xr = k(torch.clamp(dr + h,0,1))
-    
-    integral = xc
-    gradient = (xr - xc) / h / support
-#     gradient = (xr - xl) / (2 * h)
-    return integral, gradient
 
-@torch.jit.script
-def sdPoly(poly, p):    
-    with record_function("sdPoly"): 
-        N = len(poly)
+class akinciBoundaryModule(Module):
 
-        i = torch.arange(N, device = p.device, dtype = torch.int64)
-        i2 = (i + 1) % N
-        e = poly[i2] - poly[i]
-        v = p - poly[i][:,None]
 
-        ve = torch.einsum('npd, nd -> np', v, e)
-        ee = torch.einsum('nd, nd -> n', e, e)
-
-        pq = v - e[:,None] * torch.clamp(ve / ee[:,None], min = 0, max = 1)[:,:,None]
-
-        d = torch.einsum('npd, npd -> np', pq, pq)
-        d = torch.min(d, dim = 0).values
-
-        wn = torch.zeros((N, p.shape[0]), device = p.device, dtype = torch.int64)
-
-        cond1 = 0 <= v[i,:,1]
-        cond2 = 0 >  v[i2,:,1]
-        val3 = e[i,0,None] * v[i,:,1] - e[i,1,None] * v[i,:,0]
-
-        c1c2 = torch.logical_and(cond1, cond2)
-        nc1nc2 = torch.logical_and(torch.logical_not(cond1), torch.logical_not(cond2))
-
-        wn[torch.logical_and(c1c2, val3 > 0)] += 1
-        wn[torch.logical_and(nc1nc2, val3 < 0)] -= 1
-
-        wn = torch.sum(wn,dim=0)
-        s = torch.ones(p.shape[0], device = p.device, dtype = p.dtype)
-        s[wn != 0] = -1
-
-        return s * torch.sqrt(d)
-@torch.jit.script
-def sdPolyDer(poly, p, dh :float = 1e-4, inverted :bool = False):
-    with record_function("sdPolyDer"): 
-        dh = 1e-4
-        dpx = torch.zeros_like(p)
-        dnx = torch.zeros_like(p)
-        dpy = torch.zeros_like(p)
-        dny = torch.zeros_like(p)
-
-        dpx[:,0] += dh
-        dnx[:,0] -= dh
-        dpy[:,1] += dh
-        dny[:,1] -= dh
-
-        c = sdPoly(poly, p)
-        cpx = sdPoly(poly, p + dpx)
-        cnx = sdPoly(poly, p + dnx)
-        cpy = sdPoly(poly, p + dpy)
-        cny = sdPoly(poly, p + dny)
-
-        if inverted:
-            c = -c
-            cpx = -cpx
-            cnx = -cnx
-            cpy = -cpy
-            cny = -cny
-
-        grad = torch.zeros_like(p)
-        grad[:,0] = (cpx - cnx) / (2 * dh)
-        grad[:,1] = (cpy - cny) / (2 * dh)
-
-        gradLen = torch.linalg.norm(grad, dim =1)
-        grad[torch.abs(gradLen) > 1e-5] /= gradLen[torch.abs(gradLen)>1e-5,None]
-
-        return c, grad, cpx, cnx, cpy, cny
-
-@torch.jit.script
-def sdPolyDerAndIntegral(poly, p, support : float, masked : bool = False, inverted : bool = False):     
-    c, grad, cpx, cnx, cpy, cny = sdPolyDer(poly, p, dh = 1e-4, inverted = inverted)
-    k = torch.zeros_like(c)
-    kgrad = torch.zeros_like(c)
-    k[c / support <= 1], kgrad[c/support <= 1] = integralAndDer(torch.clamp(c[c / support <= 1] / support,0,1), support)
-    
-#     k, kgrad = integralAndDer(torch.clamp(c / support,0,1), support)  
-#     print('k', k)
-#     print('kgrad', kgrad)
-    return c, grad, k, grad * kgrad[:,None]
-
-    
-# polyDist2, polyDer2, polyInt2, polyGrad2 = sdPolyDerAndIntegral2(b['polygon'], simulationState['fluidPosition'], solidBC.support, inverted = b['inverted'])
-
-@torch.jit.script
-def domainDistance(positions, minDomain, maxDomain):
-    distanceMin = positions - minDomain
-    distanceMax = maxDomain - positions
-    
-    distance = torch.hstack((distanceMin, distanceMax))
-    distanceMin = torch.argmin(torch.abs(distance), dim = 1)
-    polyDist = distance[torch.arange(distance.shape[0], device = distance.device), distanceMin]
-    
-    polyDer = torch.zeros((distance.shape[0],2), device = distance.device)
-    polyDer[distanceMin == 0, 0] = 1 
-    polyDer[distanceMin == 0, 1] = 0 
-    polyDer[distanceMin == 1, 0] = 0
-    polyDer[distanceMin == 1, 1] = 1
-    polyDer[distanceMin == 2, 0] = -1 
-    polyDer[distanceMin == 2, 1] = 0 
-    polyDer[distanceMin == 3, 0] = 0
-    polyDer[distanceMin == 3, 1] = -1
-    
-    return polyDist, polyDer
-
-@torch.jit.script
-def domainDistanceAndDer(p, minDomain, maxDomain):
-    with record_function("domainDistanceAndDer"): 
-        return domainDistance(p, minDomain, maxDomain)
-@torch.jit.script
-def domainDistanceAndDerAndIntegral(poly, p, support : float, masked : bool = False, inverted : bool = False):
-    minDomain = poly[0]
-    maxDomain = poly[2]
-    c, grad = domainDistance(p, minDomain, maxDomain)
-    k = torch.zeros_like(c)
-    kgrad = torch.zeros_like(c)
-    k[c / support <= 1], kgrad[c/support <= 1] = integralAndDer(torch.clamp(c[c / support <= 1] / support,0,1), support)
-    
-#     k, kgrad = integralAndDer(torch.clamp(c / support,0,1), support)  
-#     print('k', k)
-#     print('kgrad', kgrad)
-    return c, grad, k, grad * kgrad[:,None]
-    
-
-@torch.jit.script
-def computeFilterMaskDomain(positions, i,j, domainMin, domainMax):
-    with record_function('solidBC - filter distance computation'):
-        polyDist, polyDer = domainDistanceAndDer(positions, domainMin, domainMax)
-        cp = positions - polyDist[:,None] * polyDer
-        d = torch.einsum('nd,nd->n', polyDer, cp)
-        neighDistances = torch.einsum('nd,nd->n', positions[j], polyDer[i]) - d[i]
-
-        mask = neighDistances >= 0
-        return mask
-
-@torch.jit.script
-def computeFilterMaskPoly(polygon, positions, i,j, inverted : bool, support: float):
-    with record_function('solidBC - filter distance computation'):
-        polyDist, polyDer, _, _,_,_ = sdPolyDer(polygon, positions, support, inverted = inverted)
-        cp = positions - polyDist[:,None] * polyDer
-        d = torch.einsum('nd,nd->n', polyDer, cp)
-        neighDistances = torch.einsum('nd,nd->n', positions[j], polyDer[i]) - d[i]
-
-        mask = neighDistances >= 0
-        return mask
-    
-
-@torch.jit.script
-def boundaryDistanceAndIntegral(bdy : str, poly, p, support : float, masked : bool = False, inverted : bool = False):
-    if(bdy == 'domainBoundary'):
-        return domainDistanceAndDerAndIntegral(poly, p, support, inverted = inverted)
-    else:
-        return sdPolyDerAndIntegral(poly, p, support, inverted = inverted)
-    
-@torch.jit.script
-def computeFilterMask(bdy : str, poly, p, i, j, inverted : bool, support : float):
-    if(bdy == 'domainBoundary'):
-        return computeFilterMaskDomain(p, i, j, poly[0], poly[2])
-    else:
-        return computeFilterMaskPoly(poly, p, i,j, inverted, support)
-
-class solidBCModule(Module):
     def __init__(self):
         super().__init__('densityInterpolation', 'Evaluates density at the current timestep')
         
@@ -257,7 +38,8 @@ class solidBCModule(Module):
             return
         self.numBodies = len(simulationConfig['solidBC'])
         self.boundaryObjects = simulationConfig['solidBC']
-        simulationState['solidBC'] =  simulationConfig['solidBC']
+        simulationState['akinciBoundary'] = {}
+        simulationState['akinciBoundary']['bodies'] =  simulationConfig['solidBC']
         # self.kernel, _ = getKernelFunctions(simulationConfig['kernel']['defaultKernel'])
         
         self.dtype = simulationConfig['compute']['precision']
@@ -266,6 +48,48 @@ class solidBCModule(Module):
         self.domainMin = torch.tensor(simulationConfig['domain']['min'], device = self.device)
         self.domainMax = torch.tensor(simulationConfig['domain']['max'], device = self.device)
         
+        bptcls = []
+        for b in simulationState['akinciBoundary']['bodies']:
+            bdy = simulationState['akinciBoundary']['bodies'][b]
+            packing = simulationConfig['particle']['packing'] * simulationConfig['particle']['support']
+            ptcls,_ = samplePolygon(bdy['polygon'], packing, simulationConfig['particle']['support'], offset = packing / 2 if bdy['inverted'] else -packing /2)
+            # debugPrint(ptcls)
+            bptcls.append(torch.tensor(ptcls).type(self.dtype).to(self.device))
+        # debugPrint(bptcls)
+        bptcls = torch.cat(bptcls)
+        simulationState['akinciBoundary']['positions'] = bptcls
+
+        # simulationState['akinciBoundary']['positions']
+        boundaryPositions = simulationState['akinciBoundary']['positions']
+
+        bj, bi = radius(boundaryPositions, boundaryPositions, self.support)
+
+        bbDistances = (boundaryPositions[bi] - boundaryPositions[bj])
+        bbRadialDistances = torch.linalg.norm(bbDistances,axis=1)
+
+        # fluidDistances[fluidRadialDistances < self.threshold,:] = 0
+        # fluidDistances[fluidRadialDistances >= self.threshold,:] /= fluidRadialDistances[fluidRadialDistances >= self.threshold,None]
+        bbRadialDistances /= self.support
+
+        boundaryKernelTerm = kernel(bbRadialDistances, self.support)
+
+        boundaryVolume = scatter(boundaryKernelTerm, bi, dim=0, dim_size = boundaryPositions.shape[0], reduce='add')
+        boundaryDensity = scatter(boundaryKernelTerm * 0.6 / boundaryVolume[bj], bi, dim=0, dim_size = boundaryPositions.shape[0], reduce='add')
+
+        gamma = 0.7
+        simulationState['akinciBoundary']['boundaryDensityTerm'] = (boundaryDensity).type(self.dtype)
+        simulationState['akinciBoundary']['boundaryVolume'] = 0.6 / boundaryVolume
+        simulationState['akinciBoundary']['boundarySupport'] = torch.ones_like(boundaryVolume) * self.support
+        simulationState['akinciBoundary']['boundaryRestDensity'] = torch.ones_like(boundaryVolume) * simulationConfig['fluid']['restDensity'] 
+        simulationState['akinciBoundary']['boundaryVelocity'] = torch.zeros_like(boundaryPositions) 
+        simulationState['akinciBoundary']['boundaryAcceleration'] = torch.zeros_like(boundaryPositions) 
+
+        # compute Vb0 
+        # add neighbor boundary search both ways
+        # add density contribution
+        # add code for boundary density (apparent volume denominator)
+        # rest is done in dfsph and other codes
+
 #         print(self.numBodies)
         
 #         self.periodicX = simulationConfig['periodicBC']['periodicX']
@@ -278,136 +102,25 @@ class solidBCModule(Module):
         
     def search(self, simulationState, simulation):
         if not self.active:
-            return None, None, None, None, None, None, None, None
-        with record_function('solidBC - neighborhood'):
-            particleIndices = torch.arange(simulationState['numParticles'], device = simulation.device, dtype = torch.int64 )
-
-            #counter for correct emission
-            ghostParticleCounter = 0
-            
-            # Relationship from a particle index i to the corresponding ghost particle index
-            fluidToGhostParticleRows = []
-            fluidToGhostParticleCols = []
-            
-            # Neighborlists for the ghost particle i and its fluid neighbors j
-            ghostParticleToFluidRows = []
-            ghostParticleToFluidCols = []
-            
-            # Each ghost particle belongs to a body in solidBC
-            ghostParticleBodyAssociation = []
-            
-            # State of the ghost particle, related to the fluid particle it was spawned from
-            ghostParticlePosition = []
-            ghostParticleDistance = []
-            ghostParticleGradient = []
-            ghostParticleKernelIntegral = []
-            ghostParticleGradientIntegral = []
-            
-            for ib, bdy in enumerate(simulationState['solidBC']):
-                b = simulationState['solidBC'][bdy]
-                
-#                 debugPrint(b['polygon'])
-#                 debugPrint(self.support)
-#                 debugPrint(b['inverted'])
-                
-                polyDist, polyDer, bIntegral, bGrad = boundaryDistanceAndIntegral(bdy, b['polygon'], simulationState['fluidPosition'], self.support, inverted = b['inverted'])
-
-                adjacent = polyDist <= self.support
-                polyDer = polyDer / torch.linalg.norm(polyDer,axis=1)[:,None]
-                polyDist = polyDist / self.support
-                if polyDer[adjacent].shape[0] == 0:
-                    continue
-                    
-                i = particleIndices[adjacent]
-                j = torch.ones(i.shape, device = simulation.device, dtype = torch.int64) *ib
-                
-                fluidToGhostParticleRows.append(i)
-                fluidToGhostParticleCols.append(torch.arange(i.shape[0], device = i.device, dtype = i.dtype) + ghostParticleCounter)
-                ghostParticleCounter += i.shape[0]
-                
-                ghostParticleBodyAssociation.append(j)
-                
-                pb = simulationState['fluidPosition'][adjacent] - polyDist[adjacent, None] * polyDer[adjacent,:] * self.support
-                ghostParticlePosition.append(pb)
-                
-                row, col = radius(pb, simulationState['fluidPosition'], self.support, max_num_neighbors = self.maxNeighbors)
-
-                ghostParticleToFluidRows.append(row)
-                ghostParticleToFluidCols.append(col)
-                
-                ghostParticleDistance.append(polyDist[adjacent])
-                ghostParticleGradient.append(polyDer[adjacent])
-                ghostParticleKernelIntegral.append(bIntegral[adjacent])
-                ghostParticleGradientIntegral.append(bGrad[adjacent])
-                
-            del particleIndices
-            
-            if ghostParticleCounter > 0:
-                ghostParticlePosition = torch.cat(ghostParticlePosition)
-                ghostParticleDistance = torch.cat(ghostParticleDistance)
-                ghostParticleGradient = torch.cat(ghostParticleGradient)
-                ghostParticleKernelIntegral = torch.cat(ghostParticleKernelIntegral)
-                ghostParticleGradientIntegral = torch.cat(ghostParticleGradientIntegral)
-                
-                ghostParticleBodyAssociation = torch.cat(ghostParticleBodyAssociation)
-                
-                fluidToGhostParticleRows = torch.cat(fluidToGhostParticleRows)
-                fluidToGhostParticleCols = torch.cat(fluidToGhostParticleCols)
-                fluidToGhostNeighbors = torch.stack([fluidToGhostParticleRows, fluidToGhostParticleCols])
-                
-                ghostParticleToFluidRows = torch.cat(ghostParticleToFluidRows)
-                ghostParticleToFluidCols = torch.cat(ghostParticleToFluidCols)
-                ghostToFluidNeighbors = torch.stack([ghostParticleToFluidRows, ghostParticleToFluidCols])
-                
-
-                return fluidToGhostNeighbors, ghostToFluidNeighbors, ghostParticleBodyAssociation,\
-                    ghostParticlePosition, ghostParticleDistance, ghostParticleGradient, \
-                    ghostParticleKernelIntegral, ghostParticleGradientIntegral
-            else:
-                return None, None, None, None, None, None, None, None
-
+            return None, None, None
+        neighbors, distances, radDistances = simulation.neighborSearch.searchExisting(simulationState['akinciBoundary']['positions'], simulationState['akinciBoundary']['boundarySupport'], simulationState, simulation)
+        return neighbors, distances, radDistances
     
-    def filterFluidNeighborhoods(self, simulationState, simulation):        
-        if self.active:
-            for ib, bdy in enumerate(simulationState['solidBC']):
-#                 debugPrint(bdy)
-                b = simulationState['solidBC'][bdy]
-                i = simulationState['fluidNeighbors'][0]
-                j = simulationState['fluidNeighbors'][1]
-                
-#                 if bdy == 'domainBoundary':
-#                     mask = computeFilterMaskDomain(simulationState['fluidPosition'], i, j, self.domainMin, self.domainMax)
-#                 else:
-                mask = computeFilterMask(bdy, b['polygon'], simulationState['fluidPosition'], i,j, b['inverted'], self.support)
-                if not torch.any(torch.logical_not(mask)):
-                    return
-
-                with record_function('solidBC - filter filtering'):
-                    i = i[mask]
-                    j = j[mask]
-
-                with record_function('solidBC - filter final step'):
-#                     debugPrint(mask)
-#                     debugPrint(i)
-#                     debugPrint(j)
-#                     debugPrint(simulationState['fluidDistances'][mask])
-#                     debugPrint(simulationState['fluidRadialDistances'][mask])
-                    neighbors = torch.vstack((i,j))
-    
-                    simulationState['fluidNeighbors'] = neighbors
-                    simulationState['fluidDistances'] = simulationState['fluidDistances'][mask]
-                    simulationState['fluidRadialDistances'] = simulationState['fluidRadialDistances'][mask]
-
 
     def density(self, simulationState, simulation):
         density = torch.zeros(simulationState['fluidDensity'].shape, device=simulation.device, dtype= simulation.dtype)
-        gradient = torch.zeros(simulationState['fluidPosition'].shape, device=simulation.device, dtype= simulation.dtype)
-        if 'fluidToGhostNeighbors' in simulationState and simulationState['fluidToGhostNeighbors'] != None:
+        gradient = torch.zeros(simulationState['akinciBoundary']['positions'].shape, device=simulation.device, dtype= simulation.dtype)
+        if 'akinciBoundary' in simulationState and simulationState['akinciBoundary']['boundaryToFluidNeighbors'] != None:
+            bb,bf = simulationState['akinciBoundary']['boundaryToFluidNeighbors']
+            k = kernel(simulationState['akinciBoundary']['boundaryToFluidNeighborRadialDistances'], self.support)
 
-            density = scatter(simulationState['ghostParticleKernelIntegral'], simulationState['fluidToGhostNeighbors'][0], dim = 0, dim_size = simulationState['numParticles'], reduce="add")
-            gradient = scatter(simulationState['ghostParticleGradientIntegral'], simulationState['fluidToGhostNeighbors'][0], dim = 0, dim_size = simulationState['numParticles'], reduce="add")
+            boundaryDensityContribution = scatter(k * simulationState['akinciBoundary']['boundaryVolume'][bb], bf, dim=0, dim_size = simulationState['numParticles'], reduce = 'add')
+            boundaryDensity = simulationState['akinciBoundary']['boundaryDensityTerm'] + scatter(k * simulationState['fluidArea'][bf], bb, dim=0, dim_size = simulationState['akinciBoundary']['positions'].shape[0], reduce = 'add') + 0.1
+
+            return boundaryDensityContribution, boundaryDensity
             
         return density, gradient
+
 
 # solidBC = solidBCModule()
 # solidBC.initialize(sphSimulation.config, sphSimulation.simulationState)

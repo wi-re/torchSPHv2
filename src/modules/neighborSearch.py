@@ -88,7 +88,7 @@ def constructHashMap(sortedPositions, sortedSupport, sortedIndices, sort, hashMa
     return hashTable, cellIndices, cumCell, cellSpan
 
 # @torch.jit.script
-def constructNeighborhoods(queryPositions, querySupports, hashMapLength :int = -1, supportScale : float = 1.0, minCoord : Optional[torch.Tensor]  = None, maxCoord : Optional[torch.Tensor]  = None):
+def constructNeighborhoods(queryPositions, querySupports, hashMapLength :int = -1, supportScale : float = 1.0, minCoord : Optional[torch.Tensor]  = None, maxCoord : Optional[torch.Tensor]  = None, searchRadius : int = 1):
     with record_function('sortPositions'):
         sortedPositions, sortedSupport, sortedLinearIndices, sortingIndices, cellCount, qMin, hMax = sortPositions(queryPositions, querySupports, 1.0, minCoord, maxCoord)
     if hashMapLength == -1:
@@ -108,26 +108,35 @@ def constructNeighborhoods(queryPositions, querySupports, hashMapLength :int = -
     # print('cellOffsets', cellOffsets.shape, cellOffsets.dtype, cellOffsets)
     # print('cellParticleCounters', cellParticleCounters.shape, cellParticleCounters.dtype, cellParticleCounters)
 
-
+    # return None
     with record_function('buildNeighborList'):
-        rows, cols = neighborSearch.buildNeighborList(sortedPositions, sortedSupport, hashTable, cellLinearIndices, cellOffsets, cellParticleCounters, sortingIndices, cellCount, hashMapLength)
+        rows, cols = neighborSearch.buildNeighborList(sortedPositions, sortedSupport, hashTable, cellLinearIndices, cellOffsets, cellParticleCounters, sortingIndices, cellCount, hashMapLength, searchRadius)
     
+    # return None
     return rows.to(torch.int64), cols.to(torch.int64), None, None, (qMin, hMax, sortingIndices, sortedPositions, sortedSupport), (hashTable, hashMapLength), (cellLinearIndices, cellOffsets, cellParticleCounters, cellCount)
     
 
-def constructNeighborhoodsPreSorted(queryPositions, querySupports, particleState, hashMap, cellMap):
+def constructNeighborhoodsPreSorted(queryPositions, querySupports, particleState, hashMap, cellMap, searchRadius : int = 1):
     qMin, hMax, sortingIndices, sortedPositions, sortedSupport = particleState
     hashTable, hashMapLength = hashMap
     cellLinearIndices, cellOffsets, cellParticleCounters, cellCount = cellMap
+
+    # print(qMin.shape, qMin.dtype)
+    # print(sortedPositions.shape, sortedPositions.dtype)
+    # print(sortedSupport.shape, sortedSupport.dtype)
+    # print(queryPositions.shape, querySupports.dtype)
+    # debugPrint(hMax)
+    # debugPrint()
+
     with record_function('buildNeighborList'):
-        rows, cols = neighborSearch.buildNeighborListUnsortedPerParticle(queryPositions, querySupports, sortedPositions, sortedSupport, hashTable, cellLinearIndices, cellOffsets, cellParticleCounters, sortingIndices, cellCount, hashMapLength, qMin, hMax)
+        rows, cols = neighborSearch.buildNeighborListUnsortedPerParticle(queryPositions, querySupports, sortedPositions, sortedSupport, hashTable, cellLinearIndices, cellOffsets, cellParticleCounters, sortingIndices, cellCount, hashMapLength, qMin.type(torch.float32), np.float32(hMax), searchRadius)
         
     
-    return rows.to(torch.int64), cols.to(torch.int64), (qMin, hMax, sortingIndices), (hashTable, hashMapLength), (cellLinearIndices, cellOffsets, cellParticleCounters, cellCount)
+    return rows.to(torch.int64), cols.to(torch.int64)
     
 
 
-def constructNeighborhoodsCUDA(queryPositions, querySupports, hashMapLength :int = -1, supportScale : float = 1.0, minCoord : Optional[torch.Tensor]  = None, maxCoord : Optional[torch.Tensor]  = None):
+def constructNeighborhoodsCUDA(queryPositions, querySupports, hashMapLength :int = -1, supportScale : float = 1.0, minCoord : Optional[torch.Tensor]  = None, maxCoord : Optional[torch.Tensor]  = None, searchRadius : int = 1):
     with record_function('sortPositions'):
         sortedPositions, sortedSupport, sortedLinearIndices, sortingIndices, cellCount, qMin, hMax = sortPositions(queryPositions, querySupports, 1.0, minCoord, maxCoord)
     if hashMapLength == -1:
@@ -139,7 +148,7 @@ def constructNeighborhoodsCUDA(queryPositions, querySupports, hashMapLength :int
 # 
 
     with record_function('buildNeighborList'):
-        ctr, offsets, i, j = neighborSearch.buildNeighborListCUDA(queryPositions, querySupports, sortedPositions, sortedSupport, hashTable, cellLinearIndices, cellOffsets, cellParticleCounters, sortingIndices, qMin, hMax, cellCount, hashMapLength)
+        ctr, offsets, i, j = neighborSearch.buildNeighborListCUDA(queryPositions, querySupports, sortedPositions, sortedSupport, hashTable, cellLinearIndices, cellOffsets, cellParticleCounters, sortingIndices, qMin, hMax, cellCount, hashMapLength, searchRadius)
     with record_function('finalize'):        
         j, jj = torch.sort(j, dim = 0, stable = True)
         i = i[jj]
@@ -148,6 +157,16 @@ def constructNeighborhoodsCUDA(queryPositions, querySupports, hashMapLength :int
        
     
     return i.to(torch.int64), j.to(torch.int64), ctr, offsets, (qMin, hMax, sortingIndices, sortedPositions, sortedSupport), (hashTable, hashMapLength), (cellLinearIndices, cellOffsets, cellParticleCounters, cellCount)
+
+def constructNeighborhoodsPreSortedCUDA(queryPositions, querySupports, particleState, hashMap, cellMap, searchRadius : int = 1):
+    qMin, hMax, sortingIndices, sortedPositions, sortedSupport = particleState
+    hashTable, hashMapLength = hashMap
+    cellLinearIndices, cellOffsets, cellParticleCounters, cellCount = cellMap
+    with record_function('buildNeighborList'):
+        rows, cols = neighborSearch.buildNeighborListCUDA(queryPositions, querySupports, sortedPositions, sortedSupport, hashTable, cellLinearIndices, cellOffsets, cellParticleCounters, sortingIndices, qMin.type(torch.float32), np.float32(hMax), cellCount, hashMapLength, searchRadius)
+        
+    
+    return rows.to(torch.int64), cols.to(torch.int64)
     
     
 class neighborSearchModule(Module):
@@ -178,19 +197,15 @@ class neighborSearchModule(Module):
         with record_function("sph - neighborhood"): 
             queryPositions = simulationState['fluidPosition']
             querySupports = simulationState['fluidSupport']
+
+            # _ = constructNeighborhoods(queryPositions, querySupports, -1, minCoord = torch.tensor(self.minDomain), maxCoord = torch.tensor(self.maxDomain))
+
+
             if queryPositions.is_cuda:
                 row, col, ctr, offsets, self.sortInfo, self.hashMap, self.cellMap = constructNeighborhoodsCUDA(queryPositions, querySupports, -1, minCoord = torch.tensor(self.minDomain,device=self.device,dtype=self.dtype), maxCoord = torch.tensor(self.maxDomain,device=self.device,dtype=self.dtype))
             else:
                 row, col, ctr, offsets, self.sortInfo, self.hashMap, self.cellMap = constructNeighborhoods(queryPositions, querySupports, -1, minCoord = torch.tensor(self.minDomain), maxCoord = torch.tensor(self.maxDomain))
-            # row = row.to(self.device).type(torch.int64)
-            # col = col.to(self.device).type(torch.int64)
-            # if self.sortNeighborhoods:
-            #     col, coli = torch.sort(col, stable = True)
-            #     row = row[coli]
-            #     row, rowi = torch.sort(row, stable = True)
-            #     col = col[rowi]
-            
-#             row, col = radius(simulationState['fluidPosition'], simulationState['fluidPosition'], self.support, max_num_neighbors = self.maxNeighbors)
+
             fluidNeighbors = torch.stack([row, col], dim = 0)
 
             fluidDistances = (simulationState['fluidPosition'][fluidNeighbors[0]] - simulationState['fluidPosition'][fluidNeighbors[1]])
@@ -202,18 +217,21 @@ class neighborSearchModule(Module):
 
             return fluidNeighbors, fluidDistances, fluidRadialDistances
         
-    def searchExisting(self, queryPositions, simulationState, simulation):
+    def searchExisting(self, queryPositions, querySupports, simulationState, simulation, searchRadius :int = 1):
         with record_function("sph - neighborhood"): 
-            queryPositions = simulationState['fluidPosition'].to('cpu')
-            querySupports = simulationState['fluidSupport'].to('cpu')
-            rows, cols, self.sortInfo, self.hashMap, self.cellMap = constructNeighborhoodsPreSorted(queryPositions, querySupports,  self.sortInfo, self.hashMap, self.cellMap)
-            rows = rows.to(self.device)
-            cols = cols.to(self.device)
+            # queryPositions = simulationState['fluidPosition'].to('cpu')
+            # querySupports = simulationState['fluidSupport'].to('cpu')
+            if queryPositions.is_cuda:
+                rows, cols = constructNeighborhoodsPreSortedCUDA(queryPositions, querySupports,  self.sortInfo, self.hashMap, self.cellMap, searchRadius = searchRadius)
+            else:
+                rows, cols = constructNeighborhoodsPreSorted(queryPositions, querySupports,  self.sortInfo, self.hashMap, self.cellMap, searchRadius = searchRadius)
+            # rows = rows.to(self.device)
+            # cols = cols.to(self.device)
             
 #             row, col = radius(simulationState['fluidPosition'], simulationState['fluidPosition'], self.support, max_num_neighbors = self.maxNeighbors)
-            fluidNeighbors = torch.stack([row, col], dim = 0)
+            fluidNeighbors = torch.stack([rows, cols], dim = 0)
 
-            fluidDistances = (simulationState['fluidPosition'][fluidNeighbors[1]] - simulationState['fluidPosition'][fluidNeighbors[0]])
+            fluidDistances = (queryPositions[fluidNeighbors[0]] - simulationState['fluidPosition'][fluidNeighbors[1]])
             fluidRadialDistances = torch.linalg.norm(fluidDistances,axis=1)
 
             fluidDistances[fluidRadialDistances < self.threshold,:] = 0
