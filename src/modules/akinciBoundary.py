@@ -25,6 +25,13 @@ from ..ghostParticles import *
 
 
 class akinciBoundaryModule(Module):
+    def getParameters(self):
+        return [
+            Parameter('akinciBoundary', 'recomputeBoundary', 'bool', False, required = False, export = True, hint = ''),
+            Parameter('akinciBoundary', 'beta', 'float', 0.15, required = False, export = True, hint = ''),
+            Parameter('akinciBoundary', 'gamma', 'float', 0.7, required = False, export = True, hint = '')
+        ]
+        
 
 
     def __init__(self):
@@ -42,22 +49,37 @@ class akinciBoundaryModule(Module):
         simulationState['akinciBoundary']['bodies'] =  simulationConfig['solidBC']
         # self.kernel, _ = getKernelFunctions(simulationConfig['kernel']['defaultKernel'])
         
+        self.beta = simulationConfig['akinciBoundary']['beta']
+        self.gamma = simulationConfig['akinciBoundary']['gamma']
+
         self.dtype = simulationConfig['compute']['precision']
         self.device = simulationConfig['compute']['device']  
+        self.recomputeBoundary = simulationConfig['akinciBoundary']['recomputeBoundary']  
         
         self.domainMin = torch.tensor(simulationConfig['domain']['min'], device = self.device)
         self.domainMax = torch.tensor(simulationConfig['domain']['max'], device = self.device)
         
         bptcls = []
+        bNormals = []
+        bIndices = []
+        bdyCounter = 0
         for b in simulationState['akinciBoundary']['bodies']:
             bdy = simulationState['akinciBoundary']['bodies'][b]
             packing = simulationConfig['particle']['packing'] * simulationConfig['particle']['support']
             ptcls,_ = samplePolygon(bdy['polygon'], packing, simulationConfig['particle']['support'], offset = packing / 2 if bdy['inverted'] else -packing /2)
             # debugPrint(ptcls)
-            bptcls.append(torch.tensor(ptcls).type(self.dtype).to(self.device))
+            ptcls = torch.tensor(ptcls).type(self.dtype).to(self.device)
+            bptcls.append(ptcls)
+            dist, grad, _, _, _, _ = sdPolyDer(bdy['polygon'], ptcls)
+            bNormals.append(grad)
+            bIndices.append(torch.ones(ptcls.shape[0], dtype = torch.long, device = self.device) * bdyCounter)
         # debugPrint(bptcls)
         bptcls = torch.cat(bptcls)
+        bNormals = torch.cat(bNormals)
         simulationState['akinciBoundary']['positions'] = bptcls
+        simulationState['akinciBoundary']['boundaryNormals'] = bNormals
+        bdyCounter = torch.hstack(bIndices)
+        simulationState['akinciBoundary']['bodyAssociation'] = bdyCounter
 
         # simulationState['akinciBoundary']['positions']
         boundaryPositions = simulationState['akinciBoundary']['positions']
@@ -73,12 +95,12 @@ class akinciBoundaryModule(Module):
 
         boundaryKernelTerm = kernel(bbRadialDistances, self.support)
 
+        # gamma = 0.7
         boundaryVolume = scatter(boundaryKernelTerm, bi, dim=0, dim_size = boundaryPositions.shape[0], reduce='add')
-        boundaryDensity = scatter(boundaryKernelTerm * 0.6 / boundaryVolume[bj], bi, dim=0, dim_size = boundaryPositions.shape[0], reduce='add')
+        boundaryDensity = scatter(boundaryKernelTerm * self.gamma / boundaryVolume[bj], bi, dim=0, dim_size = boundaryPositions.shape[0], reduce='add')
 
-        gamma = 0.7
         simulationState['akinciBoundary']['boundaryDensityTerm'] = (boundaryDensity).type(self.dtype)
-        simulationState['akinciBoundary']['boundaryVolume'] = 0.6 / boundaryVolume
+        simulationState['akinciBoundary']['boundaryVolume'] = self.gamma / boundaryVolume
         simulationState['akinciBoundary']['boundarySupport'] = torch.ones_like(boundaryVolume) * self.support
         simulationState['akinciBoundary']['boundaryRestDensity'] = torch.ones_like(boundaryVolume) * simulationConfig['fluid']['restDensity'] 
         simulationState['akinciBoundary']['boundaryVelocity'] = torch.zeros_like(boundaryPositions) 
@@ -111,12 +133,30 @@ class akinciBoundaryModule(Module):
         density = torch.zeros(simulationState['fluidDensity'].shape, device=simulation.device, dtype= simulation.dtype)
         gradient = torch.zeros(simulationState['akinciBoundary']['positions'].shape, device=simulation.device, dtype= simulation.dtype)
         if 'akinciBoundary' in simulationState and simulationState['akinciBoundary']['boundaryToFluidNeighbors'] != None:
+        #     if self.recomputeBoundary :    
+        #         boundaryPositions = ['akinciBoundary']['positions']   
+        #         bj, bi = radius(boundaryPositions, boundaryPositions, self.support)
+
+        #         bbDistances = (boundaryPositions[bi] - boundaryPositions[bj])
+        #         bbRadialDistances = torch.linalg.norm(bbDistances,axis=1)
+        #         bbRadialDistances /= self.support
+
+        #         boundaryKernelTerm = kernel(bbRadialDistances, self.support)
+
+        #         boundaryVolume = scatter(boundaryKernelTerm, bi, dim=0, dim_size = boundaryPositions.shape[0], reduce='add')
+        #         boundaryDensity = scatter(boundaryKernelTerm * self.gamma / boundaryVolume[bj], bi, dim=0, dim_size = boundaryPositions.shape[0], reduce='add')
+
+        #         gamma = 0.7
+        #         simulationState['akinciBoundary']['boundaryDensityTerm'] = (boundaryDensity).type(self.dtype)
+        #         simulationState['akinciBoundary']['boundaryVolume'] = self.gamma / boundaryVolume
+
+
             bb,bf = simulationState['akinciBoundary']['boundaryToFluidNeighbors']
             k = kernel(simulationState['akinciBoundary']['boundaryToFluidNeighborRadialDistances'], self.support)
 
             boundaryDensityContribution = scatter(k * simulationState['akinciBoundary']['boundaryVolume'][bb], bf, dim=0, dim_size = simulationState['numParticles'], reduce = 'add')
-            boundaryDensity = simulationState['akinciBoundary']['boundaryDensityTerm'] + scatter(k * simulationState['fluidArea'][bf], bb, dim=0, dim_size = simulationState['akinciBoundary']['positions'].shape[0], reduce = 'add') + 0.1
-
+            boundaryDensity = simulationState['akinciBoundary']['boundaryDensityTerm'] + scatter(k * simulationState['fluidArea'][bf], bb, dim=0, dim_size = simulationState['akinciBoundary']['positions'].shape[0], reduce = 'add') + self.beta
+            boundaryDensity[:] = 1.
             return boundaryDensityContribution, boundaryDensity
             
         return density, gradient

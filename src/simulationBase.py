@@ -19,7 +19,8 @@ class SPHSimulation():
         basicSimulationParameters = [
             Parameter('simulation', 'scheme', 'string', 'dfsph', required = False, export = True, hint = ''),
             Parameter('simulation', 'pressureTerm', 'str', 'mirrored', required = False, export = True, hint = ''),
-            Parameter('simulation', 'boundaryScheme', 'string', 'SDF', required = False, export = True, hint = '')
+            Parameter('simulation', 'boundaryScheme', 'string', 'SDF', required = False, export = True, hint = ''),
+            Parameter('simulation', 'bodyForces', 'bool', True, required = False, export = True, hint = '')
         ]
         
         basicKernelParameters = [
@@ -218,6 +219,8 @@ class SPHSimulation():
                     emitter[        'min'] = [emitter['min'][0] + spacing, emitter['min'][1] + spacing]
                     emitter[        'max'] = [emitter['max'][0] - spacing, emitter['max'][1] - spacing]
                 else:                    
+                    # emitter[        'min'] = [emitter['min'][0] + packing / 2, emitter['min'][1] + packing / 2]
+                    # emitter[        'max'] = [emitter['max'][0] - packing / 2, emitter['max'][1] - packing / 2]
                     emitter[        'min'] = [emitter['min'][0] + packing / 2, emitter['min'][1] + packing / 2]
                     emitter[        'max'] = [emitter['max'][0] - packing / 2, emitter['max'][1] - packing / 2]
                 
