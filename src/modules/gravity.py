@@ -42,6 +42,7 @@ class gravityModule(Module):
         return
     
     def evaluate(self, simulationState, simulation):
+        
         if self.pointSource:
             difference = simulationState['fluidPosition'] - torch.tensor(self.center, dtype = self.dtype, device = self.device)
             distance = torch.linalg.norm(difference,axis=1)
