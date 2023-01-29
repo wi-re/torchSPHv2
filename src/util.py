@@ -235,3 +235,106 @@ def evalBoundarySpacing(spacing, support, packing, radius, gamma, plot = False):
 #     #     debugPrint(pG)
 
 #         return pG
+
+
+@torch.jit.script
+def prepareMLSBoundaries(boundaryPositions, boundarySupports, neighbors, boundaryRadialDistances, fluidPosition, fluidActualArea, support):
+
+    # boundaryPositions = state['akinciBoundary']['positions']
+    # boundarySupports = state['akinciBoundary']['boundarySupport']
+
+    bb = neighbors[0]
+    bf = neighbors[1] #state['akinciBoundary']['boundaryToFluidNeighbors']
+    # boundaryRadialDistances = state['akinciBoundary']['boundaryToFluidNeighborRadialDistances']
+
+    k = kernel(boundaryRadialDistances, support)* fluidActualArea[bf]
+
+    nominator = scatter((k)[:,None] * fluidPosition[bf], bb, dim=0, dim_size = boundaryPositions.shape[0], reduce = 'add')
+    denominator = scatter((k), bb, dim=0, dim_size = boundaryPositions.shape[0], reduce = 'add')
+    d = torch.clone(boundaryPositions)
+    d[denominator > 1e-9] = nominator[denominator > 1e-9] / denominator[denominator > 1e-9,None]
+    # debugPrint(state['fluidPosition'][bf] - d[bb])
+
+    xbar =  fluidPosition[bf] - d[bb]
+
+    prod = torch.einsum('nu, nv -> nuv', xbar, xbar) * k[:,None,None]
+
+    Mpartial = scatter(prod, bb, dim = 0, dim_size = boundaryPositions.shape[0], reduce = 'add')
+
+    M1 = torch.linalg.pinv(Mpartial)
+
+    vec = xbar * k[:,None]
+    bbar = torch.hstack((torch.ones_like(boundarySupports).unsqueeze(1), boundaryPositions - d))
+    
+    return M1, vec, bbar
+
+@torch.jit.script
+def evalMLSBoundaries(M1, vec, bbar, neighbors, boundaryRadialDistances, fluidPosition, fluidActualArea, fluidPressure, support):
+    bb = neighbors[0]
+    bf = neighbors[1] 
+    k = kernel(boundaryRadialDistances, support)* fluidActualArea[bf]
+    
+    vecSum = scatter(vec * fluidPressure[bf,None], bb, dim = 0, dim_size = M1.shape[0], reduce = 'add')
+    alphaP = scatter(fluidPressure[bf] * k, bb, dim = 0, dim_size = M1.shape[0], reduce = 'add')
+    alphaS = scatter( k, bb, dim = 0, dim_size = M1.shape[0], reduce = 'add')
+
+    alpha = alphaP
+    alphaP[alphaS > 1e-6] = alphaP[alphaS > 1e-6] / alphaS[alphaS > 1e-6]
+
+    c = torch.hstack((alpha.unsqueeze(1), torch.matmul(M1, vecSum.unsqueeze(2))[:,:,0]))
+    pb = torch.einsum('nu, nu -> n', bbar, c)
+    return pb
+
+
+@torch.jit.script
+def precomputeMLS(queryPositions, fluidPosition, fluidArea, fluidDensity, support, neighbors, radialDistances):
+    with record_function("MLS - precomputeMLS"): 
+        # queryPositions = simulationState['fluidPosition']
+        # queryPosition = pb
+
+#         i = neighbors[0]
+#         j = neighbors[1]
+# #         neighbors = torch.stack([i, j], dim = 0)
+
+#     #     debugPrint(neighbors)
+#         # debugPrint(torch.min(neighbors[0]))
+#         # debugPrint(torch.max(neighbors[0]))
+#         # debugPrint(torch.min(neighbors[1]))
+#         # debugPrint(torch.max(neighbors[1]))
+
+#         distances = (fluidPosition[j] - queryPositions[i])
+#         radialDistances = torch.linalg.norm(distances,dim=1)
+
+#         distances[radialDistances < 1e-5,:] = 0
+#         distances[radialDistances >= 1e-5,:] /= radialDistances[radialDistances >= 1e-5,None]
+#         radialDistances /= support
+        i = neighbors[0]
+        j = neighbors[1]
+
+        kernel = kernel(radialDistances, support)
+
+        bij = fluidPosition[j] - queryPositions[i]
+        bij = torch.hstack((bij.new_ones((bij.shape[0]))[:,None], bij))
+    #     debugPrint(bij)
+
+        Mpartial = 2 * torch.einsum('nu, nv -> nuv', bij, bij) * \
+                ((fluidArea / fluidDensity)[j] * kernel)[:,None,None]
+        # print(Mpartial.shape)
+        M = scatter(Mpartial, i, dim=0, dim_size = queryPositions.shape[0], reduce='add')
+        # print(M.shape)
+        # print(M)
+        Minv = torch.linalg.pinv(M)
+    #     debugPrint(Minv)
+
+        e1 = torch.tensor([1,0,0], dtype=Minv.dtype, device=Minv.device)
+        Me1 = torch.matmul(Minv,e1)
+    #     debugPrint(Me1)
+
+
+        pGpartial = torch.einsum('nd, nd -> n', Me1[i], bij) * \
+            kernel * ((fluidArea / fluidDensity)[j])
+
+#         pG = scatter(pGpartial, i, dim=0, dim_size = queryPositions.shape[0], reduce='add')
+    #     debugPrint(pG)
+
+        return pGpartial

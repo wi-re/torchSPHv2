@@ -11,7 +11,7 @@ class Module():
         return
 
 
-class BoundaryModule():
+class BoundaryModule(Module):
     def getParameters(self):
         return None
     def initialize(self, config, state):
@@ -21,23 +21,23 @@ class BoundaryModule():
     def __init__(self, identifier, moduleDescription):
         super().__init__(identifier, moduleDescription)
         return
-    def dfsphPrepareSolver(self, simulationState, simulation):
+    def dfsphPrepareSolver(self, simulationState, simulation, density):
         raise Exception('Operation dfsphPrepareSolver not implemented for ', self.identifier)
-    def dfsphBoundaryAccelTerm(self, simulationState, simulation):
+    def dfsphBoundaryAccelTerm(self, simulationState, simulation, density):
         raise Exception('Operation dfsphBoundaryAccelTerm not implemented for ', self.identifier)
-    def dfsphBoundaryPressureSum(self, simulationState, simulation):
+    def dfsphBoundaryPressureSum(self, simulationState, simulation, density):
         raise Exception('Operation dfsphBoundaryPressureSum not implemented for ', self.identifier)
-    def dfsphBoundaryAlphaTerm(self, simulationState, simulation):
+    def dfsphBoundaryAlphaTerm(self, simulationState, simulation, density):
         raise Exception('Operation dfsphBoundaryAlphaTerm not implemented for ', self.identifier)
-    def dfsphBoundarySourceTerm(self, simulationState, simulation):
+    def dfsphBoundarySourceTerm(self, simulationState, simulation, density):
         raise Exception('Operation dfsphBoundarySourceTerm not implemented for ', self.identifier)
-    def boundaryPressure(self, simulationState, simulation):
+    def evalBoundaryPressure(self, simulationState, simulation, density):
         raise Exception('Operation boundaryPressure not implemented for ', self.identifier)
-    def boundaryDensity(self, simulationState, simulation):
+    def evalBoundaryDensity(self, simulationState, simulation):
         raise Exception('Operation boundaryDensity not implemented for ', self.identifier)
-    def boundaryFriction(self, simulationState, simulation):
+    def evalBoundaryFriction(self, simulationState, simulation):
         raise Exception('Operation boundaryFriction not implemented for ', self.identifier)
-    def boundaryNeighborsearch(self, simulationState, simulation):
+    def boundaryNeighborhoodSearch(self, simulationState, simulation):
         raise Exception('Operation boundaryNeighborsearch not implemented for ', self.identifier)
     def boundaryFilterNeighborhoods(self, simulationState, simulation):
         return # Default behavior here is do nothing so no exception needs to be thrown

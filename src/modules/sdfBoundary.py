@@ -169,25 +169,60 @@ def sdPolyDerAndIntegral(poly, p, support : float, masked : bool = False, invert
 # polyDist2, polyDer2, polyInt2, polyGrad2 = sdPolyDerAndIntegral2(b['polygon'], simulationState['fluidPosition'], solidBC.support, inverted = b['inverted'])
 
 @torch.jit.script
+def getDistance(positions, minDomain, maxDomain):
+    distanceMin = positions - minDomain
+    distanceMax = maxDomain - positions
+    distance = torch.hstack((distanceMin, distanceMax))
+    distanceMin2 = torch.argmin(torch.abs(distance), dim = 1)
+    polyDist = distance[torch.arange(distance.shape[0], device = distance.device), distanceMin2]
+    return polyDist
+
+
+@torch.jit.script
 def domainDistance(positions, minDomain, maxDomain):
     distanceMin = positions - minDomain
     distanceMax = maxDomain - positions
     
     distance = torch.hstack((distanceMin, distanceMax))
-    distanceMin = torch.argmin(torch.abs(distance), dim = 1)
-    polyDist = distance[torch.arange(distance.shape[0], device = distance.device), distanceMin]
+    distanceMin2 = torch.argmin(torch.abs(distance), dim = 1)
+    polyDist = distance[torch.arange(distance.shape[0], device = distance.device), distanceMin2]
     
     polyDer = torch.zeros((distance.shape[0],2), device = distance.device)
-    polyDer[distanceMin == 0, 0] = 1 
-    polyDer[distanceMin == 0, 1] = 0 
-    polyDer[distanceMin == 1, 0] = 0
-    polyDer[distanceMin == 1, 1] = 1
-    polyDer[distanceMin == 2, 0] = -1 
-    polyDer[distanceMin == 2, 1] = 0 
-    polyDer[distanceMin == 3, 0] = 0
-    polyDer[distanceMin == 3, 1] = -1
+
+    dh = 1e-2
+    dpx = torch.zeros_like(positions)
+    dnx = torch.zeros_like(positions)
+    dpy = torch.zeros_like(positions)
+    dny = torch.zeros_like(positions)
+
+    dpx[:,0] += dh
+    dnx[:,0] -= dh
+    dpy[:,1] += dh
+    dny[:,1] -= dh
+
+    c   = getDistance(positions, minDomain, maxDomain)
+    cpx = getDistance(positions + dpx, minDomain, maxDomain)
+    cnx = getDistance(positions + dnx, minDomain, maxDomain)
+    cpy = getDistance(positions + dpy, minDomain, maxDomain)
+    cny = getDistance(positions + dny, minDomain, maxDomain)
+
+    grad = torch.zeros_like(positions)
+    grad[:,0] = (cpx - cnx) / (2 * dh)
+    grad[:,1] = (cpy - cny) / (2 * dh)
+
+    gradLen = torch.linalg.norm(grad, dim =1)
+    grad[torch.abs(gradLen) > 1e-5] /= gradLen[torch.abs(gradLen)>1e-5,None]
+
+    # polyDer[distanceMin == 0, 0] = 1 
+    # polyDer[distanceMin == 0, 1] = 0 
+    # polyDer[distanceMin == 1, 0] = 0
+    # polyDer[distanceMin == 1, 1] = 1
+    # polyDer[distanceMin == 2, 0] = -1 
+    # polyDer[distanceMin == 2, 1] = 0 
+    # polyDer[distanceMin == 3, 0] = 0
+    # polyDer[distanceMin == 3, 1] = -1
     
-    return polyDist, polyDer
+    return polyDist, grad
 
 @torch.jit.script
 def domainDistanceAndDer(p, minDomain, maxDomain):
@@ -245,6 +280,49 @@ def computeFilterMask(bdy : str, poly, p, i, j, inverted : bool, support : float
     else:
         return computeFilterMaskPoly(poly, p, i,j, inverted, support)
 
+
+@torch.jit.script
+def computeBoundaryAccelTerm(fluidArea, fluidDensity, fluidRestDensity, fluidPressure2, pgPartial, ghostToFluidNeighbors2, fluidToGhostNeighbors, ghostParticleBodyAssociation, ghostParticleGradientIntegral, boundaryCounter : int, mlsPressure : bool = True, computeBodyForces : bool = True):
+    with record_function("DFSPH - accel (boundary)"): 
+        i = fluidToGhostNeighbors[0]
+        b = ghostParticleBodyAssociation
+        with record_function("DFSPH - accel (boundary)[pressure]"): 
+            if mlsPressure:
+                boundaryPressure = scatter(pgPartial * fluidPressure2[ghostToFluidNeighbors2[1]], ghostToFluidNeighbors2[0], dim=0, dim_size = ghostParticleBodyAssociation.shape[0], reduce='add')
+            else:
+                boundaryPressure = fluidPressure2[i]
+
+        with record_function("DFSPH - accel (boundary)[factor]"): 
+            fac = - fluidRestDensity[i]
+            pi = fluidPressure2[i] / (fluidDensity[i] * fluidRestDensity[i])**2
+            pb = boundaryPressure / (1. * fluidRestDensity[i])**2
+            grad = ghostParticleGradientIntegral
+
+        with record_function("DFSPH - accel (boundary)[scatter]"): 
+            boundaryAccelTerm = scatter_sum((fac * (pi + pb))[:,None] * grad, i, dim = 0, dim_size = fluidArea.shape[0])
+        with record_function("DFSPH - accel (boundary)[body]"): 
+            if computeBodyForces:
+                force = -boundaryAccelTerm * (fluidArea * fluidRestDensity)[:,None]
+                boundaryPressureForce = scatter_sum(force[i], b, dim = 0, dim_size = boundaryCounter)
+            else:
+                boundaryPressureForce = torch.zeros((boundaryCounter,2), dtype = fluidPressure2.dtype, device = fluidArea.device)
+
+        return boundaryPressure, boundaryAccelTerm, boundaryPressureForce
+
+@torch.jit.script
+def computeUpdatedPressureBoundarySum(fluidToGhostNeighbors: Optional[torch.Tensor], ghostParticleGradientIntegral : Optional[torch.Tensor], fluidPredAccel, dt : float):
+    with record_function("DFSPH - pressure (boundary)"): 
+        if fluidToGhostNeighbors is not None and ghostParticleGradientIntegral is not None:
+            with record_function("DFSPH - update pressure kernel sum (boundary) [scatter]"): 
+                boundaryTerm = scatter_sum(ghostParticleGradientIntegral, fluidToGhostNeighbors[0], dim=0, dim_size=fluidPredAccel.shape[0])
+
+            with record_function("DFSPH - update pressure kernel sum (boundary) [einsum]"): 
+                kernelSum = dt**2 * torch.einsum('nd, nd -> n', fluidPredAccel, boundaryTerm)
+
+            return kernelSum
+        else:
+            return torch.zeros(fluidPredAccel.shape[0], dtype = fluidPredAccel.dtype, device = fluidPredAccel.device)
+
 class sdfBoundaryModule(Module):
     def __init__(self):
         super().__init__('densityInterpolation', 'Evaluates density at the current timestep')
@@ -258,11 +336,17 @@ class sdfBoundaryModule(Module):
         self.numBodies = len(simulationConfig['solidBC'])
         self.boundaryObjects = simulationConfig['solidBC']
         simulationState['sdfBoundary'] = {}
-        simulationState['sdfBoundary']['bodies'] =  simulationConfig['solidBC']
+        self.bodies =  simulationConfig['solidBC']
         # self.kernel, _ = getKernelFunctions(simulationConfig['kernel']['defaultKernel'])
         
         self.dtype = simulationConfig['compute']['precision']
         self.device = simulationConfig['compute']['device']  
+
+        self.pressureScheme = simulationConfig['simulation']['pressureTerm'] 
+        self.computeBodyForces = simulationConfig['simulation']['bodyForces'] 
+        self.boundaryCounter = len(simulationConfig['solidBC']) if 'solidBC' in simulationConfig else 0
+        self.relaxedJacobiOmega = simulationConfig['dfsph']['relaxedJacobiOmega']
+        self.backgroundPressure = simulationConfig['fluid']['backgroundPressure']
         
         self.domainMin = torch.tensor(simulationConfig['domain']['min'], device = self.device)
         self.domainMax = torch.tensor(simulationConfig['domain']['max'], device = self.device)
@@ -277,9 +361,71 @@ class sdfBoundaryModule(Module):
 #         self.dtype = simulationConfig['compute']['precision']
         
         
-    def search(self, simulationState, simulation):
+
+    def dfsphPrepareSolver(self, simulationState, simulation, density):
+        if not(density) or self.fluidToGhostNeighbors == None:
+            return 
+        if self.pressureScheme == "deltaMLS":
+            support = simulation.config['particle']['support']
+            supports = torch.ones(self.ghostParticlePosition.shape[0], device = simulationState['fluidActualArea'].device, dtype = simulationState['fluidActualArea'].dtype) * support
+
+            neighbors, distances, radialDistances = simulation.neighborSearch.searchExisting(self.ghostParticlePosition, supports * 2, simulationState, simulation, searchRadius = 2)
+            self.ghostToFluidNeighbors2 = neighbors
+            self.pgPartial = precomputeMLS(self.ghostParticlePosition, simulationState['fluidPosition'], simulationState['fluidArea'], simulationState['fluidDensity'], self.support * 2, neighbors, radialDistances)
+    def dfsphBoundaryAccelTerm(self, simulationState, simulation, density):
+        if not(density) or self.fluidToGhostNeighbors == None:
+            return torch.zeros_like(simulationState['fluidPosition'])
+        self.boundaryPressure, boundaryAccelTerm, self.boundaryPressureForce = \
+                    computeBoundaryAccelTerm(simulationState['fluidArea'], simulationState['fluidDensity'], simulationState['fluidRestDensity'], simulationState['fluidPressure2'], self.pgPartial, \
+                                             self.ghostToFluidNeighbors2, self.fluidToGhostNeighbors, self.ghostParticleBodyAssociation, self.ghostParticleGradientIntegral, \
+                                             self.boundaryCounter, mlsPressure = self.pressureScheme == "deltaMLS", computeBodyForces = self.computeBodyForces)
+        return boundaryAccelTerm
+
+    def dfsphBoundaryPressureSum(self, simulationState, simulation, density):
+        if not(density) or self.fluidToGhostNeighbors == None:
+            return torch.zeros_like(simulationState['fluidDensity'])
+        kernelSum = computeUpdatedPressureBoundarySum(self.fluidToGhostNeighbors, self.ghostParticleGradientIntegral, simulationState['fluidPredAccel'], simulationState['dt'])
+        return kernelSum
+
+    def dfsphBoundaryAlphaTerm(self, simulationState, simulation, density):
+        placeholder1 = torch.zeros(simulationState['fluidDensity'].shape, device=self.device, dtype= self.dtype)
+        placeholder2 = torch.zeros(simulationState['fluidPosition'].shape, device=self.device, dtype= self.dtype)
+        if not(density) or self.fluidToGhostNeighbors == None:
+            return placeholder2, placeholder1
+
+        kSum1 = scatter(self.ghostParticleGradientIntegral, self.fluidToGhostNeighbors[0], dim=0, dim_size=simulationState['numParticles'],reduce='add')
+        return kSum1, placeholder1
+
+    def dfsphBoundarySourceTerm(self, simulationState, simulation, density):  
+        if not(density) or self.fluidToGhostNeighbors == None:
+            return torch.zeros_like(simulationState['fluidDensity'])         
+
+        boundaryTerm = scatter(self.ghostParticleGradientIntegral, self.fluidToGhostNeighbors[0], dim=0, dim_size=simulationState['numParticles'],reduce='add')
+                
+        return - simulationState['dt'] * torch.einsum('nd, nd -> n',  simulationState['fluidPredictedVelocity'],  boundaryTerm)
+
+    def evalBoundaryPressure(self, simulationState, simulation, density):
+        raise Exception('Operation boundaryPressure not implemented for ', self.identifier)
+
+    def evalBoundaryDensity(self, simulationState, simulation):
+        density = torch.zeros(simulationState['fluidDensity'].shape, device=simulation.device, dtype= simulation.dtype)
+        if self.fluidToGhostNeighbors == None:
+            return density
+
+        density = torch.zeros(simulationState['fluidDensity'].shape, device=simulation.device, dtype= simulation.dtype)
+        gradient = torch.zeros(simulationState['fluidPosition'].shape, device=simulation.device, dtype= simulation.dtype)
+        if self.fluidToGhostNeighbors != None:
+            density = scatter(self.ghostParticleKernelIntegral, self.fluidToGhostNeighbors[0], dim = 0, dim_size = simulationState['numParticles'], reduce="add")
+            gradient = scatter(self.ghostParticleGradientIntegral, self.fluidToGhostNeighbors[0], dim = 0, dim_size = simulationState['numParticles'], reduce="add")
+            self.boundaryDensity = density 
+            self.boundaryGradient = gradient
+
+        return density
+    def evalBoundaryFriction(self, simulationState, simulation):
+        raise Exception('Operation boundaryFriction not implemented for ', self.identifier)
+    def boundaryNeighborhoodSearch(self, simulationState, simulation):
         if not self.active:
-            return None, None, None, None, None, None, None, None
+            return
         with record_function('solidBC - neighborhood'):
             particleIndices = torch.arange(simulationState['numParticles'], device = simulation.device, dtype = torch.int64 )
 
@@ -304,8 +450,8 @@ class sdfBoundaryModule(Module):
             ghostParticleKernelIntegral = []
             ghostParticleGradientIntegral = []
             
-            for ib, bdy in enumerate(simulationState['sdfBoundary']['bodies']):
-                b = simulationState['sdfBoundary']['bodies'][bdy]
+            for ib, bdy in enumerate(self.bodies):
+                b = self.bodies[bdy]
                 
 #                 debugPrint(b['polygon'])
 #                 debugPrint(self.support)
@@ -360,19 +506,20 @@ class sdfBoundaryModule(Module):
                 ghostParticleToFluidCols = torch.cat(ghostParticleToFluidCols)
                 ghostToFluidNeighbors = torch.stack([ghostParticleToFluidRows, ghostParticleToFluidCols])
                 
-
-                return fluidToGhostNeighbors, ghostToFluidNeighbors, ghostParticleBodyAssociation,\
+                self.fluidToGhostNeighbors, self.ghostToFluidNeighbors, self.ghostParticleBodyAssociation, \
+                 self.ghostParticlePosition, self.ghostParticleDistance, self.ghostParticleGradient, \
+                 self.ghostParticleKernelIntegral, self.ghostParticleGradientIntegral = fluidToGhostNeighbors, ghostToFluidNeighbors, ghostParticleBodyAssociation,\
                     ghostParticlePosition, ghostParticleDistance, ghostParticleGradient, \
                     ghostParticleKernelIntegral, ghostParticleGradientIntegral
             else:
-                return None, None, None, None, None, None, None, None
-
-    
-    def filterFluidNeighborhoods(self, simulationState, simulation):        
+                self.fluidToGhostNeighbors, self.ghostToFluidNeighbors, self.ghostParticleBodyAssociation, \
+                 self.ghostParticlePosition, self.ghostParticleDistance, self.ghostParticleGradient, \
+                 self.ghostParticleKernelIntegral, self.ghostParticleGradientIntegral = None, None, None, None, None, None, None, None
+    def boundaryFilterNeighborhoods(self, simulationState, simulation):       
         if self.active:
-            for ib, bdy in enumerate(simulationState['sdfBoundary']['bodies']):
+            for ib, bdy in enumerate(self.bodies):
 #                 debugPrint(bdy)
-                b = simulationState['sdfBoundary']['bodies'][bdy]
+                b = self.bodies[bdy]
                 i = simulationState['fluidNeighbors'][0]
                 j = simulationState['fluidNeighbors'][1]
                 
@@ -399,16 +546,6 @@ class sdfBoundaryModule(Module):
                     simulationState['fluidDistances'] = simulationState['fluidDistances'][mask]
                     simulationState['fluidRadialDistances'] = simulationState['fluidRadialDistances'][mask]
 
-
-    def density(self, simulationState, simulation):
-        density = torch.zeros(simulationState['fluidDensity'].shape, device=simulation.device, dtype= simulation.dtype)
-        gradient = torch.zeros(simulationState['fluidPosition'].shape, device=simulation.device, dtype= simulation.dtype)
-        if 'sdfBoundary' in simulationState and simulationState['sdfBoundary']['fluidToGhostNeighbors'] != None:
-
-            density = scatter(simulationState['sdfBoundary']['ghostParticleKernelIntegral'], simulationState['sdfBoundary']['fluidToGhostNeighbors'][0], dim = 0, dim_size = simulationState['numParticles'], reduce="add")
-            gradient = scatter(simulationState['sdfBoundary']['ghostParticleGradientIntegral'], simulationState['sdfBoundary']['fluidToGhostNeighbors'][0], dim = 0, dim_size = simulationState['numParticles'], reduce="add")
-            
-        return density, gradient
 
 # solidBC = solidBCModule()
 # solidBC.initialize(sphSimulation.config, sphSimulation.simulationState)
