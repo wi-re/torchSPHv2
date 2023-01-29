@@ -29,7 +29,7 @@ class akinciBoundaryModule(Module):
         return [
             Parameter('akinciBoundary', 'recomputeBoundary', 'bool', False, required = False, export = True, hint = ''),
             Parameter('akinciBoundary', 'beta', 'float', 0.15, required = False, export = True, hint = ''),
-            Parameter('akinciBoundary', 'gamma', 'float', 0.7, required = False, export = True, hint = '')
+            # Parameter('akinciBoundary', 'gamma', 'float', 0.7, required = False, export = True, hint = '')
         ]
         
 
@@ -66,7 +66,7 @@ class akinciBoundaryModule(Module):
         for b in simulationState['akinciBoundary']['bodies']:
             bdy = simulationState['akinciBoundary']['bodies'][b]
             packing = simulationConfig['particle']['packing'] * simulationConfig['particle']['support']
-            ptcls,_ = samplePolygon(bdy['polygon'], packing, simulationConfig['particle']['support'], offset = packing / 2 if bdy['inverted'] else -packing /2)
+            ptcls,_ = samplePolygon(bdy['polygon'], packing, simulationConfig['particle']['support'], offset = 0 )#packing / 2 if bdy['inverted'] else -packing /2)
             # debugPrint(ptcls)
             ptcls = torch.tensor(ptcls).type(self.dtype).to(self.device)
             bptcls.append(ptcls)
@@ -156,11 +156,31 @@ class akinciBoundaryModule(Module):
 
             boundaryDensityContribution = scatter(k * simulationState['akinciBoundary']['boundaryVolume'][bb], bf, dim=0, dim_size = simulationState['numParticles'], reduce = 'add')
             boundaryDensity = simulationState['akinciBoundary']['boundaryDensityTerm'] + scatter(k * simulationState['fluidArea'][bf], bb, dim=0, dim_size = simulationState['akinciBoundary']['positions'].shape[0], reduce = 'add') + self.beta
-            boundaryDensity[:] = 1.
+            # boundaryDensity[:] = 1.
             return boundaryDensityContribution, boundaryDensity
             
         return density, gradient
 
+    def dfsphPrepareSolver(self, simulationState, simulation):
+        raise Exception('Operation dfsphPrepareSolver not implemented for ', self.identifier)
+    def dfsphBoundaryAccelTerm(self, simulationState, simulation):
+        raise Exception('Operation dfsphBoundaryAccelTerm not implemented for ', self.identifier)
+    def dfsphBoundaryPressureSum(self, simulationState, simulation):
+        raise Exception('Operation dfsphBoundaryPressureSum not implemented for ', self.identifier)
+    def dfsphBoundaryAlphaTerm(self, simulationState, simulation):
+        raise Exception('Operation dfsphBoundaryAlphaTerm not implemented for ', self.identifier)
+    def dfsphBoundarySourceTerm(self, simulationState, simulation):
+        raise Exception('Operation dfsphBoundarySourceTerm not implemented for ', self.identifier)
+    def boundaryPressure(self, simulationState, simulation):
+        raise Exception('Operation boundaryPressure not implemented for ', self.identifier)
+    def boundaryDensity(self, simulationState, simulation):
+        raise Exception('Operation boundaryDensity not implemented for ', self.identifier)
+    def boundaryFriction(self, simulationState, simulation):
+        raise Exception('Operation boundaryFriction not implemented for ', self.identifier)
+    def boundaryNeighborsearch(self, simulationState, simulation):
+        raise Exception('Operation boundaryNeighborsearch not implemented for ', self.identifier)
+    def boundaryFilterNeighborhoods(self, simulationState, simulation):
+        return # Default behavior here is do nothing so no exception needs to be thrown
 
 # solidBC = solidBCModule()
 # solidBC.initialize(sphSimulation.config, sphSimulation.simulationState)

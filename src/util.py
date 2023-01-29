@@ -16,6 +16,8 @@ from torch_geometric.nn import SplineConv, fps, global_mean_pool, radius_graph, 
 from torch_scatter import scatter
 from torch.profiler import profile, record_function, ProfilerActivity
 
+from .kernels import *
+
 from typing import Dict, Optional
 
 @torch.jit.script
@@ -93,6 +95,83 @@ def genParticles(minCoord, maxCoord, radius, packing, support, dtype, device):
         # debugPrint(torch.min(positions))
         # debugPrint(torch.max(positions))
         return positions.mT
+
+def evalBoundarySpacing(spacing, support, packing, radius, gamma, plot = False):
+    x = spacing  * support
+    particles = genParticles(torch.tensor([-2*support,x]),torch.tensor([2*support,2* support + x]), radius, packing, support, torch.float32, 'cpu')
+    particleAreas = torch.ones(particles.shape[0]) * (np.pi * radius**2)
+#     particleAreas = torch.ones(particles.shape[0]) * (packing * support)**2
+    if plot:
+        fig, axis = plt.subplots(1,1, figsize=(4 *  1.09, 4), squeeze = False)
+
+    # axis[0,0].scatter(particles[:,0], particles[:,1], c = 'red',s = 4)
+
+    centerPosition = torch.tensor([0,0])
+
+    dists = particles - centerPosition
+    dists = torch.linalg.norm(dists,axis=1)
+    minDist = torch.argmin(dists)
+    centerPosition = particles[minDist]
+    if plot:
+        axis[0,0].scatter(centerPosition[0], centerPosition[1], c = 'blue')
+
+    minX = -2 * support
+    maxX = 2 * support
+    diff = maxX - minX
+
+    requiredSlices = int(np.ceil(diff / packing / support))
+#     debugPrint(requiredSlices)
+    xi = torch.arange(requiredSlices).type(torch.float32)
+    yi = torch.tensor([0]).type(torch.float32)
+    xx, yy = torch.meshgrid(xi,yi, indexing = 'xy')
+
+    bdyPositions = (packing * support) * torch.vstack((xx.flatten(), yy.flatten()))
+    bdyPositions = bdyPositions.mT
+    # debugPrint(bdyPositions)
+    # debugPrint(particles)
+    bdyPositions[:,0] += minX
+
+
+    bdyDistances = torch.clamp(torch.linalg.norm(bdyPositions - bdyPositions[:,None], dim = 2) / support, min = 0, max = 1)
+    # debugPrint(kernel(bdyDistances.flatten(), support).reshape(bdyDistances.shape))
+    bdyArea = gamma / torch.sum(kernel(bdyDistances.flatten(), support).reshape(bdyDistances.shape), dim = 0)
+    # debugPrint(bdyKernels.shape)
+
+    p = torch.vstack((particles, bdyPositions))
+    v = torch.hstack((particleAreas, bdyArea))
+
+    # p = bdyPositions
+    # v = bdyArea
+
+    # sc = axis[0,0].scatter(p[:,0], p[:,1], c = v, s =4)
+    # sc = axis[0,0].scatter(bdyPositions[:,0], bdyPositions[:,1], c = bdyKernels, s =4)
+
+
+    fluidDistances = torch.clamp(torch.linalg.norm(particles - particles[:,None], dim = 2) / support, min = 0, max = 1)
+    fluidDensity = torch.sum(kernel(fluidDistances, support) * particleAreas[:,None], dim = 0)
+
+
+    fluidBdyDistances = torch.clamp(torch.linalg.norm(particles - bdyPositions[:,None], dim = 2) / support, min = 0, max = 1)
+    fluidBdyDensity = torch.sum(kernel(fluidBdyDistances, support) * bdyArea[:, None], dim = 0)
+
+
+    centerDensity = fluidDensity[minDist] + fluidBdyDensity[minDist]
+    error = (1 - centerDensity)**2
+
+    if plot:
+        debugPrint(x)
+        debugPrint(fluidDensity[minDist])
+        debugPrint(fluidBdyDensity[minDist])
+        debugPrint(error)
+        axis[0,0].axis('equal')
+        sc = axis[0,0].scatter(particles[:,0], particles[:,1], c = fluidBdyDensity, s = 4)
+
+        ax1_divider = make_axes_locatable(axis[0,0])
+        cax1 = ax1_divider.append_axes("right", size="4%", pad="1%")
+        cbar = fig.colorbar(sc, cax=cax1,orientation='vertical')
+        cbar.ax.tick_params(labelsize=8) 
+        sc = axis[0,0].scatter(bdyPositions[:,0], bdyPositions[:,1], c = 'red', s = 4)
+    return error
 
     # #     print(requiredSlices)
     #     generatedParticles = []

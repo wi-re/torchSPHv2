@@ -27,6 +27,10 @@ def wendland(q, h):
 def wendlandGrad(q,r,h):
     C = 7 / np.pi    
     return - r * C / h**3 * (20. * q * (1. -q)**3)[:,None]
+    
+@torch.jit.script
+def spikyGrad(q,r,h):
+    return -r * 30 / np.pi / h**3 * ((1 - q)**2)[:,None]
 
 @torch.jit.script
 def cohesionKernel(q, h):

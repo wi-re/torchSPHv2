@@ -20,7 +20,8 @@ class SPHSimulation():
             Parameter('simulation', 'scheme', 'string', 'dfsph', required = False, export = True, hint = ''),
             Parameter('simulation', 'pressureTerm', 'str', 'mirrored', required = False, export = True, hint = ''),
             Parameter('simulation', 'boundaryScheme', 'string', 'SDF', required = False, export = True, hint = ''),
-            Parameter('simulation', 'bodyForces', 'bool', True, required = False, export = True, hint = '')
+            Parameter('simulation', 'bodyForces', 'bool', True, required = False, export = True, hint = ''),
+            Parameter('akinciBoundary', 'gamma', 'float', 0.7, required = False, export = True, hint = '')
         ]
         
         basicKernelParameters = [
@@ -221,8 +222,8 @@ class SPHSimulation():
                 else:                    
                     # emitter[        'min'] = [emitter['min'][0] + packing / 2, emitter['min'][1] + packing / 2]
                     # emitter[        'max'] = [emitter['max'][0] - packing / 2, emitter['max'][1] - packing / 2]
-                    emitter[        'min'] = [emitter['min'][0] + packing / 2, emitter['min'][1] + packing / 2]
-                    emitter[        'max'] = [emitter['max'][0] - packing / 2, emitter['max'][1] - packing / 2]
+                    emitter[        'min'] = [emitter['min'][0] + spacing, emitter['min'][1] + spacing]
+                    emitter[        'max'] = [emitter['max'][0] - spacing, emitter['max'][1] - spacing]
                 
                         
             minCompression = min(minCompression, emitter['compression'])
@@ -449,7 +450,10 @@ class SPHSimulation():
         # print('Optimized packing: %g' % self.config['particle']['packing'])
         self.config['particle']['spacing'] = np.float32(0.316313)# -minimize(lambda x: self.evalSpacing(x), 0., method="nelder-mead").x[0]
         # print('Optimized spacing: %g' % self.config['particle']['spacing'])
-                
+        if self.config['simulation']['boundaryScheme'] == 'Akinci':
+            self.config['particle']['spacing'] =  minimize(lambda x: evalBoundarySpacing(x, self.config['particle']['support'], self.config['particle']['packing'], self.config['particle']['radius'], gamma = self.config['akinciBoundary']['gamma']), 0., method="nelder-mead").x[0]
+
+
         if self.config['domain']['adjustParticle']:
             print('Adjusting particle size to better match domain size')
             D = (self.config['domain']['max'][1] - self.config['domain']['min'][1])
