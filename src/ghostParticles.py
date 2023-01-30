@@ -93,7 +93,7 @@ def sampleContour(contour, spacing):
     cumLength = 0
     ptcls = []
     
-    ptcls.append(contour[0])
+    # ptcls.append(contour[0])
     offset = spacing
     
     for i in range(len(contour) -1):
@@ -161,8 +161,16 @@ def samplePolygon(poly, spacing, support, offset = 0, mirrored = False):
     spacing1 = adjustSpacing(spacing, lenn1)
     ptcls = sampleContour(sMeshn1, spacing1)
     
-    if mirrored and offset != 0:
+    if mirrored and not(offset ==0):
         dist, grad, _, _, _, _ = sdPolyDer(poly, torch.tensor(ptcls))
         offsetPtcls = torch.tensor(ptcls) - (dist + offset)[:,None] * grad
+#         debugPrint(dist + offset)
+#         debugPrint(grad - ptcls)
+        return ptcls, offsetPtcls
+    if mirrored:
+        dist, grad, _, _, _, _ = sdPolyDer(poly, torch.tensor(ptcls))
+        offsetPtcls = torch.tensor(ptcls) - (dist + offset + spacing)[:,None] * grad
+#         debugPrint(dist + offset)
+#         debugPrint(grad - ptcls)
         return ptcls, offsetPtcls
     return ptcls, ptcls

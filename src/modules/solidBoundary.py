@@ -24,11 +24,12 @@ from ..util import *
 from ..ghostParticles import *
 
 
-class akinciBoundaryModule(BoundaryModule):
+class solidBoundaryModule(BoundaryModule):
     def getParameters(self):
         return [
-            Parameter('akinciBoundary', 'recomputeBoundary', 'bool', False, required = False, export = True, hint = ''),
-            Parameter('akinciBoundary', 'beta', 'float', 0.15, required = False, export = True, hint = ''),
+            Parameter('solidBoundary', 'recomputeBoundary', 'bool', False, required = False, export = True, hint = ''),
+            Parameter('solidBoundary', 'layers', 'int', 3, required = False, export = True, hint = ''),
+            # Parameter('akinciBoundary', 'beta', 'float', 0.15, required = False, export = True, hint = ''),
             # Parameter('akinciBoundary', 'gamma', 'float', 0.7, required = False, export = True, hint = '')
         ]
         
@@ -50,12 +51,13 @@ class akinciBoundaryModule(BoundaryModule):
         # self.bodies'] =  simulationConfig['solidBC']
         # self.kernel, _ = getKernelFunctions(simulationConfig['kernel']['defaultKernel'])
         
-        self.beta = simulationConfig['akinciBoundary']['beta']
-        self.gamma = simulationConfig['akinciBoundary']['gamma']
+        # self.beta = simulationConfig['akinciBoundary']['beta']
+        # self.gamma = simulationConfig['akinciBoundary']['gamma']
+        self.layers = simulationConfig['solidBoundary']['layers']
 
         self.dtype = simulationConfig['compute']['precision']
         self.device = simulationConfig['compute']['device']  
-        self.recomputeBoundary = simulationConfig['akinciBoundary']['recomputeBoundary']  
+        self.recomputeBoundary = simulationConfig['solidBoundary']['recomputeBoundary']  
         
         self.domainMin = torch.tensor(simulationConfig['domain']['min'], device = self.device)
         self.domainMax = torch.tensor(simulationConfig['domain']['max'], device = self.device)
@@ -116,11 +118,15 @@ class akinciBoundaryModule(BoundaryModule):
         boundaryKernelTerm = kernel(bbRadialDistances, self.support)
 
         # gamma = 0.7
-        boundaryVolume = scatter(boundaryKernelTerm, bi, dim=0, dim_size = self.numPtcls, reduce='add')
-        boundaryDensity = scatter(boundaryKernelTerm * self.gamma / boundaryVolume[bj], bi, dim=0, dim_size = self.numPtcls, reduce='add')
+        # boundaryVolume = scatter(boundaryKernelTerm, bi, dim=0, dim_size = self.numPtcls, reduce='add')
+        boundaryVolume = torch.ones(self.boundaryPositions.shape[0], dtype = self.dtype, device = self.device) *\
+            simulationConfig['particle']['radius']**2 * np.pi
+
+
+        boundaryDensity = scatter(boundaryKernelTerm * boundaryVolume[bj], bi, dim=0, dim_size = self.numPtcls, reduce='add')
 
         self.boundaryDensityTerm = (boundaryDensity).type(self.dtype)
-        self.boundaryVolume = self.gamma / boundaryVolume
+        self.boundaryVolume = boundaryVolume# self.gamma / boundaryVolume
         self.boundarySupport = torch.ones_like(boundaryVolume) * self.support
         self.boundaryRestDensity = torch.ones_like(boundaryVolume) * simulationConfig['fluid']['restDensity'] 
         self.boundaryVelocity = torch.zeros_like(self.boundaryPositions) 
@@ -130,12 +136,12 @@ class akinciBoundaryModule(BoundaryModule):
     def dfsphPrepareSolver(self, simulationState, simulation, density = True):
         if not(density) or self.boundaryToFluidNeighbors == None:
             return 
+        # raise Exception('Operation dfsphPrepareSolver not implemented for ', self.identifier)
         self.boundaryPressure = torch.zeros_like(self.boundaryVolume)
         self.boundaryPressure2 = torch.zeros_like(self.boundaryVolume)
         self.boundaryActualArea = self.boundaryVolume / self.boundaryDensity
         self.fluidPredAccel = torch.zeros(self.boundaryPositions.shape, dtype = self.dtype, device = self.device)
         self.boundaryPredictedVelocity = self.boundaryVelocity + simulationState['dt'] * self.boundaryAcceleration
-        
         if self.pressureScheme == "deltaMLS":
             self.pgPartial = precomputeMLS(self.boundaryPositions, simulationState['fluidPosition'], simulationState['fluidArea'], simulationState['fluidDensity'], self.support * 2, self.ghostToFluidNeighbors, self.ghostToFluidNeighborRadialDistances)
         if self.pressureScheme == "ghostMLS":
@@ -143,10 +149,10 @@ class akinciBoundaryModule(BoundaryModule):
         if self.pressureScheme == "MLSPressure":
             self.M1, self.vec, self.bbar = prepareMLSBoundaries(self.boundaryPositions, self.boundarySupport, self.ghostToFluidNeighbors, self.ghostToFluidNeighborRadialDistances, simulationState['fluidPosition'], simulationState['fluidActualArea'], self.support * 2)
 
-
     def dfsphBoundaryAccelTerm(self, simulationState, simulation, density):
         if not(density) or self.boundaryToFluidNeighbors == None:
             return torch.zeros_like(simulationState['fluidPosition'])
+        # raise Exception('Operation dfsphPrepareSolver not implemented for ', self.identifier)
         bb,bf = self.boundaryToFluidNeighbors
         boundaryDistances = self.boundaryToFluidNeighborDistances
         boundaryRadialDistances = self.boundaryToFluidNeighborRadialDistances
@@ -219,12 +225,12 @@ class akinciBoundaryModule(BoundaryModule):
             area        = self.boundaryVolume
             restDensity = self.boundaryRestDensity
             density     = self.boundaryDensity
-            actualArea  = area / 1
+            actualArea  = area / self.boundaryDensity
             
             fac = -(area * restDensity)[bb]
             pf = (simulationState['fluidPressure2'] / (simulationState['fluidDensity'] * simulationState['fluidRestDensity'])**2)[bf]
 #                     pb = pb /  ((simulationState['fluidDensity'][bf] * restDensity[bb])**2)
-            pb = pb /  ((1 * restDensity[bb])**2)
+            pb = pb /  ((self.boundaryDensity[bb] * restDensity[bb])**2)
             
             term = (fac * (pf + pb))[:,None] * grad
             
@@ -241,6 +247,7 @@ class akinciBoundaryModule(BoundaryModule):
     def dfsphBoundaryPressureSum(self, simulationState, simulation, density):
         if not(density) or self.boundaryToFluidNeighbors == None:
             return torch.zeros_like(simulationState['fluidDensity'])
+        # raise Exception('Operation dfsphPrepareSolver not implemented for ', self.identifier)
         bb,bf = self.boundaryToFluidNeighbors
         boundaryDistances = self.boundaryToFluidNeighborDistances
         boundaryRadialDistances = self.boundaryToFluidNeighborRadialDistances
@@ -265,12 +272,12 @@ class akinciBoundaryModule(BoundaryModule):
             if density and self.backgroundPressure:
                 boundaryPressure = torch.clamp(boundaryPressure, min = (5**2) * self.boundaryRestDensity)
             self.boundaryPressure = boundaryPressure
-            return scatter_sum(torch.einsum('nd, nd -> n', -facBoundary[:,None] * aij, grad), bf, dim=0, dim_size=simulationState['fluidActualArea'].shape[0])
+            return scatter_sum(torch.einsum('nd, nd -> n', facBoundary[:,None] * aij, -grad), bf, dim=0, dim_size=simulationState['fluidActualArea'].shape[0])
         else:
             area        = self.boundaryVolume
             restDensity = self.boundaryRestDensity
             boundaryDensity     =  self.boundaryDensity
-            actualArea  = area[bb] / 1 #simulationState['fluidDensity'][bf]
+            actualArea  = area[bb] / self.boundaryDensity[bb] #simulationState['fluidDensity'][bf]
             
             fac = simulationState['dt']**2 * actualArea
             return scatter_sum(torch.einsum('nd, nd -> n', fac[:,None] * aij, -grad), bf, dim=0, dim_size=simulationState['fluidActualArea'].shape[0])
@@ -280,6 +287,7 @@ class akinciBoundaryModule(BoundaryModule):
         placeholder2 = torch.zeros(simulationState['fluidPosition'].shape, device=self.device, dtype= self.dtype)
         if not(density) or self.boundaryToFluidNeighbors == None:
             return placeholder2, placeholder1
+        # raise Exception('Operation dfsphPrepareSolver not implemented for ', self.identifier)
         bb,bf = self.boundaryToFluidNeighbors
         boundaryDistances = self.boundaryToFluidNeighborDistances
         boundaryRadialDistances = self.boundaryToFluidNeighborRadialDistances
@@ -296,14 +304,14 @@ class akinciBoundaryModule(BoundaryModule):
         termFluid = (boundaryActualArea**2 / (boundaryArea * boundaryRestDensity))[bb] * grad2
         termBoundary = (simulationState['fluidActualArea']**2 / (simulationState['fluidArea'] * simulationState['fluidRestDensity']))[bf] * grad2
         if self.pressureScheme == 'PBSPH':
-            kSum1 = -scatter(boundaryActualArea[bb,None] * grad, bf, dim=0, dim_size=simulationState['numParticles'],reduce='add')
+            kSum1 = scatter(boundaryActualArea[bb,None] * grad, bf, dim=0, dim_size=simulationState['numParticles'],reduce='add')
             kSum2 = scatter(termFluid, bf, dim=0, dim_size=simulationState['numParticles'],reduce='add')
-            self.boundaryAlpha = -simulationState['dt']**2 * boundaryActualArea * scatter(termBoundary, bb, dim=0, dim_size=boundaryArea.shape[0],reduce='add')
+            self.boundaryAlpha = torch.clamp(-simulationState['dt']**2 * boundaryActualArea * scatter(termBoundary, bb, dim=0, dim_size=boundaryArea.shape[0],reduce='add'), max = -0.01**2 * self.support **2)
         else:
             area        = self.boundaryVolume
             restDensity = self.boundaryRestDensity
             density     = self.boundaryDensity
-            actualArea  = area /1# density
+            actualArea  = area / self.boundaryDensity# density
             
             term1 = actualArea[bb][:,None] * grad
             term2 = actualArea[bb]**2 / (area * restDensity)[bb] * grad2
@@ -315,6 +323,7 @@ class akinciBoundaryModule(BoundaryModule):
     def dfsphBoundarySourceTerm(self, simulationState, simulation, density):
         if not(density) or self.boundaryToFluidNeighbors == None:
             return torch.zeros_like(simulationState['fluidDensity'])
+        # raise Exception('Operation dfsphPrepareSolver not implemented for ', self.identifier)
         bb,bf = self.boundaryToFluidNeighbors
         boundaryDistances = self.boundaryToFluidNeighborDistances
         boundaryRadialDistances = self.boundaryToFluidNeighborRadialDistances
@@ -341,7 +350,7 @@ class akinciBoundaryModule(BoundaryModule):
             area        = self.boundaryVolume
             restDensity = self.boundaryRestDensity
             boundaryDensity     = self.boundaryDensity
-            actualArea  = area / 1#boundaryDensity
+            actualArea  = area / self.boundaryDensity#boundaryDensity
             
             fac = - simulationState['dt'] * actualArea[bb]
             boundarySource = scatter(fac * prod, bf, dim = 0, dim_size = simulationState['numParticles'], reduce= 'add')
@@ -366,18 +375,18 @@ class akinciBoundaryModule(BoundaryModule):
 
             boundaryKernelTerm = kernel(bbRadialDistances, self.support)
 
-            boundaryVolume = scatter(boundaryKernelTerm, bi, dim=0, dim_size = self.numPtcls, reduce='add')
-            boundaryDensity = scatter(boundaryKernelTerm * self.gamma / boundaryVolume[bj], bi, dim=0, dim_size = self.numPtcls, reduce='add')
+            # boundaryVolume = scatter(boundaryKernelTerm, bi, dim=0, dim_size = self.numPtcls, reduce='add')
+            boundaryDensity = scatter(boundaryKernelTerm * self.boundaryVolume[bj], bi, dim=0, dim_size = self.numPtcls, reduce='add')
 
             self.boundaryDensityTerm = (boundaryDensity).type(self.dtype)
-            self.boundaryVolume = self.gamma / boundaryVolume
+            # self.boundaryVolume = self.gamma / boundaryVolume
 
 
         bb,bf = self.boundaryToFluidNeighbors
         k = kernel(self.boundaryToFluidNeighborRadialDistances, self.support)
 
         self.boundaryDensityContribution = scatter(k * self.boundaryVolume[bb], bf, dim=0, dim_size = simulationState['numParticles'], reduce = 'add')
-        self.boundaryDensity = self.boundaryDensityTerm + scatter(k * simulationState['fluidArea'][bf], bb, dim=0, dim_size = self.numPtcls, reduce = 'add') + self.beta
+        self.boundaryDensity = torch.clamp(self.boundaryDensityTerm + scatter(k * simulationState['fluidArea'][bf], bb, dim=0, dim_size = self.numPtcls, reduce = 'add'), max=1)
         return self.boundaryDensityContribution
 
     def evalBoundaryFriction(self, simulationState, simulation):
@@ -392,7 +401,6 @@ class akinciBoundaryModule(BoundaryModule):
             self.ghostToFluidNeighbors, self.ghostToFluidNeighborDistances, self.ghostToFluidNeighborRadialDistances = simulation.neighborSearch.searchExisting(self.boundaryGhostPositions, self.boundarySupport * 2, simulationState, simulation)
         if self.pressureScheme == 'deltaMLS' or self.pressureScheme == 'MLSPressure':
             self.ghostToFluidNeighbors, self.ghostToFluidNeighborDistances, self.ghostToFluidNeighborRadialDistances = simulation.neighborSearch.searchExisting(self.boundaryPositions, self.boundarySupport * 2, simulationState, simulation)
-    
     def boundaryFilterNeighborhoods(self, simulationState, simulation):
         return # Default behavior here is do nothing so no exception needs to be thrown
 

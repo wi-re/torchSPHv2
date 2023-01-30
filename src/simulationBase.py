@@ -216,9 +216,9 @@ class SPHSimulation():
             if emitter['adjust']:
                 spacing = self.config['particle']['spacing'] * self.config['particle']['support']
                 packing = self.config['particle']['packing'] * self.config['particle']['support']
-                if self.config['simulation']['boundaryScheme'] == 'SDF':
-                    emitter[        'min'] = [emitter['min'][0] + spacing, emitter['min'][1] + spacing]
-                    emitter[        'max'] = [emitter['max'][0] - spacing, emitter['max'][1] - spacing]
+                if self.config['simulation']['boundaryScheme'] == 'solid':
+                    emitter[        'min'] = [emitter['min'][0] + spacing / 2, emitter['min'][1] + spacing / 2]
+                    emitter[        'max'] = [emitter['max'][0] - spacing / 2, emitter['max'][1] - spacing / 2]
                 else:                    
                     # emitter[        'min'] = [emitter['min'][0] + packing / 2, emitter['min'][1] + packing / 2]
                     # emitter[        'max'] = [emitter['max'][0] - packing / 2, emitter['max'][1] - packing / 2]
@@ -452,7 +452,8 @@ class SPHSimulation():
         # print('Optimized spacing: %g' % self.config['particle']['spacing'])
         if self.config['simulation']['boundaryScheme'] == 'Akinci':
             self.config['particle']['spacing'] =  minimize(lambda x: evalBoundarySpacing(x, self.config['particle']['support'], self.config['particle']['packing'], self.config['particle']['radius'], gamma = self.config['akinciBoundary']['gamma']), 0., method="nelder-mead").x[0]
-
+        if self.config['simulation']['boundaryScheme'] == 'solid':
+            self.config['particle']['spacing'] = self.config['particle']['packing']
 
         if self.config['domain']['adjustParticle']:
             print('Adjusting particle size to better match domain size')
