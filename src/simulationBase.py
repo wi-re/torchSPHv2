@@ -18,6 +18,7 @@ class SPHSimulation():
         
         basicSimulationParameters = [
             Parameter('simulation', 'scheme', 'string', 'dfsph', required = False, export = True, hint = ''),
+            Parameter('simulation', 'verbose', 'bool', True, required = False, export = True, hint = ''),
             Parameter('simulation', 'pressureTerm', 'str', 'mirrored', required = False, export = True, hint = ''),
             Parameter('simulation', 'boundaryScheme', 'string', 'SDF', required = False, export = True, hint = ''),
             Parameter('simulation', 'bodyForces', 'bool', True, required = False, export = True, hint = ''),
@@ -188,7 +189,7 @@ class SPHSimulation():
         
         for emitterName in self.config['emitter']:
 #             print(emitter)
-            print('processing emitter %s' % emitterName)
+            if self.verbose: print('processing emitter %s' % emitterName)
             emitter = self.config['emitter'][emitterName]
             emitter[ 'fillDomain'] = False if 'fillDomain' not in emitter else emitter['fillDomain']
             if emitter['fillDomain']:
@@ -303,9 +304,9 @@ class SPHSimulation():
             emitterVelocities = []
             emitterDensities = []
             for e in self.config['emitter']:
-                print(e)
+                if self.verbose: print(e)
                 emitter = self.config['emitter'][e]
-                print(emitter)
+                if self.verbose: print(emitter)
                 emitterPositions = genParticles(
                     torch.tensor(emitter['min'], dtype = self.dtype, device = self.device), 
                     torch.tensor(emitter['max'], dtype = self.dtype, device = self.device), 
@@ -369,7 +370,7 @@ class SPHSimulation():
             self.simulationState[         'timestep'] = int(0)
             self.simulationState[               'dt'] = self.config['integration']['dt']
             
-            print('Initializing modules')
+            if self.verbose: print('Initializing modules')
             for module in self.modules:        
                 module.initialize(self.config, self.simulationState)
 
@@ -424,24 +425,25 @@ class SPHSimulation():
     def __init__(self, config):
         
         basicParams = self.getBasicParameters()
-        print('Parsing basic parameters of configuration')
+        # print('Parsing basic parameters of configuration')
         for param in basicParams:
             param.parseConfig(config)
-        print('Basic parameters parsed succesfully')
+        self.verbose = config['simulation']['verbose']
+        if self.verbose: print('Basic parameters parsed succesfully')
         self.config = config
         
         self.parameters = basicParams
         
-        print('Setting Kernel parameters')
+        if self.verbose: print('Setting Kernel parameters')
         self.kernel, self.kernelGrad = getKernelFunctions(self.config['kernel']['defaultKernel'])
         
-        print('Setting compute parameters')        
+        if self.verbose: print('Setting compute parameters')        
         self.config['compute']['precision'] = torch.float32 if self.config['compute']['floatprecision'] == 'single' else torch.float64
         self.config['compute']['maxValue'] = torch.finfo(config['compute']['precision']).max
         self.dtype = self.config['compute']['precision']
         self.device = self.config['compute']['device']
             
-        print('Setting generic fluid parameters')
+        if self.verbose: print('Setting generic fluid parameters')
         self.config['particle']['area'] = np.pi * self.config['particle']['radius']**2
         self.config['particle']['support'] = np.single(np.sqrt(self.config['particle']['area'] / np.pi * self.config['kernel']['targetNeighbors']))
         
@@ -456,7 +458,7 @@ class SPHSimulation():
             self.config['particle']['spacing'] = self.config['particle']['packing']
 
         if self.config['domain']['adjustParticle']:
-            print('Adjusting particle size to better match domain size')
+            if self.verbose: print('Adjusting particle size to better match domain size')
             D = (self.config['domain']['max'][1] - self.config['domain']['min'][1])
             spacing = self.config['particle']['spacing']
             packing = self.config['particle']['packing']
@@ -465,47 +467,47 @@ class SPHSimulation():
             area = h**2 / config['kernel']['targetNeighbors'] * np.pi
             radius = np.sqrt(area / np.pi)
 
-            print('Updated Radius  %g (%g : %g)' % (radius, config['particle']['radius'], radius - config['particle']['radius']))
-            print('Updated Area    %g (%g : %g)' % (area, config['particle']['area'], area - config['particle']['area']))
-            print('Updated Support %g (%g : %g)' % (h, config['particle']['support'], h - config['particle']['support']))
+            if self.verbose: print('Updated Radius  %g (%g : %g)' % (radius, config['particle']['radius'], radius - config['particle']['radius']))
+            if self.verbose: print('Updated Area    %g (%g : %g)' % (area, config['particle']['area'], area - config['particle']['area']))
+            if self.verbose: print('Updated Support %g (%g : %g)' % (h, config['particle']['support'], h - config['particle']['support']))
 
             self.config['particle']['radius'] = radius
             self.config['particle']['area'] = area
             self.config['particle']['support'] = h
 
 #         config['particle']['packing'] = minimize(lambda x: evalSpacing(x,config), 0.5, method="nelder-mead").x[0]
-        print('Evaluating spacing contribution')
+        if self.verbose: print('Evaluating spacing contribution')
         
         self.config['particle']['spacingContribution'] = self.evalContrib()
-        print('Spacing contribution: %g' % self.config['particle']['spacingContribution'])
+        if self.verbose: print('Spacing contribution: %g' % self.config['particle']['spacingContribution'])
         
         if self.config['domain']['adjustDomain']:
-            print('Adjusting simulation domain to be integer multiple of particle packing')
+            if self.verbose: print('Adjusting simulation domain to be integer multiple of particle packing')
             p = self.config['particle']['packing'] * self.config['particle']['support']
             nx = int(np.ceil((self.config['domain']['max'][0] - self.config['domain']['min'][0]) / p))
             ny = int(np.ceil((self.config['domain']['max'][1] - self.config['domain']['min'][1]) / p))
         #     print('nx', nx)
         #     print('prior', config['domain']['max'][0])
         
-            print('Domain was: [%g %g] - [%g %g]' %(self.config['domain']['min'][0], self.config['domain']['min'][1], self.config['domain']['max'][0], self.config['domain']['max'][1]))
+            if self.verbose: print('Domain was: [%g %g] - [%g %g]' %(self.config['domain']['min'][0], self.config['domain']['min'][1], self.config['domain']['max'][0], self.config['domain']['max'][1]))
             self.config['domain']['max'][0] = self.config['domain']['min'][0] + nx * p
             self.config['domain']['max'][1] = self.config['domain']['min'][1] + ny * p
             
-            print('Domain  is: [%g %g] - [%g %g]' %(self.config['domain']['min'][0], self.config['domain']['min'][1], self.config['domain']['max'][0], self.config['domain']['max'][1]))
+            if self.verbose: print('Domain  is: [%g %g] - [%g %g]' %(self.config['domain']['min'][0], self.config['domain']['min'][1], self.config['domain']['max'][0], self.config['domain']['max'][1]))
 
 
         self.processEmitters()
         self.processVelocitySources()
         
-        print('Setting virtual domain limits')
+        if self.verbose: print('Setting virtual domain limits')
         self.config['domain']['virtualMin'] = self.config['domain']['min'] - self.config['particle']['support'] * self.config['periodicBC']['buffer']
         self.config['domain']['virtualMax'] = self.config['domain']['max'] + self.config['particle']['support'] * self.config['periodicBC']['buffer']
 
-        print('Adding Boundary boundaries')
+        if self.verbose: print('Adding Boundary boundaries')
         self.addBoundaryBoundaries()
         
         if 'solidBC' in self.config:
-            print('Parsing boundary vertices to polygons')
+            if self.verbose: print('Parsing boundary vertices to polygons')
             
             for b in self.config['solidBC']:
                 boundary = self.config['solidBC'][b]
