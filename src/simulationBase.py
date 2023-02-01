@@ -345,7 +345,7 @@ class SPHSimulation():
                 emitterVelocity[:,0] = emitter['velocity'][0]
                 emitterVelocity[:,1] = emitter['velocity'][1]
 
-                emitterDensity = torch.ones(emitterPositions.shape[0], dtype = self.dtype, device=self.device) * emitter['restDensity']
+                emitterDensity = torch.ones(emitterPositions.shape[0], dtype = self.dtype, device=self.device)
 
                 positions.append(emitterPositions)
                 areas.append(emitterAreas)
@@ -357,9 +357,9 @@ class SPHSimulation():
             self.simulationState[    'fluidPosition'] = torch.vstack(positions)
             self.simulationState[              'UID'] = torch.arange(self.simulationState['fluidPosition'].shape[0], dtype=torch.int64, device = self.device)
             self.simulationState[     'ghostIndices'] = torch.ones(self.simulationState['fluidPosition'].shape[0], dtype=torch.int64, device = self.device) * -1
-            self.simulationState[     'fluidDensity'] = torch.ones(self.simulationState['fluidPosition'].shape[0], dtype=torch.int64, device = self.device)
+            self.simulationState[     'fluidDensity'] = torch.ones(self.simulationState['fluidPosition'].shape[0], dtype=torch.float32, device = self.device)
             self.simulationState[        'fluidArea'] = torch.cat(areas)
-            self.simulationState[     'fluidSupport'] = torch.ones(self.simulationState['fluidPosition'].shape[0], dtype=torch.int64, device = self.device) * self.config['particle']['support']
+            self.simulationState[     'fluidSupport'] = torch.ones(self.simulationState['fluidPosition'].shape[0], dtype=torch.float32, device = self.device) * self.config['particle']['support']
             self.simulationState[    'fluidVelocity'] = torch.cat(emitterVelocities)
             self.simulationState['fluidAcceleration'] = torch.zeros(self.simulationState['fluidVelocity'].shape, device=self.device, dtype=self.dtype)
             self.simulationState[    'fluidPressure'] = torch.zeros(self.simulationState['fluidArea'].shape, device=self.device, dtype=self.dtype)
@@ -448,7 +448,8 @@ class SPHSimulation():
         self.config['particle']['support'] = np.single(np.sqrt(self.config['particle']['area'] / np.pi * self.config['kernel']['targetNeighbors']))
         
         # print('Computing packing and spacing parameters')
-        self.config['particle']['packing'] = np.float32(0.399023) # minimize(lambda x: self.evalPacking(x), 0.5, method="nelder-mead").x[0]        
+        self.config['particle']['packing'] = minimize(lambda x: self.evalPacking(x), 0.5, method="nelder-mead").x[0]        
+        # self.config['particle']['packing'] = np.float32(0.399023) # minimize(lambda x: self.evalPacking(x), 0.5, method="nelder-mead").x[0]        
         # print('Optimized packing: %g' % self.config['particle']['packing'])
         self.config['particle']['spacing'] = np.float32(0.316313)# -minimize(lambda x: self.evalSpacing(x), 0., method="nelder-mead").x[0]
         # print('Optimized spacing: %g' % self.config['particle']['spacing'])

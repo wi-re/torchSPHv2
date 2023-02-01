@@ -22,6 +22,79 @@ from ..parameter import Parameter
 from ..util import *
 
 
+
+@torch.jit.script
+def x2c2(dInput, cr):
+    zeroTensor = dInput.new_zeros(dInput.shape)
+    dr = torch.abs(dInput)    
+    dr[torch.abs(dr) < 1e-5] = 1
+    
+    d = torch.complex(dr, zeroTensor)
+    c = torch.complex(cr, zeroTensor)
+    
+    a1 = ((-210*torch.cos(2*c)-75)*d**7+(-1260*torch.cos(2*c)-378)*d**5)*torch.log(torch.sqrt(1-d**2)+1)
+    a2 = (75*d**7+378*d**5)*torch.log(torch.sqrt(1-d**2)-1)
+    a3 = (210*torch.cos(2*c)*d**7+1260*torch.cos(2*c)*d**5)*torch.log(d)
+    a4 = -24*torch.arccos(d)
+    a5 = 0. #75.j*torch.arctan2(zeroTensor,torch.sqrt(1-dr**2)-1)*d**7
+    a6 = torch.sqrt(1-d**2)*((1134*torch.cos(2*c)+746)*d**5+(392*torch.cos(2*c)+152)*d**3+(32-56*torch.cos(2*c))*d)
+    a7 = 0. #378.j*torch.arctan2(zeroTensor,torch.sqrt(1-dr**2)-1)*d**5
+    term = -(a1 + a2 + a3 + a4 + a5 + a6 + a7) /(24*np.pi)
+    
+    term[dInput < 0.] = 1 - term[dInput<0.]
+    term[torch.abs(dInput) < 1e-5] = 1/2
+
+    return term.real
+
+@torch.jit.script
+def x2cs(dInput, cr):
+    dr = torch.abs(dInput)    
+    dr[torch.abs(dr) < 1e-5] = 1
+    
+    d = dr + 0.j
+    c = cr + 0.j
+    
+    a1 = (-105*torch.sin(2*c)*d**7-630*torch.sin(2*c)*d**5)*torch.log(torch.sqrt(1-d**2)+1)
+    a2 = (105*torch.sin(2*c)*d**7+630*torch.sin(2*c)*d**5)*torch.log(d)
+    a3 = torch.sqrt(1-d**2)*(567*torch.sin(2*c)*d**5+196*torch.sin(2*c)*d**3-28*torch.sin(2*c)*d)
+    term = -(a1 + a2 + a3) /(12*np.pi)
+    
+    term[dInput < 0.] = 0 - term[dInput<0.]
+    term[torch.abs(dInput) < 1e-5] = 0
+
+    return term.real
+@torch.jit.script
+def x2s2(dInput, cr):
+    zeroTensor = dInput.new_zeros(dInput.shape)
+    dr = torch.abs(dInput)    
+    dr[torch.abs(dr) < 1e-5] = 1
+    
+    d = dr + 0.j
+    c = cr + 0.j
+    
+    a1 = ((75-210*torch.cos(2*c))*d**7+(378-1260*torch.cos(2*c))*d**5)*torch.log(torch.sqrt(1-d**2)+1)
+    a2 = (-75*d**7-378*d**5)*torch.log(torch.sqrt(1-d**2)-1)
+    a3 = (210*torch.cos(2*c)*d**7+1260*torch.cos(2*c)*d**5)*torch.log(d)
+    a4 = 24*torch.arccos(d)
+    a5 = 0. #-75.j*torch.arctan2(zeroTensor,torch.sqrt(1-d**2).real-1)*d**7
+    a6 = torch.sqrt(1-d**2)*((1134*torch.cos(2*c)-746)*d**5+(392*torch.cos(2*c)-152)*d**3+(-56*torch.cos(2*c)-32)*d)
+    a7 = 0. #-378.j*torch.arctan2(zeroTensor,torch.sqrt(1-dr**2)-1)*d**5
+    term = (a1 + a2 + a3 + a4 + a5 + a6 + a7) /(24*np.pi)
+
+    
+    term[dInput < 0.] = 1 - term[dInput<0.]
+    term[torch.abs(dInput) < 1e-5] = 1/2
+
+    return term.real
+
+def getCorrelationMatrix(distance, direction):
+    angle = torch.atan2(direction[:,1], direction[:,0])    
+    c2Term = x2c2(distance, angle)
+    s2Term = x2s2(distance, angle)
+    csTerm = x2cs(distance, angle)
+    M = torch.stack([torch.stack([c2Term,csTerm]),torch.stack([csTerm,s2Term])]).transpose(0,-1).transpose(1,-1)
+    return M
+
 @torch.jit.script
 def k(dr, l2 : float = np.log(2)):
 #     d = torch.complex(torch.abs(dr), torch.zeros_like(dr))
@@ -545,7 +618,45 @@ class sdfBoundaryModule(Module):
                     simulationState['fluidNeighbors'] = neighbors
                     simulationState['fluidDistances'] = simulationState['fluidDistances'][mask]
                     simulationState['fluidRadialDistances'] = simulationState['fluidRadialDistances'][mask]
+    
+    def getNormalizationMatrices(self, simulationState, simulation):  
+        neighbors = self.fluidToGhostNeighbors
+        i = neighbors[0]
+        b = neighbors[1]
+        boundaryMatrices = getCorrelationMatrix(self.ghostParticleDistance, self.ghostParticleGradient) 
+    #             boundaryMatrices = boundaryMatrices * 2
 
+
+        normalizationMatrix = scatter(boundaryMatrices,i, dim=0, dim_size=simulationState['numParticles'], reduce="add")
+    #     debugPrint(normalizationMatrix)
+    #     L = torch.linalg.pinv(normalizationMatrix)
+
+        ghostToFluidNeighbors = self.ghostToFluidNeighbors
+        bf = ghostToFluidNeighbors[0]
+        bb = ghostToFluidNeighbors[1]
+
+        volume = simulationState['fluidArea'][bf]/simulationState['fluidDensity'][bf]
+        difference = simulationState['fluidPosition'][bf] - self.ghostParticlePosition[bb]
+
+        radialDistance = torch.linalg.norm(difference, axis = 1)
+        distance = torch.clone(difference)
+
+    #         debugPrint(radialDistance)
+    #         debugPrint(distance)
+
+    #         return L, normalizationMatrix, None, None
+
+
+        distance[radialDistance > 1e-7] = distance[radialDistance > 1e-7] / radialDistance[radialDistance > 1e-7,None]
+        kernel = simulation.kernelGrad(radialDistance, -distance, self.support)
+
+        term = volume[:,None,None] * torch.einsum('nu,nv -> nuv', difference, kernel)
+
+        boundaryM = scatter(term, bb, dim=0, dim_size=self.ghostParticlePosition.shape[0], reduce="add")
+        boundaryM[:,0,0] += 1/2 #* 0.5
+        boundaryM[:,1,1] += 1/2 #* 0.5
+        self.boundaryNormalizationMatrix = boundaryM
+        return normalizationMatrix
 
 # solidBC = solidBCModule()
 # solidBC.initialize(sphSimulation.config, sphSimulation.simulationState)

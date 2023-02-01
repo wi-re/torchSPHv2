@@ -43,6 +43,7 @@ __pycache__/
 output/
 
 trace.json
+traceGPU.json
 profile.txt
 
 export/

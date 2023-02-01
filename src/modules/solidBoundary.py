@@ -42,19 +42,8 @@ class solidBoundaryModule(BoundaryModule):
         self.support = simulationConfig['particle']['support']
         self.active = True if 'solidBC' in simulationConfig else False
         self.maxNeighbors = simulationConfig['compute']['maxNeighbors']
-        if not self.active:
-            return
-        self.numBodies = len(simulationConfig['solidBC'])
-        self.boundaryObjects = simulationConfig['solidBC']
-        # simulationState['akinciBoundary'] = {}
-        self.bodies = simulationConfig['solidBC']
-        # self.bodies'] =  simulationConfig['solidBC']
-        # self.kernel, _ = getKernelFunctions(simulationConfig['kernel']['defaultKernel'])
-        
-        # self.beta = simulationConfig['akinciBoundary']['beta']
-        # self.gamma = simulationConfig['akinciBoundary']['gamma']
         self.layers = simulationConfig['solidBoundary']['layers']
-
+        self.threshold = simulationConfig['neighborSearch']['gradientThreshold']
         self.dtype = simulationConfig['compute']['precision']
         self.device = simulationConfig['compute']['device']  
         self.recomputeBoundary = simulationConfig['solidBoundary']['recomputeBoundary']  
@@ -66,6 +55,17 @@ class solidBoundaryModule(BoundaryModule):
         self.boundaryCounter = len(simulationConfig['solidBC']) if 'solidBC' in simulationConfig else 0
         self.relaxedJacobiOmega = simulationConfig['dfsph']['relaxedJacobiOmega']
         self.backgroundPressure = simulationConfig['fluid']['backgroundPressure']
+        if not self.active:
+            return
+        self.numBodies = len(simulationConfig['solidBC'])
+        self.boundaryObjects = simulationConfig['solidBC']
+        # simulationState['akinciBoundary'] = {}
+        self.bodies = simulationConfig['solidBC']
+        # self.bodies'] =  simulationConfig['solidBC']
+        # self.kernel, _ = getKernelFunctions(simulationConfig['kernel']['defaultKernel'])
+        
+        # self.beta = simulationConfig['akinciBoundary']['beta']
+        # self.gamma = simulationConfig['akinciBoundary']['gamma']
         
         bptcls = []
         gptcls = []
@@ -111,9 +111,13 @@ class solidBoundaryModule(BoundaryModule):
         bbDistances = (self.boundaryPositions[bi] - self.boundaryPositions[bj])
         bbRadialDistances = torch.linalg.norm(bbDistances,axis=1)
 
-        # fluidDistances[fluidRadialDistances < self.threshold,:] = 0
-        # fluidDistances[fluidRadialDistances >= self.threshold,:] /= fluidRadialDistances[fluidRadialDistances >= self.threshold,None]
+        bbDistances[bbRadialDistances < self.threshold,:] = 0
+        bbDistances[bbRadialDistances >= self.threshold,:] /= bbRadialDistances[bbRadialDistances >= self.threshold,None]
         bbRadialDistances /= self.support
+
+        self.boundaryToBoundaryNeighbors = torch.vstack((bj, bi))
+        self.boundaryToBoundaryNeighborDistances = bbDistances
+        self.boundaryToBoundaryNeighborRadialDistances = bbRadialDistances
 
         boundaryKernelTerm = kernel(bbRadialDistances, self.support)
 
@@ -131,6 +135,7 @@ class solidBoundaryModule(BoundaryModule):
         self.boundaryRestDensity = torch.ones_like(boundaryVolume) * simulationConfig['fluid']['restDensity'] 
         self.boundaryVelocity = torch.zeros_like(self.boundaryPositions) 
         self.boundaryAcceleration = torch.zeros_like(self.boundaryPositions) 
+        self.boundaryDensity = torch.ones_like(boundaryVolume)
 
 
     def dfsphPrepareSolver(self, simulationState, simulation, density = True):
@@ -403,7 +408,35 @@ class solidBoundaryModule(BoundaryModule):
             self.ghostToFluidNeighbors, self.ghostToFluidNeighborDistances, self.ghostToFluidNeighborRadialDistances = simulation.neighborSearch.searchExisting(self.boundaryPositions, self.boundarySupport * 2, simulationState, simulation)
     def boundaryFilterNeighborhoods(self, simulationState, simulation):
         return # Default behavior here is do nothing so no exception needs to be thrown
+    def getNormalizationMatrices(self, simulationState, simulation):
+        if not self.active:
+            return torch.ones((simulationState['fluidDensity'].shape[0],2,2), dtype = self.dtype, device = self.device)
+        bb,bf = self.boundaryToFluidNeighbors
+        # self.boundaryNormalizationMatrix = torch.zeros((self.numPtcls, 2,2), dtype = self.dtype, device = self.device)
 
+
+        fluidVolume = simulationState['fluidArea'][bf]/simulationState['fluidDensity'][bf]
+        boundaryVolume = self.boundaryVolume[bb]/self.boundaryDensity[bb]
+
+        difference = simulationState['fluidPosition'][bf] - self.boundaryPositions[bb]
+        kernel = simulation.kernelGrad(self.boundaryToFluidNeighborRadialDistances, self.boundaryToFluidNeighborDistances, self.support)
+
+        fluidTerm = boundaryVolume[:,None,None] * torch.einsum('nu,nv -> nuv', -difference, -kernel)
+        boundaryTerm = fluidVolume[:,None,None] * torch.einsum('nu,nv -> nuv',  difference,  kernel)
+
+        normalizationMatrix = scatter(fluidTerm, bf, dim=0, dim_size=simulationState['numParticles'], reduce="add")
+        self.boundaryNormalizationMatrix = scatter(boundaryTerm, bb, dim=0, dim_size=self.numPtcls, reduce="add")
+        
+        bi, bj = self.boundaryToBoundaryNeighbors
+        volume = self.boundaryVolume[bj]/self.boundaryDensity[bj]
+        difference = self.boundaryPositions[bj] - self.boundaryPositions[bi]
+        kernel = simulation.kernelGrad(self.boundaryToBoundaryNeighborRadialDistances, self.boundaryToBoundaryNeighborDistances, self.support)
+        term = volume[:,None,None] * torch.einsum('nu,nv -> nuv',  difference,  kernel)
+        self.boundaryNormalizationMatrix += -scatter(term, bi, dim=0, dim_size=self.numPtcls, reduce="add")
+
+        self.boundaryL = torch.linalg.pinv(self.boundaryNormalizationMatrix)
+
+        return normalizationMatrix
 # solidBC = solidBCModule()
 # solidBC.initialize(sphSimulation.config, sphSimulation.simulationState)
 # solidBC.filterFluidNeighborhoods(sphSimulation.simulationState, sphSimulation)
