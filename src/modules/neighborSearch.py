@@ -236,6 +236,6 @@ class neighborSearchModule(Module):
 
             fluidDistances[fluidRadialDistances < self.threshold,:] = 0
             fluidDistances[fluidRadialDistances >= self.threshold,:] /= fluidRadialDistances[fluidRadialDistances >= self.threshold,None]
-            fluidRadialDistances /= self.support
+            fluidRadialDistances /= querySupports[rows]
 
             return fluidNeighbors, fluidDistances, fluidRadialDistances

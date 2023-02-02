@@ -53,10 +53,11 @@ def computeRenormalizedDensityGradient(i, j, ri, rj, Vi, Vj, distances, radialDi
     gradMagnitude = torch.linalg.norm(grad, dim=1)
     kernelMagnitude = torch.linalg.norm(gradW, dim=1)        
     change =  torch.abs(gradMagnitude - kernelMagnitude) / (kernelMagnitude + eps)
-    grad[change > 0.1,:] = gradW[change > 0.1, :]
+    # grad[change > 0.1,:] = gradW[change > 0.1, :]
+    # grad = gradW
 
     renormalizedGrad = grad
-    renormalizedDensityGradient = scatter_sum((rho_ba * Vj[j] * 2)[:,None] * grad, i, dim = 0, dim_size=numParticles)
+    renormalizedDensityGradient = -scatter_sum((rho_ba * Vj[j] * 2)[:,None] * grad, i, dim = 0, dim_size=numParticles)
     
     return renormalizedGrad, renormalizedDensityGradient
 
@@ -77,7 +78,7 @@ def computeDivergenceTerm(i, j, ri, rj, Vi, Vj, distances, radialDistances, supp
     uji = uj[j] - ui[i]
     prod = torch.einsum('nu,nu -> n', uji, gradW) 
 
-    return - rhoi * scatter_sum(prod * Vj[j], i, dim=0, dim_size = numParticles)
+    return - scatter_sum(prod * Vj[j] * rhoj[j], i, dim=0, dim_size = numParticles)
 @torch.jit.script
 def computeVelocityDiffusion(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float, rhoi, rhoj, ui, uj, alpha : float, c0 : float, restDensity : float):
     gradW = kernelGradient(radialDistances, distances, support)
@@ -86,10 +87,13 @@ def computeVelocityDiffusion(i, j, ri, rj, Vi, Vj, distances, radialDistances, s
     rji = rj[j] - ri[i]
     rji2 = torch.linalg.norm(rji, dim=1)**2 + eps
 
-    pi_ij = torch.einsum('nu, nu -> n', uji, rji) / rji2
-    term = 8 * (pi_ij * Vj[j])[:,None] * gradW
+    pi_ij = torch.einsum('nu, nu -> n', uji, rji) 
+    pi_ij[pi_ij > 0] = 0
 
-    return (support * alpha * c0 * restDensity / rhoi)[:,None] * scatter_sum(term, i, dim=0, dim_size = numParticles)
+    pi_ij = pi_ij / rji2
+    term = (pi_ij * Vj[j] * rhoj[j]  / (rhoi[i] + rhoj[j]))[:,None] * gradW
+
+    return (support * alpha * c0) * scatter_sum(term, i, dim=0, dim_size = numParticles)
 @torch.jit.script
 def computePressureAccel(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float, rhoi, rhoj, pi, pj):
     gradW = kernelGradient(radialDistances, distances, support)
@@ -103,9 +107,12 @@ def computePressureAccel(i, j, ri, rj, Vi, Vj, distances, radialDistances, suppo
 class deltaSPHModule(Module):
     def getParameters(self):
         return [
-            Parameter('deltaSPH', 'alpha', 'float', 0.1, required = False, export = True, hint = ''),
+            Parameter('deltaSPH', 'alpha', 'float', 0.01, required = False, export = True, hint = ''),
             Parameter('deltaSPH', 'delta', 'float', 0.1, required = False, export = True, hint = ''),
-            Parameter('deltaSPH', 'c0', 'float', -1.0, required = False, export = True, hint = '')
+            Parameter('deltaSPH', 'c0', 'float', -1.0, required = False, export = True, hint = ''),
+            Parameter('deltaSPH', 'gamma', 'float', 7.0, required = False, export = True, hint = ''),
+            # Parameter('deltaSPH', 'beta', 'float', -1.0, required = False, export = True, hint = ''),
+            Parameter('deltaSPH', 'HughesGrahamCorrection', 'bool', True, required = False, export = True, hint = '')
         ]
         
     def __init__(self):
@@ -115,6 +122,7 @@ class deltaSPHModule(Module):
         self.support = simulationConfig['particle']['support']    
         self.backgroundPressure = simulationConfig['fluid']['backgroundPressure']
         self.restDensity = simulationConfig['fluid']['restDensity']
+        self.gamma = simulationConfig['deltaSPH']['gamma']
         
         self.boundaryScheme = simulationConfig['simulation']['boundaryScheme']
         self.boundaryCounter = len(simulationConfig['solidBC']) if 'solidBC' in simulationConfig else 0
@@ -144,7 +152,7 @@ class deltaSPHModule(Module):
                                                                                                   simulationState['fluidPosition'], simulationState['fluidPosition'], self.fluidVolume, self.fluidVolume,\
                                                                                                   simulationState['fluidDistances'], simulationState['fluidRadialDistances'],\
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps)     
-            self.normalizationMatrix += simulation.boundaryModule.computeNormalizationMatrices(simulationState, simulation)
+            # self.normalizationMatrix += simulation.boundaryModule.computeNormalizationMatrices(simulationState, simulation)
             self.fluidL, self.eigVals = pinv2x2(self.normalizationMatrix)
     def computeRenormalizedDensityGradient(self, simulationState, simulation):
         with record_function('deltaSPH - compute renormalized density gradient'):
@@ -154,7 +162,7 @@ class deltaSPHModule(Module):
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps,\
                                                                                                   self.fluidL, self.fluidL, simulationState['fluidDensity'] * self.restDensity,\
                                                                                                   simulationState['fluidDensity'] * self.restDensity)     
-            self.renormalizedDensityGradient  += simulation.boundaryModule.computeRenormalizedDensityGradient(simulationState, simulation)
+            # self.renormalizedDensityGradient  += simulation.boundaryModule.computeRenormalizedDensityGradient(simulationState, simulation)
   
     def computeDensityDiffusion(self, simulationState, simulation):
         with record_function('deltaSPH - compute density diffusion'):
@@ -174,7 +182,7 @@ class deltaSPHModule(Module):
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps,\
                                                                                                   simulationState['fluidDensity'] * self.restDensity, simulationState['fluidDensity'] * self.restDensity,\
                                                                                                   simulationState['fluidVelocity'], simulationState['fluidVelocity'])
-            # self.divergenceTerm += simulation.boundaryModule.computeDpDt(simulationState, simulation)
+            self.divergenceTerm += simulation.boundaryModule.computeDpDt(simulationState, simulation)
             
             self.dpdt = self.divergenceTerm + self.densityDiffusion
 
@@ -182,6 +190,8 @@ class deltaSPHModule(Module):
     def computePressure(self, simulationState, simulation):
         with record_function('deltaSPH - compute pressure'):
             self.pressure = self.c0**2 * (simulationState['fluidDensity'] * self.restDensity- self.restDensity)
+            if self.pressureScheme == "TaitEOS":
+                self.pressure = self.restDensity * self.c0**2 /self.gamma * (torch.pow(simulationState['fluidDensity'], self.gamma) - 1)
             simulation.boundaryModule.computePressure(simulationState, simulation)
         
     def computeVelocityDiffusion(self, simulationState, simulation):

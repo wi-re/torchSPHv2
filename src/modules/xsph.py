@@ -46,7 +46,7 @@ class xsphModule(Module):
     
     def getParameters(self):
         return [
-            Parameter('xsph', 'fluidViscosity', 'float', 0.01, required = False, export = True, hint = ''),
+            Parameter('xsph', 'fluidViscosity', 'float', 0.05, required = False, export = True, hint = ''),
             Parameter('xsph', 'boundaryViscosity', 'float', 0.01, required = False, export = True, hint = '')
         ]
     def initialize(self, simulationConfig, simulationState):
