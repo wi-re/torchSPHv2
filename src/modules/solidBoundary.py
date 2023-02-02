@@ -25,6 +25,16 @@ from ..ghostParticles import *
 
 from .deltaSPH import *
 
+@torch.jit.script
+def computePressureAccelMirrored(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float, rhoi, rhoj, p):
+    gradW = kernelGradient(radialDistances, distances, support)
+
+    pij = p      
+    term = (pij * Vj[j])[:,None] * gradW
+
+    return - 1 / rhoi[:,None] * scatter_sum(term, i, dim=0, dim_size = numParticles)
+
+
 class solidBoundaryModule(BoundaryModule):
     def getParameters(self):
         return [
@@ -547,8 +557,40 @@ class solidBoundaryModule(BoundaryModule):
 
 
     def computePressure(self, simulationState, simulation):
+        with record_function('deltaSPH - compute pressure preparation [boundary]'):
+            if self.pressureScheme == "deltaMLS":
+                self.pgPartial = precomputeMLS(self.boundaryPositions, simulationState['fluidPosition'], simulationState['fluidArea'], simulationState['fluidDensity'] * self.restDensity, self.support * 2, self.ghostToFluidNeighbors, self.ghostToFluidNeighborRadialDistances)
+            if self.pressureScheme == "ghostMLS":
+                self.pgPartial = precomputeMLS(self.boundaryGhostPositions, simulationState['fluidPosition'], simulationState['fluidArea'], simulationState['fluidDensity'] * self.restDensity, self.support * 2, self.ghostToFluidNeighbors, self.ghostToFluidNeighborRadialDistances)
+            if self.pressureScheme == "MLSPressure":
+                self.M1, self.vec, self.bbar = prepareMLSBoundaries(self.boundaryPositions, self.boundarySupport, self.ghostToFluidNeighbors, self.ghostToFluidNeighborRadialDistances, simulationState['fluidPosition'], self.deltaSPH.fluidVolume, self.support * 2)
+
         with record_function('deltaSPH - compute pressure [boundary]'):
-            self.pressure = self.c0**2 * (self.boundaryDensity * self.restDensity- self.restDensity)
+
+            
+            if self.pressureScheme == 'deltaMLS' or self.pressureScheme == 'ghostMLS':
+                neighbors2 = self.ghostToFluidNeighbors
+                
+                self.pressure = scatter(self.pgPartial * simulation.deltaSPH.pressure[neighbors2[1]], neighbors2[0], dim=0, dim_size = self.numPtcls, reduce='add')
+
+                self.boundaryGravity = torch.zeros_like(self.boundaryPositions)
+                self.boundaryGravity[:,1] = -1
+
+                self.pressure = 2 * 2 * self.restDensity * self.boundaryDensity * torch.einsum('nd, nd -> n', self.boundaryNormals, self.boundaryGravity)
+
+                # self.boundaryPressure2'] += 2 * 2 * boundaryRestDensity * self.boundaryDensity'] * torch.einsum('nd, nd -> n', self.boundaryNormals'], self.boundaryGravity'])
+                # self.boundaryPressure2[:] = torch.clamp(self.boundaryPressure2[:],min = 0)
+                # self.pressure = self.boundaryPressure2[:]
+                # pb = self.boundaryPressure2[bb]
+            if self.pressureScheme == 'MLSPressure':
+                pb = evalMLSBoundaries(self.M1, self.vec, self.bbar, self.ghostToFluidNeighbors, self.ghostToFluidNeighborRadialDistances, simulationState['fluidPosition'], simulation.deltaSPH.fluidVolume, simulation.deltaSPH.pressure, self.support * 2)
+                pb = torch.clamp(pb,min = 0)
+                # self.boundaryGravity'] = torch.zeros_like(self.positions'])
+                # self.boundaryGravity'][:,1] = -1
+                # pb += 2 * 2 * boundaryRestDensity * self.boundaryDensity'] * torch.einsum('nd, nd -> n', self.boundaryNormals'], self.boundaryGravity'])
+                self.pressure = pb
+            if self.pressureScheme == "PBSPH":
+                self.pressure = self.c0**2 * (self.boundaryDensity * self.restDensity- self.restDensity)
         
     def computeVelocityDiffusion(self, simulationState, simulation):
         with record_function('deltaSPH - compute velocity diffusion[boundary] '):
@@ -578,25 +620,40 @@ class solidBoundaryModule(BoundaryModule):
 
     def computePressureAcceleration(self, simulationState, simulation):
         with record_function('deltaSPH - compute pressure acceleration[boundary]'):
-            self.pressureAccel = computePressureAccel(self.boundaryToFluidNeighbors[0], self.boundaryToFluidNeighbors[1], \
+
+            if self.pressureScheme == 'mirrored':
+                self.pressureAccel = computePressureAccelMirrored(self.boundaryToFluidNeighbors[0], self.boundaryToFluidNeighbors[1], \
                                                                                                   self.boundaryPositions, simulationState['fluidPosition'], self.fluidVolume, simulation.deltaSPH.fluidVolume,\
                                                                                                   self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
                                                                                                   self.support, self.numPtcls, self.eps,\
                                                                                                   self.boundaryDensity * self.restDensity, simulationState['fluidDensity'] * self.restDensity, \
-                                                                                                  self.pressure, simulation.deltaSPH.pressure)     
-            fluidPressureAccel = computePressureAccel(self.boundaryToFluidNeighbors[1], self.boundaryToFluidNeighbors[0], \
+                                                                                                  simulation.deltaSPH.pressure[self.boundaryToFluidNeighbors[1]])
+                fluidPressureAccel = computePressureAccelMirrored(self.boundaryToFluidNeighbors[1], self.boundaryToFluidNeighbors[0], \
                                                                                                   simulationState['fluidPosition'], self.boundaryPositions, simulation.deltaSPH.fluidVolume, self.fluidVolume,\
                                                                                                   -self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps,\
                                                                                                   simulationState['fluidDensity'] * self.restDensity, self.boundaryDensity * self.restDensity, \
-                                                                                                  simulation.deltaSPH.pressure, self.pressure)     
-            boundaryPressureAccel = computePressureAccel(self.boundaryToBoundaryNeighbors[0], self.boundaryToBoundaryNeighbors[1], \
-                                                                                                  self.boundaryPositions, self.boundaryPositions, self.fluidVolume, self.fluidVolume,\
-                                                                                                  self.boundaryToBoundaryNeighborDistances, self.boundaryToBoundaryNeighborRadialDistances,\
-                                                                                                  self.support, self.numPtcls, self.eps,\
-                                                                                                  self.boundaryDensity * self.restDensity, self.boundaryDensity * self.restDensity, \
-                                                                                                  self.pressure, self.pressure)    
-            self.pressureAccel += boundaryPressureAccel
+                                                                                                  simulation.deltaSPH.pressure[self.boundaryToFluidNeighbors[1]])  
+            else:
+                self.pressureAccel = computePressureAccel(self.boundaryToFluidNeighbors[0], self.boundaryToFluidNeighbors[1], \
+                                                                                                    self.boundaryPositions, simulationState['fluidPosition'], self.fluidVolume, simulation.deltaSPH.fluidVolume,\
+                                                                                                    self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
+                                                                                                    self.support, self.numPtcls, self.eps,\
+                                                                                                    self.boundaryDensity * self.restDensity, simulationState['fluidDensity'] * self.restDensity, \
+                                                                                                    self.pressure, simulation.deltaSPH.pressure)     
+                fluidPressureAccel = computePressureAccel(self.boundaryToFluidNeighbors[1], self.boundaryToFluidNeighbors[0], \
+                                                                                                    simulationState['fluidPosition'], self.boundaryPositions, simulation.deltaSPH.fluidVolume, self.fluidVolume,\
+                                                                                                    -self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
+                                                                                                    self.support, simulationState['fluidDensity'].shape[0], self.eps,\
+                                                                                                    simulationState['fluidDensity'] * self.restDensity, self.boundaryDensity * self.restDensity, \
+                                                                                                    simulation.deltaSPH.pressure, self.pressure)     
+            # boundaryPressureAccel = computePressureAccel(self.boundaryToBoundaryNeighbors[0], self.boundaryToBoundaryNeighbors[1], \
+            #                                                                                       self.boundaryPositions, self.boundaryPositions, self.fluidVolume, self.fluidVolume,\
+            #                                                                                       self.boundaryToBoundaryNeighborDistances, self.boundaryToBoundaryNeighborRadialDistances,\
+            #                                                                                       self.support, self.numPtcls, self.eps,\
+            #                                                                                       self.boundaryDensity * self.restDensity, self.boundaryDensity * self.restDensity, \
+            #                                                                                       self.pressure, self.pressure)    
+            # self.pressureAccel += boundaryPressureAccel
             return fluidPressureAccel
 
     def integrate(self, simulationState, simulation):

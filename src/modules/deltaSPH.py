@@ -165,7 +165,7 @@ class deltaSPHModule(Module):
                                                                                                   self.renormalizedDensityGradient, self.renormalizedDensityGradient, \
                                                                                                   simulationState['fluidDensity'] * self.restDensity,simulationState['fluidDensity'] * self.restDensity,\
                                                                                                   self.delta, self.c0)
-            self.densityDiffusion += simulation.boundaryModule.computeDensityDiffusion(simulationState, simulation)
+            # self.densityDiffusion += simulation.boundaryModule.computeDensityDiffusion(simulationState, simulation)
     def computeDpDt(self, simulationState, simulation):
         with record_function('deltaSPH - compute drho/dt'):
             self.divergenceTerm = computeDivergenceTerm(simulationState['fluidNeighbors'][0], simulationState['fluidNeighbors'][1], \
@@ -174,7 +174,7 @@ class deltaSPHModule(Module):
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps,\
                                                                                                   simulationState['fluidDensity'] * self.restDensity, simulationState['fluidDensity'] * self.restDensity,\
                                                                                                   simulationState['fluidVelocity'], simulationState['fluidVelocity'])
-            self.divergenceTerm += simulation.boundaryModule.computeDpDt(simulationState, simulation)
+            # self.divergenceTerm += simulation.boundaryModule.computeDpDt(simulationState, simulation)
             
             self.dpdt = self.divergenceTerm + self.densityDiffusion
 
@@ -193,7 +193,7 @@ class deltaSPHModule(Module):
                                                                                                   simulationState['fluidDensity'] * self.restDensity, simulationState['fluidDensity'] * self.restDensity,\
                                                                                                   simulationState['fluidVelocity'],simulationState['fluidVelocity'],
                                                                                                   self.alpha, self.c0, self.restDensity)
-            self.velocityDiffusion += simulation.boundaryModule.computeVelocityDiffusion(simulationState, simulation)
+            # self.velocityDiffusion += simulation.boundaryModule.computeVelocityDiffusion(simulationState, simulation)
     def computePressureAcceleration(self, simulationState, simulation):
         with record_function('deltaSPH - compute pressure acceleration'):
             self.pressureAccel = computePressureAccel(simulationState['fluidNeighbors'][0], simulationState['fluidNeighbors'][1], \
