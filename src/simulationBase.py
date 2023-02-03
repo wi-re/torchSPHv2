@@ -19,10 +19,13 @@ class SPHSimulation():
         basicSimulationParameters = [
             Parameter('simulation', 'scheme', 'string', 'dfsph', required = False, export = True, hint = ''),
             Parameter('simulation', 'verbose', 'bool', True, required = False, export = True, hint = ''),
-            Parameter('simulation', 'pressureTerm', 'str', 'mirrored', required = False, export = True, hint = ''),
             Parameter('simulation', 'boundaryScheme', 'string', 'SDF', required = False, export = True, hint = ''),
             Parameter('simulation', 'bodyForces', 'bool', True, required = False, export = True, hint = ''),
-            Parameter('akinciBoundary', 'gamma', 'float', 0.7, required = False, export = True, hint = '')
+            Parameter('akinciBoundary', 'gamma', 'float', 0.7, required = False, export = True, hint = ''),
+            Parameter('pressure', 'gamma', 'float', 7.0, required = False, export = True, hint = ''),
+            Parameter('pressure', 'kappa', 'float', 1.3, required = False, export = True, hint = ''),
+            Parameter('pressure', 'fluidPressureTerm', 'str', 'TaitEOS', required = False, export = True, hint = ''),
+            Parameter('pressure', 'boundaryPressureTerm', 'str', 'PBSPH', required = False, export = True, hint = '')
         ]
         
         basicKernelParameters = [
@@ -40,6 +43,7 @@ class SPHSimulation():
             Parameter('fluid', 'restDensity', 'float', 1000, required = False, export = True, hint = '')  ,
             Parameter('fluid', 'gravity', 'float array', [0,0], required = False, export = True, hint = '')  ,
             Parameter('fluid', 'backgroundPressure', 'bool', False, required = False, export = True, hint = '')  ,
+            Parameter('fluid', 'c0', 'float', -1, required = False, export = True, hint = '')  ,
         ]
         
         basicIntegrationParameters = [
@@ -47,8 +51,12 @@ class SPHSimulation():
         ]
         
         basicViscosityParameters = [
-            Parameter('viscosity', 'scheme', 'string', 'xsph', required = False, export = True, hint = ''),
-            Parameter('viscosity', 'kinematic', 'float', 0.01, required = False, export = True, hint = ''),
+            Parameter('diffusion', 'velocityScheme', 'string', 'xsph', required = False, export = True, hint = ''),
+            Parameter('diffusion', 'densityScheme', 'string', 'MOG', required = False, export = True, hint = ''),
+            Parameter('diffusion', 'alpha', 'float', 0.01, required = False, export = True, hint = ''),
+            Parameter('diffusion', 'delta', 'float', 0.01, required = False, export = True, hint = ''),
+            Parameter('diffusion', 'kinematic', 'float', 0.01, required = False, export = True, hint = ''),
+            Parameter('diffusion', 'boundaryDiffusion', 'bool', True, required = False, export = True, hint = ''),
         ]
         
         basicDomainParameters = [

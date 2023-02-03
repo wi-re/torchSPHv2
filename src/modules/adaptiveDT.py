@@ -48,45 +48,46 @@ class adaptiveTimeSteppingModule(Module):
         self.acceleration = simulationConfig['timestep']['min']
         self.acoustic = simulationConfig['timestep']['min']
         
-        self.kinematicViscosity = simulationConfig['viscosity']['kinematic']
+        self.kinematicViscosity = simulationConfig['diffusion']['kinematic']
 #         self.kinematicViscosity = 0.01
 #         self.speedOfSound = 1481
         
         
     def updateTimestep(self, simulationState, simulation):
-        if self.fixedTimestep:
-            return simulationState['dt']
-#         debugPrint(simulationState['dt'])
-        
-        minSupport = torch.min(simulationState['fluidSupport'])
-#         debugPrint(minSupport)
-        
-        viscosityDt = (0.125 * minSupport **2 / self.kinematicViscosity).item()
-#         debugPrint(viscosityDt)
-        
-        accelDt = (0.25 * torch.min(torch.sqrt(simulationState['fluidSupport'] / torch.linalg.norm(simulationState['fluidAcceleration'],axis=-1)))).item()
-#         debugPrint(accelDt)
-        
-        velocityDt = (0.4 * minSupport / torch.max(torch.linalg.norm(simulationState['fluidVelocity'],axis=-1))).item()
-#         debugPrint(velocityDt)
-        
-        maximumTimestep = self.maxTimestep
-        if self.viscosity:
-            maximumTimestep = min(maximumTimestep, viscosityDt)
-        if self.acceleration:
-            maximumTimestep = min(maximumTimestep, accelDt)
-        if self.acoustic and not np.isnan(velocityDt):
-            maximumTimestep = min(maximumTimestep, velocityDt)
-#         debugPrint(maximumTimestep)
-        
-        targetDt = maximumTimestep if maximumTimestep > self.minTimestep else self.minTimestep
-        currentDt = simulationState['dt']
-        updatedDt = min(max(targetDt, currentDt * 0.5), currentDt * 1.05)
-#         debugPrint(targetDt)
-#         debugPrint(currentDt)
-#         debugPrint(updatedDt)
-        return updatedDt
-        
+        with record_function('adaptiveDT - updateTimestep'):
+            if self.fixedTimestep:
+                return simulationState['dt']
+    #         debugPrint(simulationState['dt'])
+            
+            minSupport = torch.min(simulationState['fluidSupport'])
+    #         debugPrint(minSupport)
+            
+            viscosityDt = (0.125 * minSupport **2 / self.kinematicViscosity).item()
+    #         debugPrint(viscosityDt)
+            
+            accelDt = (0.25 * torch.min(torch.sqrt(simulationState['fluidSupport'] / torch.linalg.norm(simulationState['fluidAcceleration'],axis=-1)))).item()
+    #         debugPrint(accelDt)
+            
+            velocityDt = (0.4 * minSupport / torch.max(torch.linalg.norm(simulationState['fluidVelocity'],axis=-1))).item()
+    #         debugPrint(velocityDt)
+            
+            maximumTimestep = self.maxTimestep
+            if self.viscosity:
+                maximumTimestep = min(maximumTimestep, viscosityDt)
+            if self.acceleration:
+                maximumTimestep = min(maximumTimestep, accelDt)
+            if self.acoustic and not np.isnan(velocityDt):
+                maximumTimestep = min(maximumTimestep, velocityDt)
+    #         debugPrint(maximumTimestep)
+            
+            targetDt = maximumTimestep if maximumTimestep > self.minTimestep else self.minTimestep
+            currentDt = simulationState['dt']
+            updatedDt = min(max(targetDt, currentDt * 0.5), currentDt * 1.05)
+    #         debugPrint(targetDt)
+    #         debugPrint(currentDt)
+    #         debugPrint(updatedDt)
+            return updatedDt
+            
     
 # adaptivedt = adaptiveTimeSteppingModule()
 # adaptivedt.initialize(sphSimulation.config, sphSimulation.simulationState)

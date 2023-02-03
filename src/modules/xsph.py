@@ -44,22 +44,22 @@ class xsphModule(Module):
     def __init__(self):
         super().__init__('densityInterpolation', 'Evaluates density at the current timestep')
     
-    def getParameters(self):
-        return [
-            Parameter('xsph', 'fluidViscosity', 'float', 0.05, required = False, export = True, hint = ''),
-            Parameter('xsph', 'boundaryViscosity', 'float', 0.01, required = False, export = True, hint = '')
-        ]
+    # def getParameters(self):
+    #     return [
+    #         # Parameter('xsph', 'fluidViscosity', 'float', 0.05, required = False, export = True, hint = ''),
+    #         # Parameter('xsph', 'boundaryViscosity', 'float', 0.01, required = False, export = True, hint = '')
+    #     ]
     def initialize(self, simulationConfig, simulationState):
         self.support = simulationConfig['particle']['support']
         self.dtype = simulationConfig['compute']['precision']
         
-        self.fluidCoefficient = simulationConfig['xsph']['fluidViscosity']
-        self.boundaryCoefficient = simulationConfig['xsph']['boundaryViscosity']
+        self.fluidCoefficient = simulationConfig['diffusion']['alpha']
+        self.boundaryCoefficient = simulationConfig['diffusion']['alpha'] if simulationConfig['diffusion']['boundaryDiffusion'] else 0
         self.boundaryScheme = simulationConfig['simulation']['boundaryScheme']
         return
     
     def fluidTerm(self, simulationState, simulation):
-        with record_function("sph - xsph correction"): 
+        with record_function("diffusion[xsph] - fluid"): 
             return computeFluidTerm(self.fluidCoefficient, simulationState['fluidArea'], simulationState['fluidDensity'], simulationState['fluidRestDensity'], simulationState['fluidVelocity'],simulationState['fluidRadialDistances'],simulationState['fluidNeighbors'], self.support)
             
             neighbors = simulationState['fluidNeighbors']
@@ -81,7 +81,7 @@ class xsphModule(Module):
 
             return correction
     def boundaryTerm(self, simulationState, simulation):
-        with record_function('xsph - friction'):
+        with record_function('diffusion[xsph] - boundary'):
             # print(state)
             # print(state['boundaryNeighbors'])
 

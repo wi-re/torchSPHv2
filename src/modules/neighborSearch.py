@@ -194,7 +194,7 @@ class neighborSearchModule(Module):
         self.maxDomain = simulationConfig['domain']['virtualMax']
         
     def search(self, simulationState, simulation):
-        with record_function("sph - neighborhood"): 
+        with record_function("neighborhood - fluid neighbor search"): 
             queryPositions = simulationState['fluidPosition']
             querySupports = simulationState['fluidSupport']
 
@@ -218,7 +218,7 @@ class neighborSearchModule(Module):
             return fluidNeighbors, fluidDistances, fluidRadialDistances
         
     def searchExisting(self, queryPositions, querySupports, simulationState, simulation, searchRadius :int = 1):
-        with record_function("sph - neighborhood"): 
+        with record_function("neighborhood - searching existing"): 
             # queryPositions = simulationState['fluidPosition'].to('cpu')
             # querySupports = simulationState['fluidSupport'].to('cpu')
             if queryPositions.is_cuda:

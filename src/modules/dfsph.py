@@ -135,7 +135,7 @@ class dfsphModule(Module):
         self.boundaryScheme = simulationConfig['simulation']['boundaryScheme']
         self.boundaryCounter = len(simulationConfig['solidBC']) if 'solidBC' in simulationConfig else 0
 
-        self.pressureScheme = simulationConfig['simulation']['pressureTerm'] 
+        self.pressureScheme = simulationConfig['pressure']['boundaryPressureTerm'] 
         self.computeBodyForces = simulationConfig['simulation']['bodyForces'] 
         
         

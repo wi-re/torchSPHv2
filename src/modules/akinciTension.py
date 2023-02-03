@@ -86,15 +86,15 @@ class akinciTensionModule(Module):
         self.gamma = simulationConfig['surfaceTension']['gamma']
     
     def computeNormals(self, simulationState, simulation):
-        with record_function("sph - akinci Tension computeNormals"): 
+        with record_function("surface Tension[akinci] - computeNormals"): 
             return computeNormalFunction(simulationState['fluidNeighbors'], simulationState['fluidArea'], simulationState['fluidDensity'], simulationState['fluidRadialDistances'], simulationState['fluidDistances'], self.support)
         
     def curvatureForce(self, simulationState, simulation):   
-        with record_function("sph - akinci Tension curvatureForce"):      
+        with record_function("surface Tension[akinci] - curvatureForce"):      
             return computeCurvatureForce(simulationState['fluidNeighbors'], simulationState['fluidNormals'], self.gamma)
         
     def cohesionForce(self, simulationState, simulation):
-        with record_function("sph - akinci Tension cohesionForce"): 
+        with record_function("surface Tension[akinci] - cohesionForce"): 
             return computeCohesionForce(simulationState['fluidNeighbors'], simulationState['fluidArea'], simulationState['fluidRestDensity'], self.gamma, simulationState['fluidRadialDistances'], simulationState['fluidDistances'], self.support)
 
 

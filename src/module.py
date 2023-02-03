@@ -5,6 +5,8 @@ class Module():
         return
     def finalize(self):
         return
+    def resetState(self):
+        return
     def __init__(self, identifier, moduleDescription):
         self.description = moduleDescription
         self.name = identifier
@@ -42,3 +44,19 @@ class BoundaryModule(Module):
     def boundaryFilterNeighborhoods(self, simulationState, simulation):
         return # Default behavior here is do nothing so no exception needs to be thrown
         # raise Exception('Operation dfsphBoundaryAccelTerm not implemented for ', self.identifier)
+
+
+class DiffusionModule(Module):
+    def getParameters(self):
+        return None
+    def initialize(self, config, state):
+        return
+    def finalize(self):
+        return
+    def __init__(self, identifier, moduleDescription):
+        super().__init__(identifier, moduleDescription)
+        return
+
+    
+    def evaluate(self, simulationState, simulation):
+        raise Exception('Operation evaluate not implemented for ', self.identifier)

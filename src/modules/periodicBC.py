@@ -117,7 +117,7 @@ class periodicBCModule(Module):
         self.dtype = simulationConfig['compute']['precision']
         
     def filterVirtualParticles(self, positions, state):    
-        with record_function('periodicBC - filtering'):
+        with record_function('boundaryCondition[periodic] - filtering'):
 
             counter = torch.zeros(state['numParticles'], dtype=torch.int64).to(positions.device)
             uidCounter = scatter(torch.ones(state['numParticles'], dtype=torch.int64).to(positions.device), state['UID'], dim = 0, dim_size=state['realParticles'])
@@ -156,7 +156,7 @@ class periodicBCModule(Module):
 
         
     def createGhostParticles(self, positions):
-        with record_function('periodicBC - creating ghost particles'):
+        with record_function('boundaryCondition[periodic] - creating ghost particles'):
             return createGhostParticlesKernel(positions, self.domainMin, self.domainMax, self.buffer, self.support, self.periodicX, self.periodicY)
             indices = torch.arange(positions.shape[0], dtype=torch.int64).to(positions.device)
             virtualMin = self.domainMin
@@ -239,7 +239,7 @@ class periodicBCModule(Module):
             return filters, offsets
         
     def enforcePeriodicBC(self, simulationState, simulation):
-        with record_function('periodicBC - enforce BC'):
+        with record_function('boundaryCondition[periodic] - enforce BC'):
             if self.periodicX or self.periodicX:
                 if not 'realParticles' in simulationState:
                     simulationState['realParticles'] = simulationState['numParticles']
@@ -293,7 +293,7 @@ class periodicBCModule(Module):
                     simulationState['ghosts'] = ghostIndices
         
     def syncQuantity(self, qty, simulationState, simulation):
-        with record_function('periodicBC - syncing quantity'):
+        with record_function('boundaryCondition[periodic] - syncing quantity'):
             if self.periodicX or self.periodicX:
                 ghosts = simulationState['ghosts']
                 qty[simulationState['numParticles'] - ghosts.shape[0]:] = qty[simulationState['ghosts']]

@@ -42,17 +42,17 @@ class velocityBCModule(Module):
     def enforce(self, simulationState, simulation):
         if not 'velocitySource' in simulationState:
             return
-        with record_function('velocityBC - enforcing'):
-            state['fluidGamma'] = torch.ones(state['fluidArea'].shape, device=self.device, dtype=self.dtype)
+        with record_function('boundaryCondition[velocity] - enforcing'):
+            simulationState['fluidGamma'] = torch.ones(simulationState['fluidArea'].shape, device=self.device, dtype=self.dtype)
             for s in simulationState['velocitySource']:
                 source = simulationState['velocitySource'][s]
             #     print(source)
                 velTensor = torch.tensor(source['velocity'], device=self.device, dtype=self.dtype)
-                curSpeed = velTensor if source['rampTime']>0. else velTensor * np.clip(state['time'] / source['rampTime'], a_min = 0., a_max = 1.)
+                curSpeed = velTensor if source['rampTime']>0. else velTensor * np.clip(simulationState['time'] / source['rampTime'], a_min = 0., a_max = 1.)
             #     print(curSpeed)
 
-                xmask = torch.logical_and(state['fluidPosition'][:,0] >= source['min'][0], state['fluidPosition'][:,0] <= source['max'][0])
-                ymask = torch.logical_and(state['fluidPosition'][:,1] >= source['min'][1], state['fluidPosition'][:,1] <= source['max'][1])
+                xmask = torch.logical_and(simulationState['fluidPosition'][:,0] >= source['min'][0], simulationState['fluidPosition'][:,0] <= source['max'][0])
+                ymask = torch.logical_and(simulationState['fluidPosition'][:,1] >= source['min'][1], simulationState['fluidPosition'][:,1] <= source['max'][1])
 
                 mask = torch.logical_and(xmask, ymask)
 
@@ -64,7 +64,7 @@ class velocityBCModule(Module):
             #     print(mask)
             #     print(torch.any(mask))
                 mu = 3.5
-                xr = (state['fluidPosition'][:,0] - source['min'][0]) / (source['max'][0] - source['min'][0])
+                xr = (simulationState['fluidPosition'][:,0] - source['min'][0]) / (source['max'][0] - source['min'][0])
 
                 if source['min'][0] < 0:
                     xr = 1 - xr
@@ -72,11 +72,11 @@ class velocityBCModule(Module):
                 gamma = (torch.exp(torch.pow(torch.clamp(xr,min = 0, max = 1), mu)) - 1) / (np.exp(1) - 1)
 
                 # gamma = 1 - (torch.exp(torch.pow(xr,mu)) - 1) / (np.exp(1) - 1)
-                state['fluidGamma'] = torch.min(gamma, state['fluidGamma'])
+                simulationState['fluidGamma'] = torch.min(gamma, simulationState['fluidGamma'])
                 if active:
                     # print(gamma.shape)
                     # gamma = gamma[mask]
-                    state['fluidVelocity'][mask,:] = state['fluidVelocity'][mask,:] * (1 - gamma)[mask,None] + gamma[mask,None] * curSpeed
+                    simulationState['fluidVelocity'][mask,:] = simulationState['fluidVelocity'][mask,:] * (1 - gamma)[mask,None] + gamma[mask,None] * curSpeed
 
 
             #     print('\n')
