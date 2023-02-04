@@ -43,7 +43,7 @@ def computeLaminarViscosity(i, j, ri, rj, Vi, Vj, distances, radialDistances, su
     denominator = (rhoi[i] + rhoj[j])**2 * (rij2)
     term = nominator / denominator
 
-    return scatter_sum(term[:,None] * uij, i, dim=0, dim_size = numParticles)
+    return -scatter_sum(term[:,None] * uij, i, dim=0, dim_size = numParticles)
 
 
 class laminarViscosityModule(Module):
@@ -77,6 +77,8 @@ class laminarViscosityModule(Module):
         self.c0 = simulationConfig['fluid']['c0']
         self.eps = self.support **2 * 0.1
         self.kinematic = simulationConfig['diffusion']['kinematic']
+    def resetState(self, simulationState):
+        self.laminarViscosity = None
 
     def computeLaminarViscosity(self, simulationState, simulation):
         with record_function('diffusion[laminar] - compute laminar diffusion'):
@@ -89,6 +91,7 @@ class laminarViscosityModule(Module):
                                                                                                   self.kinematic, self.c0, self.restDensity)
             # if self.boundaryDiffusion:
                 # self.laminarViscosity += simulation.boundaryModule.computeLaminarViscosity(simulationState, simulation)
-
-            return self.laminarViscosity
+            simulationState['fluidAcceleration'] += self.laminarViscosity
+            simulation.sync(simulationState['fluidAcceleration'])
+            # return self.laminarViscosity
         
