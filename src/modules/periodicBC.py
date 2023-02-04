@@ -116,6 +116,34 @@ class periodicBCModule(Module):
         self.virtualMax = simulationConfig['domain']['virtualMax']
         self.dtype = simulationConfig['compute']['precision']
         
+    def resetState(self, simulationState):
+        if not 'realParticles' in simulationState:
+            simulationState['realParticles'] = simulationState['numParticles']
+#         print('Old Particle Count: ', simulationState['numParticles'] )
+
+        with record_function('periodicBC - enforce BC I'):
+            realParticles = self.filterVirtualParticles(simulationState['fluidPosition'], simulationState)
+        with record_function('periodicBC - enforce BC II'):
+            for arr in simulationState:
+                if not torch.is_tensor(simulationState[arr]):
+                    continue
+                if simulationState[arr].shape[0] == simulationState['numParticles']:
+                    simulationState[arr] = simulationState[arr][realParticles]
+
+        with record_function('periodicBC - enforce BC III'):
+            simulationState['numParticles'] = simulationState['fluidPosition'].shape[0]
+            if 'realParticles' in simulationState:
+                if simulationState['realParticles'] != simulationState['fluidPosition'].shape[0]:
+                    print('panik, deleted or removed actual particles at time', simulationState['time'])
+
+            simulationState['realParticles'] = simulationState['fluidPosition'].shape[0]
+    #         print('After pruning: ', simulationState['numParticles'] )
+
+        simulationState.pop('ghostIndices', None)
+        simulationState.pop('ghosts', None) 
+        simulationState['numParticles'] = simulationState['realParticles']
+
+
     def filterVirtualParticles(self, positions, state):    
         with record_function('boundaryCondition[periodic] - filtering'):
 
@@ -292,7 +320,7 @@ class periodicBCModule(Module):
                     simulationState['ghostIndices'] = torch.cat((ones, ghostIndices))
                     simulationState['ghosts'] = ghostIndices
         
-    def syncQuantity(self, qty, simulationState, simulation):
+    def syncToGhost(self, qty, simulationState, simulation):
         with record_function('boundaryCondition[periodic] - syncing quantity'):
             if self.periodicX or self.periodicX:
                 ghosts = simulationState['ghosts']

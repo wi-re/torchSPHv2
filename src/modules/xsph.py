@@ -78,7 +78,8 @@ class xsphModule(Module):
 
             correction = scatter(term, i, dim=0, dim_size=simulationState['numParticles'], reduce="add")
 #             syncQuantity(correction, config, simulationState)
-
+            simulationState['fluidVelocity'] += correction
+            simulation.sync(simulationState['fluidVelocity'])
             return correction
     def boundaryTerm(self, simulationState, simulation):
         with record_function('diffusion[xsph] - boundary'):

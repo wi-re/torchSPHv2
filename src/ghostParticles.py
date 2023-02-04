@@ -131,9 +131,11 @@ def sampleContour(contour, spacing):
 #     debugPrint(spacing)
     return np.array(ptcls)
 
-def samplePolygon(poly, spacing, support, offset = 0, mirrored = False):
+def samplePolygon(poly, spacing, support, offset = 0, mirrored = False, inverted = False):
     pMin = torch.min(poly, dim = 0)[0] - 2 * support
     pMax = torch.max(poly, dim = 0)[0] + 2 * support
+    pMin = pMin.type(torch.float32).to(poly.device)
+    pMax = pMax.type(torch.float32).to(poly.device)
 
     gridSpacing = spacing / 4
 
@@ -162,14 +164,16 @@ def samplePolygon(poly, spacing, support, offset = 0, mirrored = False):
     ptcls = sampleContour(sMeshn1, spacing1)
     
     if mirrored and not(offset ==0):
-        dist, grad, _, _, _, _ = sdPolyDer(poly, torch.tensor(ptcls))
-        offsetPtcls = torch.tensor(ptcls) - (dist + offset)[:,None] * grad
+        dist, grad, _, _, _, _ = sdPolyDer(poly, torch.tensor(ptcls).type(torch.float32).to(poly.device))
+        o = offset if inverted else - offset
+        offsetPtcls = torch.tensor(ptcls).type(torch.float32).to(poly.device) - (dist + offset)[:,None] * grad
 #         debugPrint(dist + offset)
 #         debugPrint(grad - ptcls)
         return ptcls, offsetPtcls
     if mirrored:
-        dist, grad, _, _, _, _ = sdPolyDer(poly, torch.tensor(ptcls))
-        offsetPtcls = torch.tensor(ptcls) - (dist + offset + spacing)[:,None] * grad
+        dist, grad, _, _, _, _ = sdPolyDer(poly, torch.tensor(ptcls).type(torch.float32).to(poly.device))
+        o = offset + spacing if inverted else - offset - spacing 
+        offsetPtcls = torch.tensor(ptcls).type(torch.float32).to(poly.device) - (dist + o)[:,None] * grad
 #         debugPrint(dist + offset)
 #         debugPrint(grad - ptcls)
         return ptcls, offsetPtcls

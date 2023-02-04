@@ -125,6 +125,12 @@ class densityDiffusionModule(Module):
         self.eps = self.support **2 * 0.1
         self.scheme = simulationConfig['diffusion']['densityScheme']
 
+    def resetState(self, simulationState):
+        self.normalizationMatrix = None
+        self.fluidL = None
+        self.eigVals = None
+        self.densityDiffusion = None
+
     def computeNormalizationMatrices(self, simulationState, simulation):
         with record_function('density[diffusion] - compute normalization matrices'):
             self.normalizationMatrix = computeNormalizationMatrix(simulationState['fluidNeighbors'][0], simulationState['fluidNeighbors'][1], \
@@ -155,7 +161,7 @@ class densityDiffusionModule(Module):
                                                                                                   self.renormalizedDensityGradient, self.renormalizedDensityGradient, \
                                                                                                   simulationState['fluidDensity'] * self.restDensity,simulationState['fluidDensity'] * self.restDensity,\
                                                                                                   self.delta, self.c0)
-                return self.densityDiffusion
+                simulationState['dpdt'] += self.densityDiffusion
             elif self.scheme == 'MOG':
                 self.densityDiffusion = computeDensityDiffusionMOG(simulationState['fluidNeighbors'][0], simulationState['fluidNeighbors'][1], \
                                                                                                   simulationState['fluidPosition'], simulationState['fluidPosition'], simulationState['fluidVolume'], simulationState['fluidVolume'],\
@@ -163,6 +169,7 @@ class densityDiffusionModule(Module):
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps,\
                                                                                                   simulationState['fluidDensity'] * self.restDensity,simulationState['fluidDensity'] * self.restDensity,\
                                                                                                   self.delta, self.c0)
-                return self.densityDiffusion
+                simulationState['dpdt'] += self.densityDiffusion
+            simulation.sync(simulationState['dpdt'])
 
             # self.densityDiffusion += simulation.boundaryModule.computeDensityDiffusion(simulationState, simulation)

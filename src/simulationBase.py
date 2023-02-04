@@ -21,6 +21,7 @@ class SPHSimulation():
             Parameter('simulation', 'verbose', 'bool', True, required = False, export = True, hint = ''),
             Parameter('simulation', 'boundaryScheme', 'string', 'SDF', required = False, export = True, hint = ''),
             Parameter('simulation', 'bodyForces', 'bool', True, required = False, export = True, hint = ''),
+            Parameter('simulation', 'densityScheme', 'string', 'summation', required = False, export = True, hint = ''),
             Parameter('akinciBoundary', 'gamma', 'float', 0.7, required = False, export = True, hint = ''),
             Parameter('pressure', 'gamma', 'float', 7.0, required = False, export = True, hint = ''),
             Parameter('pressure', 'kappa', 'float', 1.3, required = False, export = True, hint = ''),
@@ -372,6 +373,7 @@ class SPHSimulation():
             self.simulationState['fluidAcceleration'] = torch.zeros(self.simulationState['fluidVelocity'].shape, device=self.device, dtype=self.dtype)
             self.simulationState[    'fluidPressure'] = torch.zeros(self.simulationState['fluidArea'].shape, device=self.device, dtype=self.dtype)
             self.simulationState[ 'fluidRestDensity'] = torch.cat(emitterDensities)
+            self.simulationState[ 'dpdt'] = torch.zeros_like(self.simulationState[     'fluidSupport'])
             self.simulationState[     'numParticles'] = self.simulationState['fluidPosition'].shape[0]
             self.simulationState[    'realParticles'] = self.simulationState['fluidPosition'].shape[0]
             self.simulationState[             'time'] = 0.
@@ -382,7 +384,132 @@ class SPHSimulation():
             for module in self.modules:        
                 module.initialize(self.config, self.simulationState)
 
+            self.perennialState = self.saveState(copy = False)
+            self.simulationState = self.setupSimulationState(self.perennialState)
+
+    def resetState(self):
+        for module in self.modules:
+            module.resetState(self.simulationState)
+
+        self.simulationState.pop('fluidAcceleration', None)
+
+    def sync(self, tensor):
+        if hasattr(self, 'periodicBC'):
+            self.periodicBC.syncToGhost(tensor, self.simulationState, self)
+
+    def saveState(self, copy = False):
+        mask = (self.simulationState['ghostIndices'] == -1) if 'ghostIndices' in self.simulationState else self.simulationState['UID'] > -1
+        
+        perennialState = {}
+        perennialState['UID'] = self.simulationState['UID'][mask]
+        perennialState['fluidPosition'] = self.simulationState['fluidPosition'][mask] if not copy else torch.clone(self.simulationState['fluidPosition'][mask])
+        perennialState['fluidVelocity'] = self.simulationState['fluidVelocity'][mask] if not copy else torch.clone(self.simulationState['fluidVelocity'][mask])
+        perennialState['fluidDensity'] = self.simulationState['fluidDensity'][mask] if not copy else torch.clone(self.simulationState['fluidDensity'][mask])
+        perennialState['fluidSupport'] = self.simulationState['fluidSupport'][mask] if not copy else torch.clone(self.simulationState['fluidSupport'][mask])
+        perennialState['fluidRestDensity'] = self.simulationState['fluidRestDensity'][mask] if not copy else torch.clone(self.simulationState['fluidRestDensity'][mask])
+        perennialState['fluidArea'] = self.simulationState['fluidArea'][mask] if not copy else torch.clone(self.simulationState['fluidArea'][mask])
+        perennialState['fluidPressure'] = self.simulationState['fluidPressure'][mask] if not copy else torch.clone(self.simulationState['fluidPressure'][mask])
+        perennialState['fluidAcceleration'] = self.simulationState['fluidAcceleration'][mask] if not copy else torch.clone(self.simulationState['fluidAcceleration'][mask])
+        if self.config['simulation']['densityScheme'] == 'continuum':
+            perennialState['dpdt'] = self.simulationState['dpdt'][mask] if not copy else torch.clone(self.simulationState['dpdt'][mask])
+       
+
+
+        perennialState['numParticles'] = perennialState['fluidPosition'].shape[0]
+        perennialState['realParticles'] = perennialState['fluidPosition'].shape[0]
+        
+        perennialState['dt'] = self.simulationState['dt']
+        perennialState['time'] = self.simulationState['time']
+        perennialState['timestep'] = self.simulationState['timestep']
+        
+        for module in self.modules:
+            module.saveState(perennialState, copy = copy)
+        
+        return perennialState
 #             return simulationState
+    def setupSimulationState(self, perennialState):
+        simulationState = {}
+        simulationState['UID'] = torch.clone(perennialState['UID'])
+        simulationState['fluidPosition'] = torch.clone(perennialState['fluidPosition'])
+        simulationState['fluidVelocity'] = torch.clone(perennialState['fluidVelocity'])
+        simulationState['fluidDensity'] = torch.clone(perennialState['fluidDensity'])
+        simulationState['fluidSupport'] = torch.clone(perennialState['fluidSupport'])
+        simulationState['fluidRestDensity'] = torch.clone(perennialState['fluidRestDensity'])
+        simulationState['fluidArea'] = torch.clone(perennialState['fluidArea'])
+        simulationState['fluidPressure'] = torch.clone(perennialState['fluidPressure'])
+        simulationState['fluidAcceleration'] = torch.clone(perennialState['fluidAcceleration'])
+        if self.config['simulation']['densityScheme'] == 'continuum':
+            simulationState['dpdt'] = torch.clone(perennialState['dpdt'])
+        
+        simulationState['numParticles'] = perennialState['numParticles']
+        simulationState['realParticles'] =perennialState['realParticles']
+        
+        simulationState['dt'] = perennialState['dt']
+        simulationState['time'] = perennialState['time']
+        simulationState['timestep'] = perennialState['timestep']
+
+        return simulationState
+
+    
+    def integrateValues(self, dt, dudt, dxdt, dpdt):
+        self.simulationState['fluidVelocity'] = self.perennialState['fluidVelocity'] + dt * dudt
+        self.simulationState['fluidPosition'] = self.perennialState['fluidPosition'] + dt * dxdt
+        if self.config['simulation']['densityScheme'] == 'continuum':
+            self.simulationState['fluidDensity'] = self.perennialState['fluidDensity'] + dt * dpdt / self.config['fluid']['restDensity'] 
+        
+    def integrate(self):
+        self.perennialState = self.saveState()
+        self.resetState()
+        self.simulationState = self.setupSimulationState(self.perennialState)
+        continuumDensity = self.config['simulation']['densityScheme'] == 'continuum'
+
+        dt = self.simulationState['dt'] 
+        
+        if self.config['integration']['scheme'] == 'explicitEuler':
+            dudt, dxdt, dpdt = self.timestep()     
+            self.integrateValues(dt, dudt, dxdt, dpdt)
+
+        if self.config['integration']['scheme'] == 'semiImplicitEuler':
+            dudt, dxdt, dpdt = self.timestep()     
+            self.integrateValues(dt, dudt, dxdt + dt * dudt, dpdt)                
+        if self.config['integration']['scheme'] == 'PECE':
+            dudt, dxdt, dpdt = self.timestep()     
+            self.integrateValues(dt, dudt, dxdt, dpdt)                     
+            dudt2, dxdt2, dpdt2 = self.timestep()  
+            self.integrateValues(dt, 0.5 * ( dudt + dudt2), 0.5 * ( dxdt + dxdt2), 0.5 * ( dpdt + dpdt2) if continuumDensity else None)      
+            
+        if self.config['integration']['scheme'] == 'PEC':
+            dudt, dxdt, dpdt = self.perennialState['fluidAcceleration'], self.perennialState['fluidVelocity'], self.perennialState['dpdt'] if self.config['simulation']['densityScheme'] == 'continuum' else None
+            self.integrateValues(dt, dudt, dxdt, dpdt)                     
+            dudt2, dxdt2, dpdt2 = self.timestep()  
+            self.integrateValues(dt, 0.5 * ( dudt + dudt2), 0.5 * ( dxdt + dxdt2), (0.5 * ( dpdt + dpdt2)) if continuumDensity else None)    
+            
+        if self.config['integration']['scheme'] == 'RK4':
+            dudt_k1, dxdt_k1, dpdt_k1 = self.timestep()    
+            self.simulationState = self.setupSimulationState(self.perennialState)
+            self.integrateValues(0.5 * dt, dudt_k1, dxdt_k1, dpdt_k1)    
+            dudt_k2, dxdt_k2, dpdt_k2 = self.timestep()     
+            self.simulationState = self.setupSimulationState(self.perennialState)
+            self.integrateValues(0.5 * dt, dudt_k2, dxdt_k2, dpdt_k2)    
+            dudt_k3, dxdt_k3, dpdt_k3 = self.timestep()     
+            self.simulationState = self.setupSimulationState(self.perennialState)
+            self.integrateValues(dt, dudt_k3, dxdt_k3, dpdt_k3)    
+            dudt_k4, dxdt_k4, dpdt_k4 = self.timestep()     
+            
+            self.integrateValues(1/6 * dt, dudt_k1 + 2 * dudt_k2 + 2 * dudt_k3 + dudt_k4, dxdt_k1 + 2 * dxdt_k2 + 2 * dxdt_k3 + dxdt_k4, (dpdt_k1 + 2 * dpdt_k2 + 2 * dpdt_k3 + dpdt_k4) if continuumDensity else None)   
+            
+
+
+        step = '15 - Bookkeeping'
+        if self.verbose: print(step)
+        with record_function(step):
+            self.simulationState['time'] += self.simulationState['dt']
+            self.simulationState['timestep'] += 1
+
+            self.simulationState['dt'] = self.adaptiveDT.updateTimestep(self.simulationState, self)
+
+
+
     def createPlot(self, plotScale = 1, plotDomain = True, plotEmitters = False, \
                    plotVelocitySources = False, plotSolids = True):
         vminDomain = np.array(self.config['domain']['virtualMin'])

@@ -5,7 +5,9 @@ class Module():
         return
     def finalize(self):
         return
-    def resetState(self):
+    def resetState(self, simulationState):
+        return
+    def saveState(self, perennialState, copy):
         return
     def __init__(self, identifier, moduleDescription):
         self.description = moduleDescription

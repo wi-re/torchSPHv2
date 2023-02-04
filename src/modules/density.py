@@ -36,15 +36,23 @@ class densityModule(Module):
     
     def initialize(self, simulationConfig, simulationState):
         self.support = simulationConfig['particle']['support']
+        self.scheme = simulationConfig['simulation']['densityScheme']
+
+    def resetState(self, simulationState):
+        simulationState.pop('fluidVolume', None)
 
     def evaluate(self, simulationState, simulation):
-        with record_function('density[summation] - evaluate'):
-            fluidRadialDistances = simulationState['fluidRadialDistances']
-            fluidArea = simulationState['fluidArea']
-            fluidNeighbors = simulationState['fluidNeighbors']
-            particleSupport = self.support
-
-            return computeDensity(fluidRadialDistances, fluidArea, fluidNeighbors, particleSupport)
+        if self.scheme == 'summation':
+            with record_function('density[summation] - evaluate'):
+                fluidRadialDistances = simulationState['fluidRadialDistances']
+                fluidArea = simulationState['fluidArea']
+                fluidNeighbors = simulationState['fluidNeighbors']
+                particleSupport = self.support
+                simulationState['fluidDensity'] = computeDensity(fluidRadialDistances, fluidArea, fluidNeighbors, particleSupport)
+        
+        simulationState['fluidVolume'] = simulationState['fluidArea'] / simulationState['fluidDensity']
+        simulation.sync(simulationState['fluidDensity'])
+        simulation.sync(simulationState['fluidVolume'])
 
 def testFunctionality(sphSimulation):
     density = densityModule()

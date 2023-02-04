@@ -75,6 +75,9 @@ class diffusionModule(Module):
         self.c0 = simulationConfig['fluid']['c0']
         self.eps = self.support **2 * 0.1
         
+    def resetState(self, simulationState):
+        self.velocityDiffusion = None
+
     def evaluate(self, simulationState, simulation):
         with record_function('velocity[diffusion] - compute velocity diffusion'):
             self.velocityDiffusion = computeVelocityDiffusion(simulationState['fluidNeighbors'][0], simulationState['fluidNeighbors'][1], \
@@ -86,5 +89,6 @@ class diffusionModule(Module):
                                                                                                   self.alpha, self.c0, self.restDensity)
             if self.boundaryDiffusion:
                 self.velocityDiffusion += simulation.boundaryModule.computeVelocityDiffusion(simulationState, simulation)
-
-            return self.velocityDiffusion
+            simulationState['fluidAcceleration'] += self.velocityDiffusion
+            simulation.sync(simulationState['fluidAcceleration'])
+            # return self.velocityDiffusion

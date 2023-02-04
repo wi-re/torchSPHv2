@@ -47,6 +47,8 @@ class gravityModule(Module):
                 difference = simulationState['fluidPosition'] - torch.tensor(self.center, dtype = self.dtype, device = self.device)
                 distance = torch.linalg.norm(difference,axis=1)
                 difference[distance > 1e-5] = difference[distance > 1e-5] / distance[distance > 1e-5, None]
-                return -self.magnitude * difference
+                simulationState['fluidAcceleration'] += -self.magnitude * difference
             else:
-                return self.magnitude * torch.tensor(self.direction, device = self.device, dtype = self.dtype)
+                simulationState['fluidAcceleration'] += self.magnitude * torch.tensor(self.direction, device = self.device, dtype = self.dtype)
+            
+            simulation.sync(simulationState['fluidAcceleration'])

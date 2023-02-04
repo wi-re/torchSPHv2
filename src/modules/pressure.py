@@ -90,8 +90,14 @@ class pressureModule(Module):
             if self.fluidPressureScheme == "compressible":
                 self.pressure = self.kappa * (simulationState['fluidDensity'] * self.restDensity  - self.restDensity )
             simulation.boundaryModule.computePressure(simulationState, simulation)
+
+            simulationState['fluidPressure'] = self.pressure
+            simulation.sync(simulationState['fluidPressure'])
             return self.pressure
 
+    def resetState(self, simulationState):
+        self.pressure = None
+        self.pressureAccel = None
         
     def computePressureAcceleration(self, simulationState, simulation):
         with record_function('pressure[EOS] - compute pressure acceleration'):
@@ -102,4 +108,7 @@ class pressureModule(Module):
                                                                                                   simulationState['fluidDensity'] * self.restDensity, simulationState['fluidDensity'] * self.restDensity, \
                                                                                                   self.pressure, self.pressure)
             self.pressureAccel += simulation.boundaryModule.computePressureAcceleration(simulationState, simulation)
+
+            simulationState['fluidAcceleration'] += self.pressureAccel
+            simulation.sync(simulationState['fluidAcceleration'])
         

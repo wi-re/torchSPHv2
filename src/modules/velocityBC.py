@@ -77,7 +77,9 @@ class velocityBCModule(Module):
                     # print(gamma.shape)
                     # gamma = gamma[mask]
                     simulationState['fluidVelocity'][mask,:] = simulationState['fluidVelocity'][mask,:] * (1 - gamma)[mask,None] + gamma[mask,None] * curSpeed
-
+                    
+                    simulation.sync(simulationState['fluidGamma'])
+                    simulation.sync(simulationState['fluidVelocity'])
 
             #     print('\n')
 

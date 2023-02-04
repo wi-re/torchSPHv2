@@ -193,6 +193,11 @@ class neighborSearchModule(Module):
         self.minDomain = simulationConfig['domain']['virtualMin']
         self.maxDomain = simulationConfig['domain']['virtualMax']
         
+    def resetState(self, simulationState):
+        simulationState.pop('fluidNeighbors', None)
+        simulationState.pop('fluidDistances', None)
+        simulationState.pop('fluidRadialDistances', None)
+
     def search(self, simulationState, simulation):
         with record_function("neighborhood - fluid neighbor search"): 
             queryPositions = simulationState['fluidPosition']
@@ -214,6 +219,10 @@ class neighborSearchModule(Module):
             fluidDistances[fluidRadialDistances < self.threshold,:] = 0
             fluidDistances[fluidRadialDistances >= self.threshold,:] /= fluidRadialDistances[fluidRadialDistances >= self.threshold,None]
             fluidRadialDistances /= self.support
+
+            simulationState['fluidNeighbors'] = fluidNeighbors
+            simulationState['fluidDistances'] = fluidDistances
+            simulationState['fluidRadialDistances'] = fluidRadialDistances
 
             return fluidNeighbors, fluidDistances, fluidRadialDistances
         

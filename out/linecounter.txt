@@ -1,0 +1,116 @@
+===============================================================================
+EXTENSION NAME : linecounter
+EXTENSION VERSION : 0.2.7
+-------------------------------------------------------------------------------
+count time : 2023-02-03 19:53:45
+count workspace : /home/winchenbach/dev/torchSPHv2
+total files : 91
+total code lines : 293474
+total comment lines : 1832
+total blank lines : 2750
+
+    statistics
+   |      extension|     total code|  total comment|    total blank|percent|
+   -------------------------------------------------------------------------
+   |               |             62|              0|             15|  0.021|
+   |           .txt|              6|              0|              1| 0.0020|
+   |            .py|           4446|           1596|           1732|    1.5|
+   |         .ninja|             10|              0|             10| 0.0034|
+   |           .cpp|            286|            100|             32|  0.097|
+   |            .cu|            197|            136|             54|  0.067|
+   |         .ipynb|          66041|              0|            902|     23|
+   |            .md|              1|              0|              0|0.00034|
+   |          .json|         222425|              0|              4|     76|
+   -------------------------------------------------------------------------
+.gitignore, code is 38, comment is 0, blank is 11.
+.ipynb_checkpoints/archTest-checkpoint.ipynb, code is 5907, comment is 0, blank is 67.
+.ipynb_checkpoints/archTest-Copy1-checkpoint.ipynb, code is 11852, comment is 0, blank is 100.
+.ipynb_checkpoints/archTest-Copy2-checkpoint.ipynb, code is 7073, comment is 0, blank is 83.
+.ipynb_checkpoints/archTest-Copy3-checkpoint.ipynb, code is 8482, comment is 0, blank is 114.
+.ipynb_checkpoints/archTest-Copy4-checkpoint.ipynb, code is 7921, comment is 0, blank is 99.
+.ipynb_checkpoints/archTest-Copy5-checkpoint.ipynb, code is 2340, comment is 0, blank is 51.
+.ipynb_checkpoints/main-checkpoint.ipynb, code is 3035, comment is 0, blank is 45.
+.ipynb_checkpoints/Untitled1-checkpoint.ipynb, code is 6497, comment is 0, blank is 195.
+.ipynb_checkpoints/Untitled2-checkpoint.ipynb, code is 6, comment is 0, blank is 0.
+.ipynb_checkpoints/Untitled3-checkpoint.ipynb, code is 6, comment is 0, blank is 0.
+archTest-Copy1.ipynb, code is 7052, comment is 0, blank is 82.
+archTest.ipynb, code is 5870, comment is 0, blank is 66.
+configs.py, code is 1, comment is 0, blank is 0.
+cppSrc/__pycache__/setup.cpython-39.pyc, it is a binary file.
+cppSrc/build/lib.linux-x86_64-cpython-39/neighborSearch.cpython-39-x86_64-linux-gnu.so, it is a binary file.
+cppSrc/build/temp.linux-x86_64-cpython-39/.ninja_deps, it is a binary file.
+cppSrc/build/temp.linux-x86_64-cpython-39/.ninja_log, code is 4, comment is 0, blank is 0.
+cppSrc/build/temp.linux-x86_64-cpython-39/build.ninja, code is 10, comment is 0, blank is 10.
+cppSrc/build/temp.linux-x86_64-cpython-39/neighSearch.o, it is a binary file.
+cppSrc/neighborSearch.egg-info/dependency_links.txt, code is 0, comment is 0, blank is 1.
+cppSrc/neighborSearch.egg-info/PKG-INFO, code is 3, comment is 0, blank is 0.
+cppSrc/neighborSearch.egg-info/SOURCES.txt, code is 5, comment is 0, blank is 0.
+cppSrc/neighborSearch.egg-info/top_level.txt, code is 1, comment is 0, blank is 0.
+cppSrc/neighSearch.cpp, code is 286, comment is 100, blank is 32.
+cppSrc/neighSearch_cuda.cu, code is 197, comment is 136, blank is 54.
+cppSrc/setup.py, code is 10, comment is 0, blank is 1.
+integralsSDF.wxmx, it is a binary file.
+LICENSE, code is 17, comment is 0, blank is 4.
+README.md, code is 1, comment is 0, blank is 0.
+src/__pycache__/ghostParticles.cpython-39.pyc, it is a binary file.
+src/__pycache__/kernel.cpython-39.pyc, it is a binary file.
+src/__pycache__/kernels.cpython-39.pyc, it is a binary file.
+src/__pycache__/module.cpython-39.pyc, it is a binary file.
+src/__pycache__/naca.cpython-39.pyc, it is a binary file.
+src/__pycache__/parameter.cpython-39.pyc, it is a binary file.
+src/__pycache__/periodicBC.cpython-39.pyc, it is a binary file.
+src/__pycache__/simulationBase.cpython-39.pyc, it is a binary file.
+src/__pycache__/solidBC.cpython-39.pyc, it is a binary file.
+src/__pycache__/util.cpython-39.pyc, it is a binary file.
+src/dfsph.py, code is 175, comment is 20, blank is 34.
+src/ghostParticles.py, code is 106, comment is 44, blank is 30.
+src/kernels.py, code is 47, comment is 0, blank is 13.
+src/module.py, code is 57, comment is 2, blank is 6.
+src/modules/__pycache__/adaptiveDT.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/akinciBoundary.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/akinciTension.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/deltaSPH.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/density.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/densityDiffusion.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/dfsph.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/diffusion.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/gravity.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/implicitShifting.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/laminar.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/momentum.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/neighborSearch.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/periodicBC.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/pressure.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/sdfBoundary.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/solidBC.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/solidBoundary.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/velocityBC.cpython-39.pyc, it is a binary file.
+src/modules/__pycache__/xsph.cpython-39.pyc, it is a binary file.
+src/modules/adaptiveDT.py, code is 60, comment is 15, blank is 20.
+src/modules/akinciBoundary.py, code is 308, comment is 272, blank is 178.
+src/modules/akinciTension.py, code is 81, comment is 29, blank is 40.
+src/modules/deltaSPH.py, code is 120, comment is 44, blank is 47.
+src/modules/density.py, code is 47, comment is 1, blank is 14.
+src/modules/densityDiffusion.py, code is 133, comment is 10, blank is 32.
+src/modules/dfsph.py, code is 231, comment is 8, blank is 72.
+src/modules/diffusion.py, code is 73, comment is 1, blank is 20.
+src/modules/globals.py, code is 0, comment is 0, blank is 0.
+src/modules/gravity.py, code is 45, comment is 0, blank is 9.
+src/modules/implicitShifting.py, code is 315, comment is 251, blank is 241.
+src/modules/laminar.py, code is 74, comment is 3, blank is 19.
+src/modules/momentum.py, code is 67, comment is 2, blank is 23.
+src/modules/neighborSearch.py, code is 168, comment is 32, blank is 51.
+src/modules/periodicBC.py, code is 255, comment is 16, blank is 73.
+src/modules/pressure.py, code is 84, comment is 5, blank is 25.
+src/modules/sdfBoundary.py, code is 472, comment is 295, blank is 222.
+src/modules/solidBoundary.py, code is 571, comment is 352, blank is 230.
+src/modules/velocityBC.py, code is 56, comment is 21, blank is 23.
+src/modules/xsph.py, code is 87, comment is 32, blank is 42.
+src/naca.py, code is 145, comment is 27, blank is 64.
+src/parameter.py, code is 18, comment is 0, blank is 4.
+src/simulationBase.py, code is 434, comment is 23, blank is 102.
+src/util.py, code is 203, comment is 91, blank is 97.
+trace.json, code is 189957, comment is 0, blank is 2.
+traceGPU.json, code is 32468, comment is 0, blank is 2.
+tt.py, code is 3, comment is 0, blank is 0.
+===============================================================================

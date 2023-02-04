@@ -68,6 +68,11 @@ class momentumModule(Module):
         self.c0 = simulationConfig['fluid']['c0']
         self.eps = self.support **2 * 0.1
         
+    def resetState(self, simulationState):
+        self.divergenceTerm = None
+        self.dpdt = None
+
+        simulationState.pop('dpdt', None)
 
     def computeDpDt(self, simulationState, simulation):
         with record_function('density[continuity] - compute drho/dt'):
@@ -80,6 +85,7 @@ class momentumModule(Module):
             self.divergenceTerm += simulation.boundaryModule.computeDpDt(simulationState, simulation)
             
             self.dpdt = self.divergenceTerm #+ self.densityDiffusion
-
-            return self.dpdt
+            simulationState['dpdt'] = self.dpdt
+            simulation.sync(simulationState['dpdt'])
+            # return self.dpdt
 

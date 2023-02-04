@@ -79,6 +79,11 @@ class akinciTensionModule(Module):
             Parameter('surfaceTension', 'gamma', 'float', 1, required = False, export = True, hint = '')
         ]
     
+    def resetState(self, simulationState):
+        self.normals =  None
+        self.curvatureForce = None
+        self.cohesionForce = None
+
     def initialize(self, simulationConfig, simulationState):
         self.support = simulationConfig['particle']['support']
         self.dtype = simulationConfig['compute']['precision']
@@ -87,16 +92,19 @@ class akinciTensionModule(Module):
     
     def computeNormals(self, simulationState, simulation):
         with record_function("surface Tension[akinci] - computeNormals"): 
-            return computeNormalFunction(simulationState['fluidNeighbors'], simulationState['fluidArea'], simulationState['fluidDensity'], simulationState['fluidRadialDistances'], simulationState['fluidDistances'], self.support)
+            self.normals = computeNormalFunction(simulationState['fluidNeighbors'], simulationState['fluidArea'], simulationState['fluidDensity'], simulationState['fluidRadialDistances'], simulationState['fluidDistances'], self.support)
         
     def curvatureForce(self, simulationState, simulation):   
         with record_function("surface Tension[akinci] - curvatureForce"):      
-            return computeCurvatureForce(simulationState['fluidNeighbors'], simulationState['fluidNormals'], self.gamma)
+            self.curvatureForce = computeCurvatureForce(simulationState['fluidNeighbors'], simulationState['fluidNormals'], self.gamma)
+            simulationState['fluidAcceleration'] += self.curvatureForce
+            simulation.sync(simulationState['fluidAcceleration'])
         
     def cohesionForce(self, simulationState, simulation):
         with record_function("surface Tension[akinci] - cohesionForce"): 
-            return computeCohesionForce(simulationState['fluidNeighbors'], simulationState['fluidArea'], simulationState['fluidRestDensity'], self.gamma, simulationState['fluidRadialDistances'], simulationState['fluidDistances'], self.support)
-
+            self.cohesionForce = computeCohesionForce(simulationState['fluidNeighbors'], simulationState['fluidArea'], simulationState['fluidRestDensity'], self.gamma, simulationState['fluidRadialDistances'], simulationState['fluidDistances'], self.support)
+            simulationState['fluidAcceleration'] += self.cohesionForce
+            simulation.sync(simulationState['fluidAcceleration'])
 
 
     
