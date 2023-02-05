@@ -37,6 +37,19 @@ def computePressureAccel(i, j, ri, rj, Vi, Vj, distances, radialDistances, suppo
 
     return - 1 / rhoi[:,None] * scatter_sum(term, i, dim=0, dim_size = numParticles)
 
+@torch.jit.script
+def computePressureAccelDeltaPlus(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float, rhoi, rhoj, pi, pj, surfaceMask):
+    gradW = kernelGradient(radialDistances, distances, support)
+
+    pij = pj[j] - pi[i]    
+    switch = torch.logical_or(pi[i] >= 0, surfaceMask[i] < 1.5)
+    pij[switch] = pi[i][switch] + pj[j][switch]
+
+
+    term = (pij * Vj[j])[:,None] * gradW
+
+    return - 1 / rhoi[:,None] * scatter_sum(term, i, dim=0, dim_size = numParticles)
+
 
 class pressureModule(Module):
     def getParameters(self):
@@ -59,6 +72,8 @@ class pressureModule(Module):
         self.gamma = simulationConfig['pressure']['gamma']
         self.kappa = simulationConfig['pressure']['kappa']
         
+        self.simulationScheme = simulationConfig['simulation']['scheme']
+
         self.boundaryScheme = simulationConfig['simulation']['boundaryScheme']
         self.boundaryCounter = len(simulationConfig['solidBC']) if 'solidBC' in simulationConfig else 0
 
@@ -101,12 +116,20 @@ class pressureModule(Module):
         
     def computePressureAcceleration(self, simulationState, simulation):
         with record_function('pressure[EOS] - compute pressure acceleration'):
-            self.pressureAccel = computePressureAccel(simulationState['fluidNeighbors'][0], simulationState['fluidNeighbors'][1], \
+            if self.simulationScheme != 'deltaPlus':
+                self.pressureAccel = computePressureAccel(simulationState['fluidNeighbors'][0], simulationState['fluidNeighbors'][1], \
+                                                                                                    simulationState['fluidPosition'], simulationState['fluidPosition'], simulationState['fluidVolume'], simulationState['fluidVolume'],\
+                                                                                                    simulationState['fluidDistances'], simulationState['fluidRadialDistances'],\
+                                                                                                    self.support, simulationState['fluidDensity'].shape[0], self.eps,\
+                                                                                                    simulationState['fluidDensity'] * self.restDensity, simulationState['fluidDensity'] * self.restDensity, \
+                                                                                                    self.pressure, self.pressure)
+            else:            
+                self.pressureAccel = computePressureAccelDeltaPlus(simulationState['fluidNeighbors'][0], simulationState['fluidNeighbors'][1], \
                                                                                                   simulationState['fluidPosition'], simulationState['fluidPosition'], simulationState['fluidVolume'], simulationState['fluidVolume'],\
                                                                                                   simulationState['fluidDistances'], simulationState['fluidRadialDistances'],\
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps,\
                                                                                                   simulationState['fluidDensity'] * self.restDensity, simulationState['fluidDensity'] * self.restDensity, \
-                                                                                                  self.pressure, self.pressure)
+                                                                                                  self.pressure, self.pressure, simulationState['fluidSurfaceMask'])
             self.pressureAccel += simulation.boundaryModule.computePressureAcceleration(simulationState, simulation)
 
             simulationState['fluidAcceleration'] += self.pressureAccel

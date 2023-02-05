@@ -107,9 +107,9 @@ class dfsphModule(Module):
             Parameter('dfsph', 'minDivergenceSolverIterations', 'int', 2, required = False, export = True, hint = ''),
             Parameter('dfsph', 'maxDensitySolverIterations', 'int', 256, required = False, export = True, hint = ''),
             Parameter('dfsph', 'maxDivergenceSolverIterations', 'int', 8, required = False, export = True, hint = ''),
-            Parameter('dfsph', 'densityThreshold', 'float', 1e-4, required = False, export = True, hint = ''),
+            Parameter('dfsph', 'densityThreshold', 'float', 1e-3, required = False, export = True, hint = ''),
             Parameter('dfsph', 'divergenceThreshold', 'float', 1e-2, required = False, export = True, hint = ''),
-            Parameter('dfsph', 'divergenceSolver', 'bool', False, required = False, export = True, hint = ''),
+            Parameter('dfsph', 'divergenceSolver', 'bool', True, required = False, export = True, hint = ''),
             Parameter('dfsph', 'relaxedJacobiOmega', 'float', 0.5, required = False, export = True, hint = '')
         ]
         
@@ -128,7 +128,7 @@ class dfsphModule(Module):
         self.densityThreshold = simulationConfig['dfsph']['densityThreshold']
         self.divergenceThreshold = simulationConfig['dfsph']['divergenceThreshold']
 #         self.divergenceSolver - simulationConfig['dfsph']['divergenceSolver']
-        self.relaxedJacobiOmega = simulationConfig['dfsph']['relaxedJacobiOmega']
+        self.relaxedJacobiOmega = simulationConfig['dfsph']['relaxedJacobiOmega']  if 'dfsph'in simulationConfig else 0.5
     
         self.backgroundPressure = simulationConfig['fluid']['backgroundPressure']
         

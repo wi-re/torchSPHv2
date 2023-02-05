@@ -9,6 +9,8 @@ class Module():
         return
     def saveState(self, perennialState, copy):
         return
+    def exportState(self, simulationState, simulation, group, mask):
+        return
     def __init__(self, identifier, moduleDescription):
         self.description = moduleDescription
         self.name = identifier

@@ -388,3 +388,128 @@ def pinv2x2(M):
         eigVals[torch.abs(eigVals[:,1]) > torch.abs(eigVals[:,0]),:] = torch.flip(eigVals[torch.abs(eigVals[:,1]) > torch.abs(eigVals[:,0]),:],[1])
 
         return torch.matmul(torch.matmul(V, S_1), U.mT), eigVals
+
+
+
+def plotWCSPHSimulation(simulationState, simulation):
+    fig, axis = plt.subplots(2,5, figsize=(18 *  1.09, 6), squeeze = False)
+    for axx in axis:
+        for ax in axx:
+            ax.axis('equal')
+            ax.set_xlim(sphSimulation.config['domain']['virtualMin'][0], sphSimulation.config['domain']['virtualMax'][0])
+            ax.set_ylim(sphSimulation.config['domain']['virtualMin'][1], sphSimulation.config['domain']['virtualMax'][1])
+    #         ax.axvline(sphSimulation.config['domain']['min'][0], ls= '--', c = 'black')
+    #         ax.axvline(sphSimulation.config['domain']['max'][0], ls= '--', c = 'black')
+    #         ax.axhline(sphSimulation.config['domain']['min'][1], ls= '--', c = 'black')
+    #         ax.axhline(sphSimulation.config['domain']['max'][1], ls= '--', c = 'black')
+
+    def scatter(axis, fluidPositions, fluidData, boundaryPositions = None, boundaryData = None, label = None):
+        positions = fluidPositions.detach().cpu().numpy()
+        M = fluidData.detach().cpu().numpy()
+
+        if boundaryPositions is not None and boundaryData is not None:
+            bPositions = boundaryPositions.detach().cpu().numpy()
+            bM = boundaryData.detach().cpu().numpy()
+
+            positions = np.vstack((positions, bPositions))
+            M = np.hstack((M, bM))
+        elif boundaryPositions is not None and boundaryData is None:
+            bPositions = boundaryPositions.detach().cpu().numpy()
+            bM = torch.zeros(bPositions.shape[0]).detach().cpu().numpy()
+
+            positions = np.vstack((positions, bPositions))
+            M = np.hstack((M, bM))  
+
+
+        sc = axis.scatter(positions[:,0], positions[:,1], c = M, s = 4)
+        ax1_divider = make_axes_locatable(axis)
+        cax1 = ax1_divider.append_axes("right", size="4%", pad="1%")
+        cbar = fig.colorbar(sc, cax=cax1,orientation='vertical')
+        cbar.ax.tick_params(labelsize=8) 
+        if label is not None:
+            axis.set_title(label)
+        return sc, cbar
+    
+    plots = []
+    plots.append(scatter(axis[0,0], fluidPositions = simulationState['fluidPosition'], boundaryPositions = simulation.boundaryModule.boundaryPositions, fluidData = simulationState['fluidDensity'], boundaryData = simulation.boundaryModule.boundaryDensity, label = 'Density'))
+    plots.append(scatter(axis[1,0], fluidPositions = simulationState['fluidPosition'], boundaryPositions = simulation.boundaryModule.boundaryPositions, fluidData = sphSimulation.momentumModule.dpdt, boundaryData = sphSimulation.boundaryModule.dpdt, label = 'drho/dt'))
+
+    plots.append(scatter(axis[0,1], fluidPositions = simulationState['fluidPosition'], boundaryPositions = simulation.boundaryModule.boundaryPositions, fluidData = sphSimulation.pressureModule.pressure, boundaryData = None, label = 'Pressure'))
+    plots.append(scatter(axis[1,1], fluidPositions = simulationState['fluidPosition'], boundaryPositions = simulation.boundaryModule.boundaryPositions, fluidData = sphSimulation.densityDiffusionModule.densityDiffusion, boundaryData = None, label = 'rho diff'))
+
+    plots.append(scatter(axis[0,2], fluidPositions = simulationState['fluidPosition'], boundaryPositions = simulation.boundaryModule.boundaryPositions, fluidData = sphSimulation.velocityDiffusionModule.velocityDiffusion[:,0], boundaryData = None, label = 'u_x diff'))
+    plots.append(scatter(axis[1,2], fluidPositions = simulationState['fluidPosition'], boundaryPositions = simulation.boundaryModule.boundaryPositions, fluidData = sphSimulation.velocityDiffusionModule.velocityDiffusion[:,1], boundaryData = None, label = 'u_y diff'))
+
+    plots.append(scatter(axis[0,3], fluidPositions = simulationState['fluidPosition'], boundaryPositions = simulation.boundaryModule.boundaryPositions, fluidData = sphSimulation.densityDiffusionModule.eigVals[:,0], boundaryData = sphSimulation.boundaryModule.eigVals[:,0], label = 'a_x'))
+    plots.append(scatter(axis[1,3], fluidPositions = simulationState['fluidPosition'], boundaryPositions = simulation.boundaryModule.boundaryPositions, fluidData = sphSimulation.densityDiffusionModule.eigVals[:,1], boundaryData = sphSimulation.boundaryModule.eigVals[:,0], label = 'a_y'))
+#     plots.append(scatter(axis[0,3], fluidPositions = simulationState['fluidPosition'], boundaryPositions = simulation.boundaryModule.boundaryPositions, fluidData = simulationState['fluidAcceleration'][:,0], boundaryData = None, label = 'a_x'))
+#     plots.append(scatter(axis[1,3], fluidPositions = simulationState['fluidPosition'], boundaryPositions = simulation.boundaryModule.boundaryPositions, fluidData = simulationState['fluidAcceleration'][:,1], boundaryData = None, label = 'a_y'))
+
+    plots.append(scatter(axis[0,4], fluidPositions = simulationState['fluidPosition'], boundaryPositions = simulation.boundaryModule.boundaryPositions, fluidData = simulationState['fluidVelocity'][:,0], boundaryData = None, label = 'u_x'))
+    plots.append(scatter(axis[1,4], fluidPositions = simulationState['fluidPosition'], boundaryPositions = simulation.boundaryModule.boundaryPositions, fluidData = simulationState['fluidVelocity'][:,1], boundaryData = None, label = 'u_y'))
+
+    fig.tight_layout()
+    
+    return fig, plots
+
+def updateWCSPHPlot(fig, plots, simulationState, simulation):
+        fluidPositions = simulationState['fluidPosition'].detach().cpu().numpy()  
+        boundaryPositions = simulation.boundaryModule.boundaryPositions.detach().cpu().numpy()    
+    
+        for i, (sc, cbar) in enumerate(plots):
+            M = []
+            if i ==  0: M = simulationState['fluidDensity']
+            if i ==  1: M = sphSimulation.deltaSPH.dpdt
+            if i ==  2: M = sphSimulation.deltaSPH.pressure
+            if i ==  3: M = sphSimulation.deltaSPH.densityDiffusion
+            if i ==  4: M = sphSimulation.deltaSPH.velocityDiffusion[:,0]
+            if i ==  5: M = sphSimulation.deltaSPH.velocityDiffusion[:,1]
+            if i ==  6: M = simulationState['fluidAcceleration'][:,0]
+            if i ==  7: M = simulationState['fluidAcceleration'][:,1]
+            if i ==  8: M = simulationState['fluidVelocity'][:,0]
+            if i ==  9: M = simulationState['fluidVelocity'][:,1]            
+            M = M.detach().cpu().numpy()
+                        
+            bM = []
+            if i ==  0: bM = simulation.boundaryModule.boundaryDensity
+            if i ==  1: bM = simulation.boundaryModule.dpdt
+            if i ==  2: bM = simulation.boundaryModule.pressure
+            if i ==  3: bM = simulation.boundaryModule.densityDiffusion
+            if i ==  4: bM = simulation.boundaryModule.velocityDiffusion
+            if i ==  5: bM = simulation.boundaryModule.velocityDiffusion
+            if i ==  6: bM = torch.zeros(simulation.boundaryModule.boundaryPositions.shape[0])
+            if i ==  7: bM = torch.zeros(simulation.boundaryModule.boundaryPositions.shape[0])
+            if i ==  8: bM = torch.zeros(simulation.boundaryModule.boundaryPositions.shape[0])
+            if i ==  9: bM = torch.zeros(simulation.boundaryModule.boundaryPositions.shape[0])
+            bM = bM.detach().cpu().numpy()
+            
+            positions = np.vstack((fluidPositions, boundaryPositions))
+            data = np.hstack((M, bM))            
+            
+            sc.set_offsets(positions)
+            sc.set_array(data)
+            cbar.mappable.set_clim(vmin=np.min(data), vmax=np.max(data))
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+
+# fig, axis = plt.subplots(2,2, figsize=(9 *  1.09, 9), squeeze = False)
+# for axx in axis:
+#     for ax in axx:
+#         ax.set_xlim(sphSimulation.config['domain']['virtualMin'][0], sphSimulation.config['domain']['virtualMax'][0])
+#         ax.set_ylim(sphSimulation.config['domain']['virtualMin'][1], sphSimulation.config['domain']['virtualMax'][1])
+#         ax.axis('equal')
+#         ax.axvline(sphSimulation.config['domain']['min'][0], ls= '--', c = 'black')
+#         ax.axvline(sphSimulation.config['domain']['max'][0], ls= '--', c = 'black')
+#         ax.axhline(sphSimulation.config['domain']['min'][1], ls= '--', c = 'black')
+#         ax.axhline(sphSimulation.config['domain']['max'][1], ls= '--', c = 'black')
+
+# positions = state['fluidPosition'].detach().cpu().numpy()
+# # data = torch.linalg.norm(state['fluidUpdate'].detach(),axis=1).cpu().numpy()
+# data = polyDer[:,0].detach().cpu().numpy()
+
+
+# sc = axis[0,0].scatter(positions[:,0], positions[:,1], c = polyGrad[:,0].detach().cpu().numpy(), s = 4)
+# ax1_divider = make_axes_locatable(axis[0,0])
+# cax1 = ax1_divider.append_axes("right", size="4%", pad="1%")
+# cbar = fig.colorbar(sc, cax=cax1,orientation='vertical')
+# cbar.ax.tick_params(labelsize=8) 

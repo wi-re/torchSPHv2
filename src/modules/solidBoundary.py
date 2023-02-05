@@ -27,9 +27,9 @@ from .deltaSPH import *
 from .diffusion import computeVelocityDiffusion
 from .densityDiffusion import *
 from .momentum import computeDivergenceTerm
-from .pressure import computePressureAccel
+from .pressure import computePressureAccel, computePressureAccelDeltaPlus
 
-MLSscale = 2
+MLSscale = 1
 
 @torch.jit.script
 def computePressureAccelMirrored(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float, rhoi, rhoj, p):
@@ -71,7 +71,7 @@ class solidBoundaryModule(BoundaryModule):
         self.fluidPressureScheme = simulationConfig['pressure']['fluidPressureTerm'] 
         self.computeBodyForces = simulationConfig['simulation']['bodyForces'] 
         self.boundaryCounter = len(simulationConfig['solidBC']) if 'solidBC' in simulationConfig else 0
-        self.relaxedJacobiOmega = simulationConfig['dfsph']['relaxedJacobiOmega']
+        self.relaxedJacobiOmega = simulationConfig['dfsph']['relaxedJacobiOmega'] if 'dfsph'in simulationConfig else 0.5
         self.backgroundPressure = simulationConfig['fluid']['backgroundPressure']
 
         self.alpha = simulationConfig['diffusion']['alpha']
@@ -93,6 +93,7 @@ class solidBoundaryModule(BoundaryModule):
         self.c0 = simulationConfig['fluid']['c0']
         self.eps = self.support **2 * 0.1
         self.restDensity = simulationConfig['fluid']['restDensity']
+        self.simulationScheme = simulationConfig['simulation']['scheme']
         if not self.active:
             return
         self.numBodies = len(simulationConfig['solidBC'])
@@ -219,6 +220,20 @@ class solidBoundaryModule(BoundaryModule):
         self.dpdt = None
         self.pressure = None
         self.velocityDiffusion = None
+
+    def exportState(self, simulationState, simulation, grp, mask):        
+        if not simulation.config['export']['staticBoundary']:
+            grp.create_dataset('boundaryPosition', data = self.boundaryPositions.detach().cpu().numpy())
+            grp.create_dataset('boundaryVelocity', data = self.boundaryVelocity.detach().cpu().numpy())
+            grp.create_dataset('boundarySupport', data = self.boundarySupport.detach().cpu().numpy())
+            grp.create_dataset('boundaryRestDensity', data = self.boundaryRestDensity.detach().cpu().numpy())
+            grp.create_dataset('boundaryArea', data = self.boundaryVolume.detach().cpu().numpy())
+            grp.create_dataset('boundaryNormals', data = self.boundaryNormals.detach().cpu().numpy())
+            grp.create_dataset('boundaryBodyAssociation', data = self.bodyAssociation.detach().cpu().numpy())
+
+        grp.create_dataset('boundaryDensity', data = self.boundaryDensity.detach().cpu().numpy())
+        grp.create_dataset('boundaryPressure', data = self.pressure.detach().cpu().numpy())
+
 
     def saveState(self, perennialState, copy):
         perennialState['boundaryPosition']    = self.boundaryPositions    if not copy else torch.clone(self.boundaryPositions)
@@ -513,22 +528,22 @@ class solidBoundaryModule(BoundaryModule):
 
             fluidMass = simulationState['fluidArea'][bf] * self.restDensity
 
-            shepardNominator = scatter_sum(fluidMass * kernel(radialDistances, 2 * self.support), bb, dim = 0, dim_size = self.numPtcls)
-            shepardDenominator = scatter_sum(simulationState['fluidVolume'][bf] * kernel(radialDistances,  2 * self.support), bb, dim = 0, dim_size = self.numPtcls)
+            shepardNominator = scatter_sum(fluidMass * kernel(radialDistances, MLSscale * self.support), bb, dim = 0, dim_size = self.numPtcls)
+            shepardDenominator = scatter_sum(simulationState['fluidVolume'][bf] * kernel(radialDistances,  MLSscale * self.support), bb, dim = 0, dim_size = self.numPtcls)
 
             shepardDensity = shepardNominator / shepardDenominator
 
-            gradientSum = scatter_sum(fluidMass[:,None] * kernelGradient(radialDistances, distances,  2 * self.support), bb, dim = 0, dim_size = self.numPtcls)
+            gradientSum = scatter_sum(fluidMass[:,None] * kernelGradient(radialDistances, distances,  MLSscale * self.support), bb, dim = 0, dim_size = self.numPtcls)
 
             b = torch.hstack((shepardNominator[:,None], gradientSum))
 
-            volumeSum = scatter_sum(simulationState['fluidVolume'][bf]  * kernel(radialDistances,  2 * self.support), bb, dim = 0, dim_size = self.numPtcls)
-            volumeGradSum = scatter_sum(simulationState['fluidVolume'][bf,None] *  kernelGradient(radialDistances, distances,  2 * self.support), bb, dim = 0, dim_size = self.numPtcls)
+            volumeSum = scatter_sum(simulationState['fluidVolume'][bf]  * kernel(radialDistances,  MLSscale * self.support), bb, dim = 0, dim_size = self.numPtcls)
+            volumeGradSum = scatter_sum(simulationState['fluidVolume'][bf,None] *  kernelGradient(radialDistances, distances,  MLSscale * self.support), bb, dim = 0, dim_size = self.numPtcls)
 
             xij = simulationState['fluidPosition'][bf] - self.boundaryGhostPositions[bb]
 
-            positionSum = scatter_sum((simulationState['fluidVolume'][bf] * kernel(radialDistances,  2 * self.support))[:,None] * xij, bb, dim = 0, dim_size = self.numPtcls)
-            positionMatrix = scatter_sum((simulationState['fluidVolume'][bf])[:,None,None] * torch.einsum('nu, nv -> nuv', xij, kernelGradient(radialDistances, distances,  2 * self.support)), bb, dim = 0, dim_size = self.numPtcls)
+            positionSum = scatter_sum((simulationState['fluidVolume'][bf] * kernel(radialDistances,  MLSscale * self.support))[:,None] * xij, bb, dim = 0, dim_size = self.numPtcls)
+            positionMatrix = scatter_sum((simulationState['fluidVolume'][bf])[:,None,None] * torch.einsum('nu, nv -> nuv', xij, kernelGradient(radialDistances, distances,  MLSscale * self.support)), bb, dim = 0, dim_size = self.numPtcls)
 
             A_g = torch.zeros((self.numPtcls, 3, 3), dtype = xij.dtype, device = xij.device)
 
@@ -555,8 +570,9 @@ class solidBoundaryModule(BoundaryModule):
 
             self.boundaryDensity = torch.ones(self.numPtcls, dtype = xij.dtype, device = xij.device)
             self.boundaryDensity[self.neighCounts > 0] = shepardDensity[self.neighCounts > 0] / self.restDensity
-            self.boundaryDensity[self.neighCounts > 5] = (res[self.neighCounts > 5,0] + torch.einsum('nu, nu -> n',(self.boundaryPositions - self.boundaryGhostPositions)[self.neighCounts > 5, :], res[self.neighCounts > 5, 1:] )) / self.restDensity
-
+            threshold = 10
+            self.boundaryDensity[self.neighCounts > threshold] = (res[self.neighCounts > threshold,0] + torch.einsum('nu, nu -> n',(self.boundaryPositions - self.boundaryGhostPositions)[self.neighCounts > threshold, :], res[self.neighCounts > threshold, 1:] )) / self.restDensity
+            self.boundaryDensity = torch.clamp(self.boundaryDensity, min = 1)
             self.fluidVolume = self.boundaryVolume / self.boundaryDensity
 
     def boundaryNeighborhoodSearch(self, simulationState, simulation):
@@ -627,13 +643,13 @@ class solidBoundaryModule(BoundaryModule):
                                                                                                   self.boundaryPositions, simulationState['fluidPosition'], self.fluidVolume, simulationState['fluidVolume'],\
                                                                                                   self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
                                                                                                   self.support, self.numPtcls, self.eps,\
-                                                                                                  self.fluidL, simulation.deltaSPH.fluidL, \
+                                                                                                  self.fluidL, simulation.densityDiffusionModule.fluidL, \
                                                                                                   self.boundaryDensity * self.restDensity, simulationState['fluidDensity'] * self.restDensity)   
             self.fluidRenormalizedGrad, fluidRenormalizedDensityGradient  = computeRenormalizedDensityGradient(self.boundaryToFluidNeighbors[1], self.boundaryToFluidNeighbors[0], \
                                                                                                   simulationState['fluidPosition'], self.boundaryPositions, simulationState['fluidVolume'], self.fluidVolume,\
                                                                                                   -self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps,\
-                                                                                                  simulation.deltaSPH.fluidL, self.fluidL, \
+                                                                                                  simulation.densityDiffusionModule.fluidL, self.fluidL, \
                                                                                                   simulationState['fluidDensity'] * self.restDensity, self.boundaryDensity * self.restDensity)   
             # self.boundaryRenormalizedGrad, boundaryRenormalizedDensityGradient = computeRenormalizedDensityGradient(self.boundaryToBoundaryNeighbors[0], self.boundaryToBoundaryNeighbors[1], \
             #                                                                                       self.boundaryPositions, self.boundaryPositions, self.fluidVolume, self.fluidVolume,\
@@ -798,13 +814,21 @@ class solidBoundaryModule(BoundaryModule):
                 #                                                                                     self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
                 #                                                                                     self.support, self.numPtcls, self.eps,\
                 #                                                                                     self.boundaryDensity * self.restDensity, simulationState['fluidDensity'] * self.restDensity, \
-                #                                                                                     self.pressure, simulation.pressureModule.pressure)     
-                fluidPressureAccel = computePressureAccel(self.boundaryToFluidNeighbors[1], self.boundaryToFluidNeighbors[0], \
+                #                                                                                     self.pressure, simulation.pressureModule.pressure)  
+                if self.simulationScheme != 'deltaPlus':   
+                    fluidPressureAccel = computePressureAccel(self.boundaryToFluidNeighbors[1], self.boundaryToFluidNeighbors[0], \
                                                                                                     simulationState['fluidPosition'], self.boundaryPositions, simulationState['fluidVolume'], self.fluidVolume,\
                                                                                                     -self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
                                                                                                     self.support, simulationState['fluidDensity'].shape[0], self.eps,\
                                                                                                     simulationState['fluidDensity'] * self.restDensity, self.boundaryDensity * self.restDensity, \
                                                                                                     simulation.pressureModule.pressure, self.pressure)     
+                else:
+                    fluidPressureAccel = computePressureAccelDeltaPlus(self.boundaryToFluidNeighbors[1], self.boundaryToFluidNeighbors[0], \
+                                                                                                    simulationState['fluidPosition'], self.boundaryPositions, simulationState['fluidVolume'], self.fluidVolume,\
+                                                                                                    -self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
+                                                                                                    self.support, simulationState['fluidDensity'].shape[0], self.eps,\
+                                                                                                    simulationState['fluidDensity'] * self.restDensity, self.boundaryDensity * self.restDensity, \
+                                                                                                    simulation.pressureModule.pressure, self.pressure, simulationState['fluidSurfaceMask'])     
             # boundaryPressureAccel = computePressureAccel(self.boundaryToBoundaryNeighbors[0], self.boundaryToBoundaryNeighbors[1], \
             #                                                                                       self.boundaryPositions, self.boundaryPositions, self.fluidVolume, self.fluidVolume,\
             #                                                                                       self.boundaryToBoundaryNeighborDistances, self.boundaryToBoundaryNeighborRadialDistances,\

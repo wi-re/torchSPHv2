@@ -28,7 +28,7 @@ class akinciBoundaryModule(BoundaryModule):
     def getParameters(self):
         return [
             Parameter('akinciBoundary', 'recomputeBoundary', 'bool', False, required = False, export = True, hint = ''),
-            Parameter('akinciBoundary', 'beta', 'float', 0.15, required = False, export = True, hint = ''),
+            Parameter('akinciBoundary', 'beta', 'float', 0.125, required = False, export = True, hint = ''),
             # Parameter('akinciBoundary', 'gamma', 'float', 0.7, required = False, export = True, hint = '')
         ]
         
@@ -54,7 +54,7 @@ class akinciBoundaryModule(BoundaryModule):
         self.pressureScheme = simulationConfig['simulation']['pressureTerm'] 
         self.computeBodyForces = simulationConfig['simulation']['bodyForces'] 
         self.boundaryCounter = len(simulationConfig['solidBC']) if 'solidBC' in simulationConfig else 0
-        self.relaxedJacobiOmega = simulationConfig['dfsph']['relaxedJacobiOmega']
+        self.relaxedJacobiOmega = simulationConfig['dfsph']['relaxedJacobiOmega'] if 'dfsph'in simulationConfig else 0.5
         self.backgroundPressure = simulationConfig['fluid']['backgroundPressure']
 
         if not self.active:

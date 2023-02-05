@@ -137,7 +137,7 @@ class densityDiffusionModule(Module):
                                                                                                   simulationState['fluidPosition'], simulationState['fluidPosition'], simulationState['fluidVolume'], simulationState['fluidVolume'],\
                                                                                                   simulationState['fluidDistances'], simulationState['fluidRadialDistances'],\
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps)     
-            # self.normalizationMatrix += simulation.boundaryModule.computeNormalizationMatrices(simulationState, simulation)
+            self.normalizationMatrix += simulation.boundaryModule.computeNormalizationMatrices(simulationState, simulation)
             self.fluidL, self.eigVals = pinv2x2(self.normalizationMatrix)
     def computeRenormalizedDensityGradient(self, simulationState, simulation):
         with record_function('density[diffusion] - compute renormalized density gradient'):
@@ -147,12 +147,17 @@ class densityDiffusionModule(Module):
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps,\
                                                                                                   self.fluidL, self.fluidL, simulationState['fluidDensity'] * self.restDensity,\
                                                                                                   simulationState['fluidDensity'] * self.restDensity)     
-            # self.renormalizedDensityGradient  += simulation.boundaryModule.computeRenormalizedDensityGradient(simulationState, simulation)
+            self.renormalizedDensityGradient  += simulation.boundaryModule.computeRenormalizedDensityGradient(simulationState, simulation)
   
     def computeDensityDiffusion(self, simulationState, simulation):
         with record_function('density[diffusion] - compute density diffusion'):
             if self.scheme == 'deltaSPH':
-                self.computeNormalizationMatrices(simulationState, simulation)
+                if 'fluidL' in simulationState:
+                    self.normalizationMatrix = simulationState['normalizationMatrix']
+                    self.fluidL = simulationState['fluidL']
+                    self.eigVals = simulationState['eigVals']
+                else:
+                    self.computeNormalizationMatrices(simulationState, simulation)
                 self.computeRenormalizedDensityGradient(simulationState, simulation)
                 self.densityDiffusion = computeDensityDiffusionDeltaSPH(simulationState['fluidNeighbors'][0], simulationState['fluidNeighbors'][1], \
                                                                                                   simulationState['fluidPosition'], simulationState['fluidPosition'], simulationState['fluidVolume'], simulationState['fluidVolume'],\

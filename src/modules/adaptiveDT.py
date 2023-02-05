@@ -28,7 +28,7 @@ class adaptiveTimeSteppingModule(Module):
             Parameter('timestep', 'max', 'float', 0.01, required = False, export = True, hint = ''),
             Parameter('timestep', 'fixed', 'bool', True, required = False, export = True, hint = ''),
             
-            Parameter('timestep', 'CFLNumber', 'float', 0.4, required = False, export = True, hint = ''),
+            Parameter('timestep', 'CFLNumber', 'float', 1.5, required = False, export = True, hint = ''),
             Parameter('timestep', 'viscosity', 'bool', False, required = False, export = True, hint = ''),
             Parameter('timestep', 'acceleration', 'bool', True, required = False, export = True, hint = ''),
             Parameter('timestep', 'acoustic', 'bool', True, required = False, export = True, hint = '')
@@ -43,12 +43,15 @@ class adaptiveTimeSteppingModule(Module):
         self.maxTimestep = simulationConfig['timestep']['max']
         self.fixedTimestep = simulationConfig['timestep']['fixed']
         
-        self.CFLNumber = simulationConfig['timestep']['min']
+        self.CFLNumber = simulationConfig['timestep']['CFLNumber']
         self.viscosity = simulationConfig['timestep']['min']
         self.acceleration = simulationConfig['timestep']['min']
         self.acoustic = simulationConfig['timestep']['min']
         
         self.kinematicViscosity = simulationConfig['diffusion']['kinematic']
+
+        self.scheme = simulationConfig['simulation']['scheme']
+        self.c0 = simulationConfig['fluid']['c0']
 #         self.kinematicViscosity = 0.01
 #         self.speedOfSound = 1481
         
@@ -67,8 +70,11 @@ class adaptiveTimeSteppingModule(Module):
             
             accelDt = (0.25 * torch.min(torch.sqrt(simulationState['fluidSupport'] / torch.linalg.norm(simulationState['fluidAcceleration'],axis=-1)))).item()
     #         debugPrint(accelDt)
-            
-            velocityDt = (0.4 * minSupport / torch.max(torch.linalg.norm(simulationState['fluidVelocity'],axis=-1))).item()
+            if self.scheme == 'deltaSPH' or self.scheme == 'deltaPlus':
+                velocityDt = (self.CFLNumber * minSupport / self.c0).item()
+            else:
+                velocityDt = (0.4 * minSupport / torch.max(torch.linalg.norm(simulationState['fluidVelocity'],axis=-1))).item()
+
     #         debugPrint(velocityDt)
             
             maximumTimestep = self.maxTimestep

@@ -3,6 +3,11 @@ import tomli
 from scipy.optimize import minimize
 import matplotlib.patches as patches
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from datetime import datetime
+import os
+import h5py
+import copy
+
 
 from .module import Module
 from .parameter import Parameter
@@ -26,7 +31,9 @@ class SPHSimulation():
             Parameter('pressure', 'gamma', 'float', 7.0, required = False, export = True, hint = ''),
             Parameter('pressure', 'kappa', 'float', 1.3, required = False, export = True, hint = ''),
             Parameter('pressure', 'fluidPressureTerm', 'str', 'TaitEOS', required = False, export = True, hint = ''),
-            Parameter('pressure', 'boundaryPressureTerm', 'str', 'PBSPH', required = False, export = True, hint = '')
+            Parameter('pressure', 'boundaryPressureTerm', 'str', 'PBSPH', required = False, export = True, hint = ''),
+            Parameter('shifting', 'scheme', 'string', 'deltaPlus', required = False, export = True, hint = ''),
+            Parameter('shifting', 'enabled', 'bool', False, required = False, export = True, hint = ''),
         ]
         
         basicKernelParameters = [
@@ -48,14 +55,15 @@ class SPHSimulation():
         ]
         
         basicIntegrationParameters = [
-            Parameter('integration', 'dt', 'float', 0.002, required = False, export = True, hint = '')
+            Parameter('integration', 'dt', 'float', 0.002, required = False, export = True, hint = ''),
+            Parameter('integration', 'scheme', 'string', 'RK4', required = False, export = True, hint = '')
         ]
         
         basicViscosityParameters = [
-            Parameter('diffusion', 'velocityScheme', 'string', 'xsph', required = False, export = True, hint = ''),
-            Parameter('diffusion', 'densityScheme', 'string', 'MOG', required = False, export = True, hint = ''),
+            Parameter('diffusion', 'velocityScheme', 'string', 'deltaSPH', required = False, export = True, hint = ''),
+            Parameter('diffusion', 'densityScheme', 'string', 'deltaSPH', required = False, export = True, hint = ''),
             Parameter('diffusion', 'alpha', 'float', 0.01, required = False, export = True, hint = ''),
-            Parameter('diffusion', 'delta', 'float', 0.01, required = False, export = True, hint = ''),
+            Parameter('diffusion', 'delta', 'float', 0.1, required = False, export = True, hint = ''),
             Parameter('diffusion', 'kinematic', 'float', 0.01, required = False, export = True, hint = ''),
             Parameter('diffusion', 'boundaryDiffusion', 'bool', True, required = False, export = True, hint = ''),
         ]
@@ -69,7 +77,9 @@ class SPHSimulation():
         
         basicExportParameters = [
             Parameter('export', 'active', 'bool', False, required = False, export = True, hint = ''),
-            Parameter('export', 'prefix', 'string', 'unnamed', required = False, export = True, hint = '')
+            Parameter('export', 'prefix', 'string', 'unnamed', required = False, export = True, hint = ''),
+            Parameter('export', 'staticBoundary', 'bool', True, required = False, export = True, hint = ''),
+            Parameter('export', 'interval', 'int', -1, required = False, export = True, hint = '')
         ]
         
         basicPeriodicBCParameters = [
@@ -387,6 +397,53 @@ class SPHSimulation():
             self.perennialState = self.saveState(copy = False)
             self.simulationState = self.setupSimulationState(self.perennialState)
 
+                
+            if self.config['export']['active']:
+                timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+                self.exportPath = './export/%s - %s.hdf5' %(self.config['export']['prefix'], timestamp)
+                if not os.path.exists('./export/'):
+                    os.makedirs('./export/')
+                self.outFile = h5py.File(self.exportPath,'w')
+                self.lastExport = 0
+
+                    
+                self.outFile.attrs['simulationScheme'] = self.config['simulation']['scheme']
+                self.outFile.attrs['boundaryScheme'] = self.config['simulation']['boundaryScheme']
+                self.outFile.attrs['densityScheme'] = self.config['simulation']['densityScheme']
+                self.outFile.attrs['EOSgamma'] = self.config['pressure']['gamma']
+                self.outFile.attrs['fluidPressureTerm'] = self.config['pressure']['fluidPressureTerm']
+                self.outFile.attrs['boundaryPressureTerm'] = self.config['pressure']['boundaryPressureTerm']
+                self.outFile.attrs['shiftingScheme'] = self.config['shifting']['scheme']
+                self.outFile.attrs['shiftingEnabled'] = self.config['shifting']['enabled']
+                self.outFile.attrs['targetNeighbors'] = self.config['kernel']['targetNeighbors']
+                self.outFile.attrs['defaultKernel'] = self.config['kernel']['defaultKernel']
+                self.outFile.attrs['device'] = self.config['compute']['device']
+                self.outFile.attrs['floatprecision'] = self.config['compute']['floatprecision']
+                self.outFile.attrs['restDensity'] = self.config['fluid']['restDensity']
+                self.outFile.attrs['c0'] = self.config['fluid']['c0']
+                self.outFile.attrs['velocityDiffusionScheme'] = self.config['diffusion']['velocityScheme']
+                self.outFile.attrs['densityDiffusionScheme'] = self.config['diffusion']['densityScheme']
+                self.outFile.attrs['alphaDiffusion'] = self.config['diffusion']['alpha']
+                self.outFile.attrs['deltaDiffusion'] = self.config['diffusion']['delta']
+                self.outFile.attrs['kinematicDiffusion'] = self.config['diffusion']['kinematic']
+                self.outFile.attrs['staticBoundary'] = self.config['export']['staticBoundary']
+                self.outFile.attrs['initialDt'] = self.config['integration']['dt']
+                self.outFile.attrs['integrationScheme'] = self.config['integration']['scheme']
+                self.outFile.attrs['fixedDt'] = self.config['timestep']['fixed']
+
+                if self.config['export']['staticBoundary']:
+                    grp = self.outFile.create_group('boundaryInformation')
+                    grp.create_dataset('boundaryPosition', data = self.perennialState['boundaryPosition'].detach().cpu().numpy())
+                    grp.create_dataset('boundaryVelocity', data = self.perennialState['boundaryVelocity'].detach().cpu().numpy())
+                    grp.create_dataset('boundarySupport', data = self.perennialState['boundarySupport'].detach().cpu().numpy())
+                    grp.create_dataset('boundaryRestDensity', data = self.perennialState['boundaryRestDensity'].detach().cpu().numpy())
+                    grp.create_dataset('boundaryArea', data = self.perennialState['boundaryArea'].detach().cpu().numpy())
+                    grp.create_dataset('boundaryNormals', data = self.perennialState['boundaryNormals'].detach().cpu().numpy())
+                    grp.create_dataset('boundaryBodyAssociation', data = self.perennialState['boundaryBodyAssociation'].detach().cpu().numpy())
+                self.dataGroup = self.outFile.create_group('simulationExport')
+                self.exportCounter = 0
+
+
     def resetState(self):
         for module in self.modules:
             module.resetState(self.simulationState)
@@ -456,6 +513,7 @@ class SPHSimulation():
         self.simulationState['fluidPosition'] = self.perennialState['fluidPosition'] + dt * dxdt
         if self.config['simulation']['densityScheme'] == 'continuum':
             self.simulationState['fluidDensity'] = self.perennialState['fluidDensity'] + dt * dpdt / self.config['fluid']['restDensity'] 
+        self.simulationState['fluidAcceleration'] = dudt
         
     def integrate(self):
         self.perennialState = self.saveState()
@@ -500,6 +558,32 @@ class SPHSimulation():
             
 
 
+        step = '14 - Shifting'
+        if self.verbose: print(step)
+        with record_function(step):
+            if self.config['shifting']['enabled']:
+                step = ' s1 - Enforcing periodic boundary conditions'
+                if self.verbose: print(step)
+                with record_function(step):
+                    self.periodicBC.enforcePeriodicBC(self.simulationState, self)            
+                step = ' s2 - Fluid neighborhood search'
+                if self.verbose: print(step)
+                with record_function(step):
+                    self.neighborSearch.search(self.simulationState, self)            
+                step = ' s3 - Boundary neighborhood search'
+                if self.verbose: print(step)
+                with record_function(step):
+                    self.boundaryModule.boundaryFilterNeighborhoods(self.simulationState, self)
+                    self.boundaryModule.boundaryNeighborhoodSearch(self.simulationState, self)
+                step = ' s4 - density  evaluation'
+                if self.verbose: print(step)
+                with record_function(step):             
+                    self.sphDensity.evaluate(self.simulationState, self)    
+                    self.boundaryModule.evalBoundaryDensity(self.simulationState, self)
+                self.shiftingModule.shift(self.simulationState, self)
+
+                self.simulationState['fluidPosition'] += self.simulationState['fluidUpdate']
+
         step = '15 - Bookkeeping'
         if self.verbose: print(step)
         with record_function(step):
@@ -507,6 +591,27 @@ class SPHSimulation():
             self.simulationState['timestep'] += 1
 
             self.simulationState['dt'] = self.adaptiveDT.updateTimestep(self.simulationState, self)
+        if self.config['export']['active'] and \
+                (self.config['export']['interval'] < 0 or (self.lastExport % self.config['export']['interval'] == 0)):
+            grp = self.dataGroup.create_group('%05d' % self.exportCounter )
+
+            self.exportCounter = self.exportCounter + 1
+            mask = (self.simulationState['ghostIndices'] == -1) if 'ghostIndices' in self.simulationState else self.simulationState['UID'] > -1
+            grp.create_dataset('UID', data = self.simulationState['UID'].detach().cpu().numpy())
+            grp.create_dataset('fluidPosition', data = self.simulationState['fluidPosition'].detach().cpu().numpy())
+            grp.create_dataset('fluidVelocity', data = self.simulationState['fluidVelocity'].detach().cpu().numpy())
+            grp.create_dataset('fluidDensity', data = self.simulationState['fluidDensity'].detach().cpu().numpy())
+            grp.create_dataset('fluidSupport', data = self.simulationState['fluidSupport'].detach().cpu().numpy())
+            grp.create_dataset('fluidPressure', data = self.simulationState['fluidPressure'].detach().cpu().numpy())
+            grp.create_dataset('fluidAcceleration', data = self.simulationState['fluidAcceleration'].detach().cpu().numpy())
+            if self.config['simulation']['densityScheme'] == 'continuum':
+                grp.create_dataset('fluidDpdt', data = self.simulationState['dpdt'].detach().cpu().numpy())
+
+
+            for module in self.modules:
+                module.exportState(self.simulationState, self, grp, mask)
+
+            self.lastExport = (self.lastExport + 1 % self.config['export']['interval'] == 0)
 
 
 

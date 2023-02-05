@@ -418,7 +418,7 @@ class sdfBoundaryModule(Module):
         self.pressureScheme = simulationConfig['simulation']['pressureTerm'] 
         self.computeBodyForces = simulationConfig['simulation']['bodyForces'] 
         self.boundaryCounter = len(simulationConfig['solidBC']) if 'solidBC' in simulationConfig else 0
-        self.relaxedJacobiOmega = simulationConfig['dfsph']['relaxedJacobiOmega']
+        self.relaxedJacobiOmega = simulationConfig['dfsph']['relaxedJacobiOmega'] if 'dfsph'in simulationConfig else 0.5
         self.backgroundPressure = simulationConfig['fluid']['backgroundPressure']
         
         self.domainMin = torch.tensor(simulationConfig['domain']['min'], device = self.device)
