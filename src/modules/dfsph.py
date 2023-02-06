@@ -209,12 +209,14 @@ class dfsphModule(Module):
                 with record_function("DFSPH - densitySolve (iteration)"): 
                     with record_function("DFSPH - densitySolve (computeAccel)"): 
                         simulationState['fluidPredAccel'] = self.computeAcceleration(simulationState, simulation, True)
-                        simulation.periodicBC.syncQuantity(simulationState['fluidPredAccel'], simulationState, simulation)
+                        simulation.sync(simulationState['fluidPredAccel'])
+                        # simulation.periodicBC.syncQuantity(simulationState['fluidPredAccel'], simulationState, simulation)
                         simulationState['fluidPressure'][:] = simulationState['fluidPressure2'][:]
 
                     with record_function("DFSPH - densitySolve (updatePressure)"): 
                         simulationState['fluidPressure2'], simulationState['residual'] = self.computeUpdatedPressure(simulationState, simulation, True)             
-                        simulation.periodicBC.syncQuantity(simulationState['fluidPressure2'], simulationState, simulation)
+                        simulation.sync(simulationState['fluidPressure2'])
+                        # simulation.periodicBC.syncQuantity(simulationState['fluidPressure2'], simulationState, simulation)
                         # debugPrint(self.boundaryScheme)
                         # debugPrint(self.pressureScheme)
                         if self.pressureScheme == 'PBSPH':
@@ -241,12 +243,14 @@ class dfsphModule(Module):
                 with record_function("DFSPH - divergenceSolve (iteration)"): 
                     with record_function("DFSPH - divergenceSolve (computeAccel)"): 
                         simulationState['fluidPredAccel'] = self.computeAcceleration(simulationState, simulation, False)
-                        simulation.periodicBC.syncQuantity(simulationState['fluidPredAccel'], simulationState, simulation)
+                        simulation.sync(simulationState['fluidPredAccel'])
+                        # simulation.periodicBC.syncQuantity(simulationState['fluidPredAccel'], simulationState, simulation)
                         simulationState['fluidPressure'][:] = simulationState['fluidPressure2'][:]
 
                     with record_function("DFSPH - divergenceSolve (updatePressure)"): 
                         simulationState['fluidPressure2'], simulationState['residual'] = self.computeUpdatedPressure(simulationState, simulation, False)                    
-                        simulation.periodicBC.syncQuantity(simulationState['fluidPressure2'], simulationState, simulation)
+                        simulation.sync(simulationState['fluidPressure2'])
+                        # simulation.periodicBC.syncQuantity(simulationState['fluidPressure2'], simulationState, simulation)
                         error = torch.mean(torch.clamp(simulationState['residual'], min = -self.divergenceThreshold))# * simulationState['fluidArea'])
                         
                     errors.append((error).item())
@@ -267,11 +271,13 @@ class dfsphModule(Module):
                 simulation.boundaryModule.dfsphPrepareSolver(simulationState, simulation, density)
 
                 simulationState['fluidAlpha'] = self.computeAlpha(simulationState, simulation, density)
-                simulation.periodicBC.syncQuantity(simulationState['fluidAlpha'], simulationState, simulation)
+                simulation.sync(simulationState['fluidAlpha'])
+                # simulation.periodicBC.syncQuantity(simulationState['fluidAlpha'], simulationState, simulation)
 
             with record_function("DFSPH - compute source"):
                 simulationState['fluidSourceTerm'] = self.computeSourceTerm(simulationState, simulation, density)
-                simulation.periodicBC.syncQuantity(simulationState['fluidSourceTerm'], simulationState, simulation)
+                simulation.sync(simulationState['fluidSourceTerm'])
+                # simulation.periodicBC.syncQuantity(simulationState['fluidSourceTerm'], simulationState, simulation)
                 
             with record_function("DFSPH - initialize pressure"):
                 simulationState['fluidPressure2'] =  torch.zeros(simulationState['numParticles'], dtype = simulationState['fluidPosition'].dtype, device = simulationState['fluidPosition'].device)
@@ -280,8 +286,8 @@ class dfsphModule(Module):
                     simulationState['fluidPressure2'] =  simulationState['densitySolverPressure'] * 0.5
                 else:
                     simulationState['fluidPressure2'] = torch.zeros(simulationState['numParticles'], dtype = simulationState['fluidPosition'].dtype, device = simulationState['fluidPosition'].device)
-
-                simulation.periodicBC.syncQuantity(simulationState['fluidPressure2'], simulationState, simulation)
+                simulation.sync(simulationState['fluidPressure2'])
+                # simulation.periodicBC.syncQuantity(simulationState['fluidPressure2'], simulationState, simulation)
                 totalArea = torch.sum(simulationState['fluidArea'])
 
 
@@ -294,7 +300,8 @@ class dfsphModule(Module):
                 
             with record_function("DFSPH - compute accel"):
                 simulationState['fluidPredAccel'] = self.computeAcceleration(simulationState, simulation, density)
-                simulation.periodicBC.syncQuantity(simulationState['fluidPredAccel'], simulationState, simulation)
+                simulation.sync(simulationState['fluidPredAccel'])
+                # simulation.periodicBC.syncQuantity(simulationState['fluidPredAccel'], simulationState, simulation)
                 simulationState['fluidPressure'][:] = simulationState['fluidPressure2'][:]
 
                 simulationState['fluidPredictedVelocity'] += simulationState['dt'] * simulationState['fluidPredAccel']

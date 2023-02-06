@@ -61,6 +61,8 @@ from src.modules.gravity import gravityModule
 from src.modules.xsph import xsphModule
 from src.modules.dfsph import dfsphModule
 from src.modules.adaptiveDT import adaptiveTimeSteppingModule
+from src.modules.laminar import laminarViscosityModule
+from src.modules.diffusion import diffusionModule
 
 class dfsphSimulation(SPHSimulation):    
     def __init__(self, config = tomli.loads('')):
@@ -86,7 +88,17 @@ class dfsphSimulation(SPHSimulation):
         self.modules.append(self.periodicBC)
         self.modules.append(self.velocityBC)
         self.modules.append(self.DFSPH)
-        self.modules.append(self.XSPH)
+        if self.config['diffusion']['velocityScheme'] == 'xsph':
+            self.velocityDiffusionModule = xsphModule()
+            self.modules.append(self.velocityDiffusionModule)
+            
+        if self.config['diffusion']['velocityScheme'] == 'deltaSPH':
+            self.velocityDiffusionModule = diffusionModule()
+            self.modules.append(self.velocityDiffusionModule)
+        self.laminarViscosityModule = laminarViscosityModule()
+        self.modules.append(self.laminarViscosityModule)
+
+
 #         self.modules.append(self.shiftModule)
         self.modules.append(self.gravityModule)
         self.modules.append(self.adaptiveDT)
@@ -133,66 +145,81 @@ class dfsphSimulation(SPHSimulation):
         step = ' 4 - Fluid - Fluid density evaluation'
         if self.verbose: print(step)
         with record_function(step):
-            self.simulationState['fluidDensity'] = self.sphDensity.evaluate(self.simulationState, self)    
-            self.periodicBC.syncQuantity(self.simulationState['fluidDensity'], self.simulationState, self)
+            self.sphDensity.evaluate(self.simulationState, self)    
+            self.sync(self.simulationState['fluidDensity'])
+            # self.periodicBC.syncQuantity(self.simulationState['fluidDensity'], self.simulationState, self)
         
         step = ' 5 - Fluid - Boundary density evaluation'
         if self.verbose: print(step)
         with record_function(step):
-            self.simulationState['fluidDensity'] += self.boundaryModule.evalBoundaryDensity(self.simulationState, self)        
-            self.periodicBC.syncQuantity(self.simulationState['fluidDensity'], self.simulationState, self)
+            self.boundaryModule.evalBoundaryDensity(self.simulationState, self) 
+            self.sync(self.simulationState['fluidDensity'])       
+            # self.periodicBC.syncQuantity(self.simulationState['fluidDensity'], self.simulationState, self)
             
             
         step = ' 6 - Initializing acceleration'
         if self.verbose: print(step)
         with record_function(step):
-            self.simulationState['fluidAcceleration'][:] = 0. 
+            self.simulationState['fluidAcceleration'] = torch.zeros_like(self.simulationState['fluidVelocity'])   
             
         step = ' 7 - External force evaluation'
         if self.verbose: print(step)
         with record_function(step):
-            self.simulationState['fluidAcceleration'] += self.gravityModule.evaluate(self.simulationState, self)
-            self.periodicBC.syncQuantity(self.simulationState['fluidAcceleration'], self.simulationState, self)
+            self.gravityModule.evaluate(self.simulationState, self)
+            self.sync(self.simulationState['fluidAcceleration'])
+            # self.periodicBC.syncQuantity(self.simulationState['fluidAcceleration'], self.simulationState, self)
         
         step = ' 8 - Divergence free solver step'
         if self.verbose: print(step)
         with record_function(step):
             if self.config['dfsph']['divergenceSolver']:
                 self.simulationState['divergenceIterations'] = self.DFSPH.divergenceSolver(self.simulationState, self)
-                self.periodicBC.syncQuantity(self.simulationState['fluidPredAccel'], self.simulationState, self)
+                self.sync(self.simulationState['fluidPredAccel'])
+                # self.periodicBC.syncQuantity(self.simulationState['fluidPredAccel'], self.simulationState, self)
                 self.simulationState['fluidAcceleration'] += self.simulationState['fluidPredAccel']
 
         step = ' 9 - Surface tension force evaluation'
         if self.verbose: print(step)
         with record_function(step):
-            self.simulationState['fluidNormals'] = self.surfaceTension.computeNormals(self.simulationState, self)
-            self.periodicBC.syncQuantity(self.simulationState['fluidNormals'], self.simulationState, self)
-            self.simulationState['fluidCohesionForce'] = self.surfaceTension.cohesionForce(self.simulationState, self)
-            self.simulationState['fluidCurvatureForce'] = self.surfaceTension.curvatureForce(self.simulationState, self)
-            self.simulationState['fluidAcceleration'] += self.simulationState['fluidCurvatureForce']
-            self.simulationState['fluidAcceleration'] += self.simulationState['fluidCohesionForce']
-            self.periodicBC.syncQuantity(self.simulationState['fluidAcceleration'], self.simulationState, self)
+            self.surfaceTension.computeNormals(self.simulationState, self)
+            self.sync(self.surfaceTension.normals)
+            # self.periodicBC.syncQuantity(self.simulationState['fluidNormals'], self.simulationState, self)
+            self.surfaceTension.cohesionForce(self.simulationState, self)
+            self.surfaceTension.curvatureForce(self.simulationState, self)
+            self.sync(self.simulationState['fluidAcceleration'])
+            # self.periodicBC.syncQuantity(self.simulationState['fluidAcceleration'], self.simulationState, self)
             
         step = '10 - Incompressible solver step'
         if self.verbose: print(step)
         with record_function(step):
             self.simulationState['densityIterations'] = self.DFSPH.incompressibleSolver(self.simulationState, self)
-            self.periodicBC.syncQuantity(self.simulationState['fluidPredAccel'], self.simulationState, self)
+            self.sync(self.simulationState['fluidPredAccel'])
+            # self.periodicBC.syncQuantity(self.simulationState['fluidPredAccel'], self.simulationState, self)
             self.simulationState['fluidAcceleration'] += self.simulationState['fluidPredAccel']
-            self.periodicBC.syncQuantity(self.simulationState['fluidAcceleration'], self.simulationState, self)
+            self.sync(self.simulationState['fluidAcceleration'])
+            # self.periodicBC.syncQuantity(self.simulationState['fluidAcceleration'], self.simulationState, self)
         
-        step = '11 - Velocity update step'
+        # step = '11 - Velocity update step'
+        # if self.verbose: print(step)
+        # with record_function(step):
+        #     self.simulationState['fluidVelocity'] += self.simulationState['dt'] * self.simulationState['fluidAcceleration']
+        #     self.periodicBC.syncQuantity(self.simulationState['fluidVelocity'], self.simulationState, self)
+           
+        step = '11 - velocity diffusion'
         if self.verbose: print(step)
-        with record_function(step):
-            self.simulationState['fluidVelocity'] += self.simulationState['dt'] * self.simulationState['fluidAcceleration']
-            self.periodicBC.syncQuantity(self.simulationState['fluidVelocity'], self.simulationState, self)
-        
-        step = '12 - XSPH diffusion evaluation'
+        with record_function(step):     
+            self.velocityDiffusionModule.evaluate(self.simulationState, self)    
+        step = '12 - laminar viscosity'
         if self.verbose: print(step)
-        with record_function(step):
-            xsphFluidCorrection = self.XSPH.fluidTerm(self.simulationState, self)
-            self.periodicBC.syncQuantity(xsphFluidCorrection, self.simulationState, self)
-            self.simulationState['fluidVelocity'] += xsphFluidCorrection
+        with record_function(step):       
+            self.laminarViscosityModule.computeLaminarViscosity(self.simulationState, self)   
+
+        # step = '12 - XSPH diffusion evaluation'
+        # if self.verbose: print(step)
+        # with record_function(step):
+        #     xsphFluidCorrection = self.XSPH.fluidTerm(self.simulationState, self)
+        #     self.periodicBC.syncQuantity(xsphFluidCorrection, self.simulationState, self)
+        #     self.simulationState['fluidVelocity'] += xsphFluidCorrection
         
 #         step = ' 1 - Boundary friction evaluation'
 #         if self.verbose: print(step)
@@ -206,12 +233,12 @@ class dfsphSimulation(SPHSimulation):
         if self.verbose: print(step)
         with record_function(step):
             self.velocityBC.enforce(self.simulationState, self)
-            self.periodicBC.syncQuantity(self.simulationState['fluidVelocity'], self.simulationState, self)
+            self.sync(self.simulationState['fluidVelocity'])
         
-        step = '14 - Position update step'
-        if self.verbose: print(step)
-        with record_function(step):
-            self.simulationState['fluidPosition'] += self.simulationState['fluidVelocity'] * self.simulationState['dt']
+        # step = '14 - Position update step'
+        # if self.verbose: print(step)
+        # with record_function(step):
+            # self.simulationState['fluidPosition'] += self.simulationState['fluidVelocity'] * self.simulationState['dt']
             
 #         step = ' 1 - Shifting positions'
 #         if self.verbose: print(step)
@@ -219,7 +246,8 @@ class dfsphSimulation(SPHSimulation):
 #         self.shiftModule.applyShifting(sphSimulation.simulationState, sphSimulation)
 #         self.periodicBC.syncQuantity(self.simulationState['fluidUpdate'], self.simulationState, self)
 #         self.simulationState['fluidPosition'] += self.simulationState['fluidUpdate']
-        
+        return self.simulationState['fluidAcceleration'], self.simulationState['fluidVelocity'], self.simulationState['dpdt'] if self.config['simulation']['densityScheme'] == 'continuum' else None
+
         step = '15 - Bookkeeping'
         if self.verbose: print(step)
         with record_function(step):

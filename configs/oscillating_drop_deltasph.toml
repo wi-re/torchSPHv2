@@ -18,7 +18,7 @@ adjust = false
 shape = 'sphere'
 
 [compute]
-device='cpu'
+device='cuda'
 
 [particle]
 radius = 0.01
@@ -59,7 +59,7 @@ scheme = 'deltaPlus'
 targetNeighbors = 50
 
 [export]
-active = true
+active = false
 prefix = 'oscillating_drop'
 staticBoundary = true
 interval = 1

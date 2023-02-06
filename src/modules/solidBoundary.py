@@ -82,7 +82,7 @@ class solidBoundaryModule(BoundaryModule):
 
         self.gamma = simulationConfig['pressure']['gamma'] 
         self.kappa = simulationConfig['pressure']['kappa'] 
-        self.hgCorrection = simulationConfig['deltaSPH']['HughesGrahamCorrection'] 
+        self.hgCorrection = simulationConfig['deltaSPH']['HughesGrahamCorrection'] if 'deltaSPH' in simulationConfig else False
         dx = simulationConfig['particle']['support'] * simulationConfig['particle']['packing']
         c0 = 10.0 * np.sqrt(2.0*9.81*0.3)
         h0 = simulationConfig['particle']['support']
@@ -120,7 +120,7 @@ class solidBoundaryModule(BoundaryModule):
             for i in range(self.layers):
                 o = 2 * i * offset + offset
                 tempOffset = o
-                cptcls, cgptcls = samplePolygon(bdy['polygon'], packing, simulationConfig['particle']['support'], \
+                cptcls, cgptcls = samplePolygon(bdy['polygon'].cpu(), packing, simulationConfig['particle']['support'], \
                     offset = tempOffset, mirrored = True )#packing / 2 if bdy['inverted'] else -packing /2)    
                 tempPtcls.append(cptcls)
                 tempGPtcls.append(cgptcls)
@@ -580,6 +580,7 @@ class solidBoundaryModule(BoundaryModule):
             if not self.active:
                 return
             self.boundaryToFluidNeighbors, self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances = simulation.neighborSearch.searchExisting(self.boundaryPositions, self.boundarySupport, simulationState, simulation)
+            # self.boundaryToFluidNeighborDistances = -self.boundaryToFluidNeighborDistances
             # if self.pressureScheme == 'ghostMLS' or :
             self.ghostToFluidNeighbors, self.ghostToFluidNeighborDistances, self.ghostToFluidNeighborRadialDistances = simulation.neighborSearch.searchExisting(self.boundaryGhostPositions, self.boundarySupport * MLSscale, simulationState, simulation, searchRadius = MLSscale)
             if self.boundaryPressureScheme == 'deltaMLS' or self.boundaryPressureScheme == 'MLSPressure':

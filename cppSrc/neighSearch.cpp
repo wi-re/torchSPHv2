@@ -166,7 +166,7 @@ std::vector<torch::Tensor> buildNeighborListCUDA(
 
   auto neighborList = constructNeighborsCUDAImpl(queryParticles_, support_, sortedParticles, sortedSupport, hashTable_, cellIndices_, cumCell_, cellSpan_, sort_, qMin_, neighCount.first, neighCount.second, hMax, cellsX, hashMapLength, searchRadius);
 
-  return {neighCount.first, neighCount.second, neighborList.first, neighborList.second};
+  return {neighborList.first, neighborList.second};
 }
 
 std::vector<torch::Tensor> buildNeighborList(

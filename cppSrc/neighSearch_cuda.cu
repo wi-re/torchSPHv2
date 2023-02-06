@@ -115,7 +115,7 @@ __global__ void neighborSearchCUDAKernel(
     const int32_t cellsX, int32_t hashMapLength, int32_t numParticles, int32_t searchRadius) {
 
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if(idx > numParticles)
+  if(idx >= numParticles)
     return;
     
       auto xi = queryParticles[idx];
@@ -176,7 +176,7 @@ __global__ void constructNeighborhoodsCUDA(
     const int32_t cellsX, int32_t hashMapLength, int32_t numParticles, int32_t searchRadius) {
 
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if(idx > numParticles)
+  if(idx >= numParticles)
     return;
     
       auto xi = queryParticles[idx];

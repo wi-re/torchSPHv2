@@ -148,14 +148,16 @@ def constructNeighborhoodsCUDA(queryPositions, querySupports, hashMapLength :int
 # 
 
     with record_function('buildNeighborList'):
-        ctr, offsets, i, j = neighborSearch.buildNeighborListCUDA(queryPositions, querySupports, sortedPositions, sortedSupport, hashTable, cellLinearIndices, cellOffsets, cellParticleCounters, sortingIndices, qMin, hMax, cellCount, hashMapLength, searchRadius)
+        # ctr, offsets, i, j = neighborSearch.buildNeighborListCUDA(queryPositions, querySupports, sortedPositions, sortedSupport, hashTable, cellLinearIndices, cellOffsets, cellParticleCounters, sortingIndices, qMin, hMax, cellCount, hashMapLength, searchRadius)
+        i, j = neighborSearch.buildNeighborListCUDA(queryPositions, querySupports, sortedPositions, sortedSupport, hashTable, cellLinearIndices, cellOffsets, cellParticleCounters, sortingIndices, qMin, hMax, cellCount, hashMapLength, searchRadius)
     with record_function('finalize'):        
         j, jj = torch.sort(j, dim = 0, stable = True)
         i = i[jj]
         i, ii = torch.sort(i, dim = 0, stable = True)
         j = j[ii]
        
-    
+    return i.to(torch.int64), j.to(torch.int64), None, None, (qMin, hMax, sortingIndices, sortedPositions, sortedSupport), (hashTable, hashMapLength), (cellLinearIndices, cellOffsets, cellParticleCounters, cellCount)
+
     return i.to(torch.int64), j.to(torch.int64), ctr, offsets, (qMin, hMax, sortingIndices, sortedPositions, sortedSupport), (hashTable, hashMapLength), (cellLinearIndices, cellOffsets, cellParticleCounters, cellCount)
 
 def constructNeighborhoodsPreSortedCUDA(queryPositions, querySupports, particleState, hashMap, cellMap, searchRadius : int = 1):
