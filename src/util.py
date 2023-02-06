@@ -74,6 +74,40 @@ def genParticlesCentered(minCoord, maxCoord, radius, support, packing, dtype = t
                 
     return torch.stack(generatedParticles)
 
+def genParticlesSphere(minCoord, maxCoord, radius, packing, support, dtype, device):
+    with record_function('config - gen particles'):
+        area = np.pi * radius**2
+#         support = np.sqrt(area * config['targetNeighbors'] / np.pi)
+        
+        gen_position = lambda r, i, j: torch.tensor([r * i, r * j], dtype=dtype, device = device)
+        
+    #     packing *= support
+        # debugPrint(minCoord)
+        # debugPrint(maxCoord)
+        
+        rad = min(maxCoord[0] - minCoord[0], maxCoord[1] - minCoord[1]) / 2
+        
+        diff = maxCoord - minCoord
+        requiredSlices = torch.ceil(diff / packing / support).type(torch.int64) // 2
+        xi = torch.arange(requiredSlices[0] ).type(dtype).to(device)
+        xi = torch.hstack((-torch.flip(xi[1:],(0,)), xi))
+        yi = torch.arange(requiredSlices[1] ).type(dtype).to(device)
+        yi = torch.hstack((-torch.flip(yi[1:],(0,)), yi))
+        
+        # print(xi)
+    
+        xx, yy = torch.meshgrid(xi,yi, indexing = 'xy')
+        positions = (packing * support) * torch.vstack((xx.flatten(), yy.flatten()))
+        positions[:] += (maxCoord[:,None] + minCoord[:,None])/2
+        
+        dist = torch.linalg.norm(positions,dim=0)
+        # debugPrint(dist)
+        positions = positions[:,dist < rad]
+        
+        # debugPrint(torch.min(positions))
+        # debugPrint(torch.max(positions))
+        return positions.mT
+
 def genParticles(minCoord, maxCoord, radius, packing, support, dtype, device):
     with record_function('config - gen particles'):
         area = np.pi * radius**2

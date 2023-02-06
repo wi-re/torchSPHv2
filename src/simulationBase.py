@@ -326,11 +326,17 @@ class SPHSimulation():
                 if self.verbose: print(e)
                 emitter = self.config['emitter'][e]
                 if self.verbose: print(emitter)
-                emitterPositions = genParticles(
-                    torch.tensor(emitter['min'], dtype = self.dtype, device = self.device), 
-                    torch.tensor(emitter['max'], dtype = self.dtype, device = self.device), 
-                    emitter['radius'], self.config['particle']['packing'] / emitter['compression'], self.config['particle']['support'], self.dtype, self.device)
-                
+                if emitter['shape'] == 'sphere':
+                    emitterPositions = genParticlesSphere(
+                        torch.tensor(emitter['min'], dtype = self.dtype, device = self.device), 
+                        torch.tensor(emitter['max'], dtype = self.dtype, device = self.device), 
+                        emitter['radius'], self.config['particle']['packing'] / emitter['compression'], self.config['particle']['support'], self.dtype, self.device)
+                else:
+                    emitterPositions = genParticles(
+                        torch.tensor(emitter['min'], dtype = self.dtype, device = self.device), 
+                        torch.tensor(emitter['max'], dtype = self.dtype, device = self.device), 
+                        emitter['radius'], self.config['particle']['packing'] / emitter['compression'], self.config['particle']['support'], self.dtype, self.device)
+                    
                 
 
                 if 'solidBC' in self.config:
@@ -430,6 +436,9 @@ class SPHSimulation():
                 self.outFile.attrs['initialDt'] = self.config['integration']['dt']
                 self.outFile.attrs['integrationScheme'] = self.config['integration']['scheme']
                 self.outFile.attrs['fixedDt'] = self.config['timestep']['fixed']
+
+                if not self.config['gravity']['pointSource']:
+                    self.outFile.attrs['fluidGravity'] = self.config['gravity']['magnitude'] * self.config['gravity']['direction']
 
                 if self.config['export']['staticBoundary']:
                     grp = self.outFile.create_group('boundaryInformation')
@@ -604,6 +613,16 @@ class SPHSimulation():
             grp.create_dataset('fluidSupport', data = self.simulationState['fluidSupport'].detach().cpu().numpy())
             grp.create_dataset('fluidPressure', data = self.simulationState['fluidPressure'].detach().cpu().numpy())
             grp.create_dataset('fluidAcceleration', data = self.simulationState['fluidAcceleration'].detach().cpu().numpy())
+            if self.config['gravity']['pointSource']:
+                difference = self.simulationState['fluidPosition'] - torch.tensor(self.config['gravity']['center'], dtype = self.dtype, device = self.device)
+                distance = torch.linalg.norm(difference,axis=1)
+                difference[distance > 1e-7] = difference[distance > 1e-7] / distance[distance > 1e-7, None]
+                if self.config['gravity']['potentialField']:
+                    grp.create_dataset('fluidGravity', data = (self.config['gravity']['magnitude'] * difference * (distance)[:,None]).detach().cpu().numpy())
+                else:
+                    grp.create_dataset('fluidGravity', data = (self.config['gravity']['magnitude'] * difference).detach().cpu().numpy())
+                
+
             if self.config['simulation']['densityScheme'] == 'continuum':
                 grp.create_dataset('fluidDpdt', data = self.simulationState['dpdt'].detach().cpu().numpy())
 
