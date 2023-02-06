@@ -427,6 +427,9 @@ class SPHSimulation():
                 self.outFile.attrs['floatprecision'] = self.config['compute']['floatprecision']
                 self.outFile.attrs['restDensity'] = self.config['fluid']['restDensity']
                 self.outFile.attrs['c0'] = self.config['fluid']['c0']
+                self.outFile.attrs['radius'] = self.config['particle']['radius']
+                self.outFile.attrs['packing'] = self.config['particle']['packing']
+                self.outFile.attrs['spacing'] = self.config['particle']['spacing']
                 self.outFile.attrs['velocityDiffusionScheme'] = self.config['diffusion']['velocityScheme']
                 self.outFile.attrs['densityDiffusionScheme'] = self.config['diffusion']['densityScheme']
                 self.outFile.attrs['alphaDiffusion'] = self.config['diffusion']['alpha']
@@ -599,16 +602,21 @@ class SPHSimulation():
             self.simulationState['time'] += self.simulationState['dt']
             self.simulationState['timestep'] += 1
 
-            self.simulationState['dt'] = self.adaptiveDT.updateTimestep(self.simulationState, self)
         if self.config['export']['active'] and \
                 (self.config['export']['interval'] < 0 or (self.lastExport % self.config['export']['interval'] == 0)):
             grp = self.dataGroup.create_group('%05d' % self.exportCounter )
 
             self.exportCounter = self.exportCounter + 1
             mask = (self.simulationState['ghostIndices'] == -1) if 'ghostIndices' in self.simulationState else self.simulationState['UID'] > -1
+            grp.attrs['time'] = self.simulationState['time']
+            grp.attrs['timestep'] = self.simulationState['timestep']
+            grp.attrs['dt'] = self.simulationState['dt']
+
+
             grp.create_dataset('UID', data = self.simulationState['UID'].detach().cpu().numpy())
             grp.create_dataset('fluidPosition', data = self.simulationState['fluidPosition'].detach().cpu().numpy())
             grp.create_dataset('fluidVelocity', data = self.simulationState['fluidVelocity'].detach().cpu().numpy())
+            grp.create_dataset('fluidArea', data = self.simulationState['fluidDensity'].detach().cpu().numpy())
             grp.create_dataset('fluidDensity', data = self.simulationState['fluidDensity'].detach().cpu().numpy())
             grp.create_dataset('fluidSupport', data = self.simulationState['fluidSupport'].detach().cpu().numpy())
             grp.create_dataset('fluidPressure', data = self.simulationState['fluidPressure'].detach().cpu().numpy())
@@ -632,6 +640,7 @@ class SPHSimulation():
 
             self.lastExport = (self.lastExport + 1 % self.config['export']['interval'] == 0)
 
+        self.simulationState['dt'] = self.adaptiveDT.updateTimestep(self.simulationState, self)
 
 
     def createPlot(self, plotScale = 1, plotDomain = True, plotEmitters = False, \

@@ -59,7 +59,7 @@ scheme = 'deltaPlus'
 targetNeighbors = 50
 
 [export]
-active = false
+active = true
 prefix = 'oscillating_drop'
 staticBoundary = true
 interval = 1

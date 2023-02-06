@@ -1,0 +1,346 @@
+import torch
+from torch.profiler import record_function
+from torch_geometric.nn.resolver import aggregation_resolver as aggr_resolver
+import numpy as np
+
+
+def getSpacing(n, periodic = False):
+    if n == 1:
+        return 2.
+    else:
+        return 2. / n if periodic else 2./(n-1)
+
+
+centroidCache = {False:{'cuda':{},'cpu':{}},True:{'cuda':{},'cpu':{}}}
+def getDistances(n, x, periodic = False):
+    if n in centroidCache[periodic][x.device.type]:
+        centroids = centroidCache[periodic][x.device.type][n]
+        if periodic:
+            spacing = getSpacing(n, True)
+            offset = -1 + spacing / 2.
+            ra = torch.unsqueeze(x,axis=0) - centroids
+            rb = torch.unsqueeze(x,axis=0) - centroids - 2.
+            rc = torch.unsqueeze(x,axis=0) - centroids + 2.
+            return torch.minimum(torch.minimum(torch.abs(ra)/spacing, torch.abs(rb)/spacing), torch.abs(rc)/spacing)
+        else:
+            spacing = getSpacing(n, False)
+            
+            # centroids = torch.linspace(-1.,1.,n, device = x.device) if n > 1 else torch.constant([0.], device = x.device)
+        #     tx = torch.constant(x, dtype='float32')
+            r = torch.unsqueeze(x,axis=0) - centroids
+            return torch.abs(r)  / spacing
+
+
+    if periodic:
+        spacing = getSpacing(n, True)
+        offset = -1 + spacing / 2.
+        
+#         tx = torch.constant(x, dtype='float32')
+        centroids = torch.unsqueeze(torch.linspace(-1.,1.,n+1, device = x.device)[:n],axis=1)
+        centroidCache[periodic][x.device.type][n] = centroids
+
+        ra = torch.unsqueeze(x,axis=0) - centroids
+        rb = torch.unsqueeze(x,axis=0) - centroids - 2.
+        rc = torch.unsqueeze(x,axis=0) - centroids + 2.
+        return torch.minimum(torch.minimum(torch.abs(ra)/spacing, torch.abs(rb)/spacing), torch.abs(rc)/spacing)
+        
+    spacing = getSpacing(n, False)
+    
+    centroids = torch.linspace(-1.,1.,n, device = x.device) if n > 1 else torch.Tensor([0.], device = x.device)
+    centroids = torch.unsqueeze(centroids, axis = 1)
+    centroidCache[periodic][x.device.type][n] = centroids
+#     tx = torch.constant(x, dtype='float32')
+    r = torch.unsqueeze(x,axis=0) - centroids
+    return torch.abs(r)  / spacing
+
+
+def evalRBFSeries(n, x, which = 'linear', epsilon = 1., periodic = False):    
+    k = int(epsilon)
+    r = getDistances(n, x, periodic)    
+    
+    cpow = lambda x, p: torch.maximum(x, torch.zeros_like(r))**p
+    
+    funLib = {
+        'linear': lambda r:  torch.clamp(1. - r / epsilon,0,1),
+        'gaussian': lambda r:  torch.exp(-(epsilon * r)**2),
+        'multiquadric': lambda r: torch.sqrt(1. + (epsilon * r) **2),
+        'inverse_quadric': lambda r: 1. / ( 1 + (epsilon * r) **2),
+        'inverse_multiquadric': lambda r: 1. / torch.sqrt(1. + (epsilon * r) **2),
+        'polyharmonic': lambda r: torch.pow(r, k) if k % 2 == 1 else torch.pow(r,k-1) * torch.math.log(torch.pow(r,r)),
+        'bump': lambda r: torch.where(r < 1./epsilon, torch.exp(-1./(1- (epsilon * r)**2)), torch.zeros_like(r)),
+        'cubic_spline': lambda r: cpow(1-r/epsilon,3) - 4. * cpow(1/2-r/epsilon,3),
+        'quartic_spline': lambda r: cpow(1-r/epsilon,4) - 5 * cpow(3/5-r/epsilon,4) + 10 * cpow(1/5-r/epsilon,4),
+        'quintic_spline': lambda r: cpow(1-r/epsilon,5) - 6 * cpow(2/3-r/epsilon,5) + 15 * cpow(1/3-r/epsilon,5),
+        'wendland2': lambda r: cpow(1 - r/epsilon, 4) * (1 + 4 * r/epsilon),
+        'wendland4': lambda r: cpow(1 - r/epsilon, 6) * (1 + 6 * r/epsilon + 35/3 * (r/epsilon)**2),
+        'wendland6': lambda r: cpow(1 - r/epsilon, 8) * (1 + 8 * r/epsilon + 25 * (r/epsilon) **2 + 32 * (r/epsilon)**3),
+        'poly6': lambda r: cpow(1 - (r/epsilon)**2, 3),
+        'spiky': lambda r: cpow(1 - r/epsilon, 3),
+        'square': lambda r: torch.where(r <= epsilon, torch.ones_like(r), torch.zeros_like(r))
+    }
+    rbf = funLib[which]
+    
+#     if periodic:
+#         return torch.maximum(rbf(r[0]), torch.maximum(rbf(r[1]), rbf(r[2])))
+        # return torch.clip_by_value(torch.maximum(rbf(r[0]), torch.maximum(rbf(r[1]), rbf(r[2]))),0,1)   
+    return rbf(r)#torch.clip_by_value(rbf(r),0,1)
+    
+def evalChebSeries(n,x):
+    cs = []
+    for i in range(n):
+        if i == 0:
+            cs.append(torch.ones_like(x))
+        elif i == 1:
+            cs.append(x)
+        else:
+            cs.append(2. * x * cs[i-1] - cs[i-2])
+    return torch.stack(cs)
+sqrt_pi_1 = 1. / np.sqrt(np.pi)
+
+def fourier(n, x):
+    if n == 0:
+        return torch.ones_like(x) / np.sqrt(2. * np.pi)
+    elif n % 2 == 0:
+        return torch.cos((n // 2 + 1) * x) * sqrt_pi_1
+    return torch.sin((n // 2 + 1) * x) * sqrt_pi_1
+
+def evalFourierSeries(n, x):
+    fs = []
+    for i in range(n):
+        fs.append(fourier(i, x))
+    return torch.stack(fs)
+
+def evalBasisFunction(n, x, which = 'chebyshev', periodic = False):   
+    s = which.split()    
+#     print(s)
+    if s[0] == 'chebyshev':
+        return evalChebSeries(n, x)
+    if s[0] == 'fourier':
+        return evalFourierSeries(n, x * np.pi)
+    if s[0] == 'linear':
+        return evalRBFSeries(n, x, which = 'linear', epsilon = 1., periodic = periodic)        
+    if s[0] == 'rbf':
+        eps = 1. if len(s) < 3 else float(s[2])
+        return evalRBFSeries(n, x, which = s[1], epsilon = eps, periodic = periodic)
+
+class cutlass(torch.autograd.Function):
+    @staticmethod
+    # @profile
+    def forward(ctx, edge_index, features, edge_attr, edge_weights, weight, 
+                dim_size, dim, size, rbfs, periodic, forwardBatchSize, backwardBatchSize):
+        with record_function("cutlass forward step"): 
+            ctx.save_for_backward(edge_index, features, edge_attr, edge_weights, weight)
+            ctx.dimensions = len(size)
+            ctx.dim_size = dim_size
+            ctx.dim = dim
+            ctx.size = size
+            ctx.rbfs = rbfs
+            ctx.periodic = periodic
+            ctx.forwardBatchSize = forwardBatchSize
+            ctx.backwardBatchSize = backwardBatchSize
+            
+            aggr = aggr_resolver('sum')
+
+            with record_function("cutlass forward batchprep"): 
+                # print(features)
+                # print(features.shape)
+                # print(edge_index[1])
+                # print(edge_index[1].shape)
+                x_j = torch.index_select(features, 0, edge_index[1])
+                x_j = x_j if edge_weights is None else x_j * edge_weights[:,None]
+
+                indices = torch.arange(0,edge_attr.shape[0])
+            
+                batches = torch.split(indices, ctx.forwardBatchSize * 1024)
+                convs = []
+
+            for batch in batches:
+                if ctx.dimensions == 1:
+                    with record_function("cutlass forward batch"): 
+                        with record_function("cutlass forward basis"): 
+                            u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+
+                        with record_function("cutlass forward einsum"): 
+                            convs.append(torch.einsum('nu, uio,ni -> no',u,weight, x_j[batch]))
+                        del u
+                if ctx.dimensions == 2:
+                    with record_function("cutlass forward batch"): 
+                        with record_function("cutlass forward basis"): 
+                            u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+                            v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
+
+                        with record_function("cutlass forward einsum"): 
+                            convs.append(torch.einsum('nu, nv, uvio,ni -> no',u,v,weight, x_j[batch]))
+                        del u,v
+                if ctx.dimensions == 3:
+                    with record_function("cutlass forward batch"): 
+                        with record_function("cutlass forward basis"): 
+                            u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+                            v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
+                            w = evalBasisFunction(ctx.size[2], edge_attr[batch,2], which=ctx.rbfs[2], periodic = ctx.periodic[2]).T
+
+                        with record_function("cutlass forward einsum"): 
+                            convs.append(torch.einsum('nu, nv, nw, uvwio,ni -> no',u,v,w,weight, x_j[batch]))
+                        del u,v,w
+
+            with record_function("cutlass forward stacking"): 
+                out = torch.vstack(convs)
+            
+            
+            with record_function("cutlass forward aggregation"): 
+                out = aggr(out, index = edge_index[1], ptr = None, dim_size = ctx.dim_size, dim = ctx.dim)
+            return out
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        with record_function("cutlass backward step"): 
+            edge_index, features, edge_attr, edge_weights, weight = ctx.saved_tensors
+            
+            featureGrad = None
+            weightGrad = None
+            
+            with record_function("cutlass backward batching"): 
+                x_j = torch.index_select(features, 0, edge_index[1])
+                x_j = x_j if edge_weights is None else x_j * edge_weights[:,None]
+                gradFeatures = torch.index_select(grad_output, 0, edge_index[1])
+
+                indices = torch.arange(0,edge_attr.shape[0])
+            
+                batches = torch.split(indices, ctx.backwardBatchSize * 1024)
+            
+            if ctx.needs_input_grad[1] and not ctx.needs_input_grad[4]:  
+                with record_function("cutlass backward feature grad"):    
+                    
+                    transposedWeights = torch.transpose(weight, 2, 3)        
+                    aggr = aggr_resolver('sum')
+
+                    convs = []
+                    for batch in batches:
+                        if ctx.dimensions == 1:
+                            with record_function("cutlass backward feature grad batch"):    
+                                with record_function("cutlass backward feature grad basis"):    
+                                    u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+                                
+                                with record_function("cutlass backward feature grad einsum"):    
+                                    convs.append(torch.einsum('nu, nv, uvio,ni -> no',u, transposedWeights, gradFeatures[batch]))
+                                del u
+                        if ctx.dimensions == 2:
+                            with record_function("cutlass backward feature grad batch"):    
+                                with record_function("cutlass backward feature grad basis"):    
+                                    u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+                                    v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
+                                
+                                with record_function("cutlass backward feature grad einsum"):    
+                                    convs.append(torch.einsum('nu, nv, uvio,ni -> no',u,v, transposedWeights, gradFeatures[batch]))
+                                del u,v
+                        if ctx.dimensions == 3:
+                            with record_function("cutlass backward feature grad batch"):    
+                                with record_function("cutlass backward feature grad basis"):    
+                                    u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+                                    v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
+                                    w = evalBasisFunction(ctx.size[2], edge_attr[batch,2], which=ctx.rbfs[2], periodic = ctx.periodic[2]).T
+                                
+                                with record_function("cutlass backward feature grad einsum"):    
+                                    convs.append(torch.einsum('nu, nv,nw, uvwio,ni -> no',u,v,w, transposedWeights, gradFeatures[batch]))
+                                del u,v,w
+                    with record_function("cutlass backward feature grad stacking"):   
+                        out = torch.vstack(convs)
+                    with record_function("cutlass backward feature grad aggregation"):   
+                        featureGrad = aggr(out, index = edge_index[1], ptr = None, dim_size = features.shape[0], dim = ctx.dim)       
+            if ctx.needs_input_grad[4] and not ctx.needs_input_grad[1]:   
+                with record_function("cutlass backward weight grad"):    
+                    weightGrad = weight.new_zeros(weight.shape)                    
+                    for batch in batches:
+                        if ctx.dimensions == 1:
+                            with record_function("cutlass backward weight grad batch"):   
+                                with record_function("cutlass backward weight grad batch basis"):   
+                                    u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+
+                                with record_function("cutlass backward weight grad batch einsum"):   
+                                    localGrad = torch.einsum('nu, ni, no -> uvio', u, x_j[batch], gradFeatures[batch])
+                                    weightGrad += localGrad
+                                del u
+                        if ctx.dimensions == 2:
+                            with record_function("cutlass backward weight grad batch"):   
+                                with record_function("cutlass backward weight grad batch basis"):   
+                                    u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+                                    v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
+
+                                with record_function("cutlass backward weight grad batch einsum"):   
+                                    localGrad = torch.einsum('nu, nv, ni, no -> uvio', u, v, x_j[batch], gradFeatures[batch])
+                                    weightGrad += localGrad
+                                del u,v
+                        if ctx.dimensions == 3:
+                            with record_function("cutlass backward weight grad batch"):   
+                                with record_function("cutlass backward weight grad batch basis"):   
+                                    u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+                                    v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
+                                    w = evalBasisFunction(ctx.size[2], edge_attr[batch,2], which=ctx.rbfs[2], periodic = ctx.periodic[2]).T
+
+                                with record_function("cutlass backward weight grad batch einsum"):   
+                                    localGrad = torch.einsum('nu, nv, nw, ni, no -> uvwio', u, v, w,x_j[batch], gradFeatures[batch])
+                                    weightGrad += localGrad
+                                del u,v,w
+
+            if ctx.needs_input_grad[1] and ctx.needs_input_grad[4]:  
+                with record_function("cutlass backward"):      
+                    weightGrad = weight.new_zeros(weight.shape)
+                    
+                    transposedWeights = torch.transpose(weight, 2, 3)        
+                    aggr = aggr_resolver('sum')
+
+                    convs = []
+                    for batch in batches:
+                        if ctx.dimensions == 1:
+                            with record_function("cutlass backward batch"):   
+                                with record_function("cutlass backward basis"):   
+                                    u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+                            with record_function("cutlass backward einsum features"):   
+                                convs.append(torch.einsum('nu, uio,ni -> no',u, transposedWeights, gradFeatures[batch]))
+                            with record_function("cutlass backward einsum grad"):   
+                                io = torch.einsum('ni, no -> nio', x_j[batch], gradFeatures[batch])
+                                localGrad = torch.einsum('nu, nio -> uio', u, io)
+                                weightGrad += localGrad
+                        if ctx.dimensions == 2:
+                            with record_function("cutlass backward batch"):   
+                                with record_function("cutlass backward basis"):   
+                                    u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+                                    v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
+                            with record_function("cutlass backward einsum uvw"):   
+                                uvw = torch.einsum('nu, nv -> nuv', u, v)
+                                del u,v
+                            with record_function("cutlass backward einsum features"):   
+                                convs.append(torch.einsum('nuv, uvio,ni -> no',uvw, transposedWeights, gradFeatures[batch]))
+                            with record_function("cutlass backward einsum grad"):   
+                                io = torch.einsum('ni, no -> nio', x_j[batch], gradFeatures[batch])
+                                localGrad = torch.einsum('nuv, nio -> uvio', uvw, io)
+                                weightGrad += localGrad
+                        if ctx.dimensions == 3:
+                            with record_function("cutlass backward batch"):   
+                                with record_function("cutlass backward basis"):   
+                                    u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+                                    v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
+                                    w = evalBasisFunction(ctx.size[2], edge_attr[batch,2], which=ctx.rbfs[2], periodic = ctx.periodic[2]).T
+                            with record_function("cutlass backward einsum uvw"):   
+                                uvw = torch.einsum('nu, nv, nw -> nuvw', u, v, w)
+                                del u,v,w
+                            with record_function("cutlass backward einsum features"):   
+                                convs.append(torch.einsum('nuvw, uvwio,ni -> no',uvw, transposedWeights, gradFeatures[batch]))
+                            with record_function("cutlass backward einsum grad"):   
+                                io = torch.einsum('ni, no -> nio', x_j[batch], gradFeatures[batch])
+                                localGrad = torch.einsum('nuvw, nio -> uvwio', uvw, io)
+                                weightGrad += localGrad
+
+                    with record_function("cutlass backward stacking"):   
+                        out = torch.vstack(convs)
+                    with record_function("cutlass backward aggregation"):   
+                        featureGrad = aggr(out, index = edge_index[1], ptr = None, dim_size = features.shape[0], dim = ctx.dim)        
+            
+            # print('index:       ', edge_index)
+            # print('features:    ', features)
+            # print('attr:        ', edge_attr)
+            # print('weights:     ', edge_weights)
+            # print('weight:      ', weight)
+            # print('featureGrad: ', featureGrad)
+            # print('weightGrad:  ', weightGrad)
+            return None, featureGrad, None, None, weightGrad, None, None, None, None, None, None, None
