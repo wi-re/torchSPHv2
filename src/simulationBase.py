@@ -370,7 +370,7 @@ class SPHSimulation():
                 emitterVelocity[:,0] = emitter['velocity'][0]
                 emitterVelocity[:,1] = emitter['velocity'][1]
 
-                emitterDensity = torch.ones(emitterPositions.shape[0], dtype = self.dtype, device=self.device)
+                emitterDensity = torch.ones(emitterPositions.shape[0], dtype = self.dtype, device=self.device) * emitter['restDensity']
 
                 positions.append(emitterPositions)
                 areas.append(emitterAreas)

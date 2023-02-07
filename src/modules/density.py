@@ -51,8 +51,8 @@ class densityModule(Module):
                 simulationState['fluidDensity'] = computeDensity(fluidRadialDistances, fluidArea, fluidNeighbors, particleSupport)
         
         simulationState['fluidVolume'] = simulationState['fluidArea'] / simulationState['fluidDensity']
-        simulation.sync(simulationState['fluidDensity'])
-        simulation.sync(simulationState['fluidVolume'])
+        # simulation.sync(simulationState['fluidDensity'])
+        # simulation.sync(simulationState['fluidVolume'])
 
 def testFunctionality(sphSimulation):
     density = densityModule()

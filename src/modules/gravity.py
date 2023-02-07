@@ -56,4 +56,4 @@ class gravityModule(Module):
             else:
                 simulationState['fluidAcceleration'] += self.magnitude * torch.tensor(self.direction, device = self.device, dtype = self.dtype)
             
-            simulation.sync(simulationState['fluidAcceleration'])
+            # simulation.sync(simulationState['fluidAcceleration'])
