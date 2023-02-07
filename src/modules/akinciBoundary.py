@@ -51,7 +51,7 @@ class akinciBoundaryModule(BoundaryModule):
         
         self.domainMin = torch.tensor(simulationConfig['domain']['min'], device = self.device)
         self.domainMax = torch.tensor(simulationConfig['domain']['max'], device = self.device)
-        self.pressureScheme = simulationConfig['simulation']['pressureTerm'] 
+        self.pressureScheme = simulationConfig['pressure']['boundaryPressureTerm'] 
         self.computeBodyForces = simulationConfig['simulation']['bodyForces'] 
         self.boundaryCounter = len(simulationConfig['solidBC']) if 'solidBC' in simulationConfig else 0
         self.relaxedJacobiOmega = simulationConfig['dfsph']['relaxedJacobiOmega'] if 'dfsph'in simulationConfig else 0.5
@@ -77,7 +77,7 @@ class akinciBoundaryModule(BoundaryModule):
             offset = packing / 2 if bdy['inverted'] else -packing /2
             tempPtcls = []
             tempGPtcls = []
-            for i in range(self.layers):
+            for i in range(1):
                 cptcls, cgptcls = samplePolygon(bdy['polygon'], packing, simulationConfig['particle']['support'], offset = 2 * i * offset + offset )#packing / 2 if bdy['inverted'] else -packing /2)    
                 tempPtcls.append(cptcls)
                 tempGPtcls.append(cgptcls)

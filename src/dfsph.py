@@ -174,29 +174,29 @@ class dfsphSimulation(SPHSimulation):
         with record_function(step):
             if self.config['dfsph']['divergenceSolver']:
                 self.simulationState['divergenceIterations'] = self.DFSPH.divergenceSolver(self.simulationState, self)
-                self.sync(self.simulationState['fluidPredAccel'])
+                # self.sync(self.simulationState['fluidPredAccel'])
                 # self.periodicBC.syncQuantity(self.simulationState['fluidPredAccel'], self.simulationState, self)
                 self.simulationState['fluidAcceleration'] += self.simulationState['fluidPredAccel']
 
-        step = ' 9 - Surface tension force evaluation'
-        if self.verbose: print(step)
-        with record_function(step):
-            self.surfaceTension.computeNormals(self.simulationState, self)
-            self.sync(self.surfaceTension.normals)
-            # self.periodicBC.syncQuantity(self.simulationState['fluidNormals'], self.simulationState, self)
-            self.surfaceTension.cohesionForce(self.simulationState, self)
-            self.surfaceTension.curvatureForce(self.simulationState, self)
-            self.sync(self.simulationState['fluidAcceleration'])
-            # self.periodicBC.syncQuantity(self.simulationState['fluidAcceleration'], self.simulationState, self)
+        # step = ' 9 - Surface tension force evaluation'
+        # if self.verbose: print(step)
+        # with record_function(step):
+        #     self.surfaceTension.computeNormals(self.simulationState, self)
+        #     self.sync(self.surfaceTension.normals)
+        #     # self.periodicBC.syncQuantity(self.simulationState['fluidNormals'], self.simulationState, self)
+        #     self.surfaceTension.cohesionForce(self.simulationState, self)
+        #     self.surfaceTension.curvatureForce(self.simulationState, self)
+        #     self.sync(self.simulationState['fluidAcceleration'])
+        #     # self.periodicBC.syncQuantity(self.simulationState['fluidAcceleration'], self.simulationState, self)
             
         step = '10 - Incompressible solver step'
         if self.verbose: print(step)
         with record_function(step):
             self.simulationState['densityIterations'] = self.DFSPH.incompressibleSolver(self.simulationState, self)
-            self.sync(self.simulationState['fluidPredAccel'])
+            # self.sync(self.simulationState['fluidPredAccel'])
             # self.periodicBC.syncQuantity(self.simulationState['fluidPredAccel'], self.simulationState, self)
             self.simulationState['fluidAcceleration'] += self.simulationState['fluidPredAccel']
-            self.sync(self.simulationState['fluidAcceleration'])
+            # self.sync(self.simulationState['fluidAcceleration'])
             # self.periodicBC.syncQuantity(self.simulationState['fluidAcceleration'], self.simulationState, self)
         
         # step = '11 - Velocity update step'
@@ -205,14 +205,14 @@ class dfsphSimulation(SPHSimulation):
         #     self.simulationState['fluidVelocity'] += self.simulationState['dt'] * self.simulationState['fluidAcceleration']
         #     self.periodicBC.syncQuantity(self.simulationState['fluidVelocity'], self.simulationState, self)
            
-        step = '11 - velocity diffusion'
-        if self.verbose: print(step)
-        with record_function(step):     
-            self.velocityDiffusionModule.evaluate(self.simulationState, self)    
-        step = '12 - laminar viscosity'
-        if self.verbose: print(step)
-        with record_function(step):       
-            self.laminarViscosityModule.computeLaminarViscosity(self.simulationState, self)   
+        # step = '11 - velocity diffusion'
+        # if self.verbose: print(step)
+        # with record_function(step):     
+        #     self.velocityDiffusionModule.evaluate(self.simulationState, self)    
+        # step = '12 - laminar viscosity'
+        # if self.verbose: print(step)
+        # with record_function(step):       
+        #     self.laminarViscosityModule.computeLaminarViscosity(self.simulationState, self)   
 
         # step = '12 - XSPH diffusion evaluation'
         # if self.verbose: print(step)

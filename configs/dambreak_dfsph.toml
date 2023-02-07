@@ -21,23 +21,24 @@ adjustDomain = true
 
 [emitter2.fluidR]
 fillDomain = false
-min = [0.05,-0.25]
-max = [0.5,0.25]
-velocity = [ -2.0, 0.0]
+min = [0.5,-0.5]
+max = [1.5,0.5]
+velocity = [ 2.0, 0.0]
 adjust = false
 shape = 'sphere'
 
 [emitter2.fluidL]
 fillDomain = false
-min = [-1.0,-0.5]
-max = [-0.0,0.5]
-velocity = [ 0.0, 0.0]
+min = [-1.5,-0.5]
+max = [-0.5,0.5]
+velocity = [ -2.0, 0.0]
 adjust = false
+shape = 'sphere'
 
 [emitter2.fluid]
 fillDomain = false
-min = [-0.25,-1.99]
-max = [0.25,-1.49]
+min = [-0.5,-0.5]
+max = [0.5,0.5]
 velocity = [ 0.0, 0.0]
 adjust = false
 shape = 'sphere'
@@ -51,7 +52,7 @@ adjust = true
 
 [emitter.damBreak]
 fillDomain = false
-min = [-2,-2]
+min = [-1.99,-1.99]
 max = [-1.0, -1.0]
 velocity = [ 0.0, 0.0]
 adjust = true
@@ -69,7 +70,7 @@ magnitude = 0
 c0 = 100
 
 [simulation]
-boundaryScheme = 'solid'
+boundaryScheme = 'Akinci'
 verbose = false
 densityScheme = 'summation'
 scheme = 'dfsph'

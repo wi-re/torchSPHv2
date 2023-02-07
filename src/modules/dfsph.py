@@ -167,7 +167,7 @@ class dfsphModule(Module):
 
             bdyKernelSum = simulation.boundaryModule.dfsphBoundaryPressureSum(simulationState, simulation, density)
             kernelSum += bdyKernelSum
-
+            # kernelSum = -kernelSum
 
 
             residual = kernelSum - simulationState['fluidSourceTerm']
@@ -209,13 +209,13 @@ class dfsphModule(Module):
                 with record_function("DFSPH - densitySolve (iteration)"): 
                     with record_function("DFSPH - densitySolve (computeAccel)"): 
                         simulationState['fluidPredAccel'] = self.computeAcceleration(simulationState, simulation, True)
-                        simulation.sync(simulationState['fluidPredAccel'])
+                        # simulation.sync(simulationState['fluidPredAccel'])
                         # simulation.periodicBC.syncQuantity(simulationState['fluidPredAccel'], simulationState, simulation)
                         simulationState['fluidPressure'][:] = simulationState['fluidPressure2'][:]
 
                     with record_function("DFSPH - densitySolve (updatePressure)"): 
                         simulationState['fluidPressure2'], simulationState['residual'] = self.computeUpdatedPressure(simulationState, simulation, True)             
-                        simulation.sync(simulationState['fluidPressure2'])
+                        # simulation.sync(simulationState['fluidPressure2'])
                         # simulation.periodicBC.syncQuantity(simulationState['fluidPressure2'], simulationState, simulation)
                         # debugPrint(self.boundaryScheme)
                         # debugPrint(self.pressureScheme)
@@ -243,13 +243,13 @@ class dfsphModule(Module):
                 with record_function("DFSPH - divergenceSolve (iteration)"): 
                     with record_function("DFSPH - divergenceSolve (computeAccel)"): 
                         simulationState['fluidPredAccel'] = self.computeAcceleration(simulationState, simulation, False)
-                        simulation.sync(simulationState['fluidPredAccel'])
+                        # simulation.sync(simulationState['fluidPredAccel'])
                         # simulation.periodicBC.syncQuantity(simulationState['fluidPredAccel'], simulationState, simulation)
                         simulationState['fluidPressure'][:] = simulationState['fluidPressure2'][:]
 
                     with record_function("DFSPH - divergenceSolve (updatePressure)"): 
                         simulationState['fluidPressure2'], simulationState['residual'] = self.computeUpdatedPressure(simulationState, simulation, False)                    
-                        simulation.sync(simulationState['fluidPressure2'])
+                        # simulation.sync(simulationState['fluidPressure2'])
                         # simulation.periodicBC.syncQuantity(simulationState['fluidPressure2'], simulationState, simulation)
                         error = torch.mean(torch.clamp(simulationState['residual'], min = -self.divergenceThreshold))# * simulationState['fluidArea'])
                         
@@ -271,22 +271,24 @@ class dfsphModule(Module):
                 simulation.boundaryModule.dfsphPrepareSolver(simulationState, simulation, density)
 
                 simulationState['fluidAlpha'] = self.computeAlpha(simulationState, simulation, density)
-                simulation.sync(simulationState['fluidAlpha'])
+                # simulation.sync(simulationState['fluidAlpha'])
                 # simulation.periodicBC.syncQuantity(simulationState['fluidAlpha'], simulationState, simulation)
 
             with record_function("DFSPH - compute source"):
                 simulationState['fluidSourceTerm'] = self.computeSourceTerm(simulationState, simulation, density)
-                simulation.sync(simulationState['fluidSourceTerm'])
+                # simulation.sync(simulationState['fluidSourceTerm'])
                 # simulation.periodicBC.syncQuantity(simulationState['fluidSourceTerm'], simulationState, simulation)
                 
             with record_function("DFSPH - initialize pressure"):
                 simulationState['fluidPressure2'] =  torch.zeros(simulationState['numParticles'], dtype = simulationState['fluidPosition'].dtype, device = simulationState['fluidPosition'].device)
 
-                if 'densitySolverPressure' in simulationState and density:
-                    simulationState['fluidPressure2'] =  simulationState['densitySolverPressure'] * 0.5
-                else:
-                    simulationState['fluidPressure2'] = torch.zeros(simulationState['numParticles'], dtype = simulationState['fluidPosition'].dtype, device = simulationState['fluidPosition'].device)
-                simulation.sync(simulationState['fluidPressure2'])
+                # if 'densitySolverPressure' in simulationState and density:
+                    # simulationState['fluidPressure2'] =  simulationState['densitySolverPressure'] * 0.5
+                # else:
+                simulationState['fluidPressure2'] = torch.zeros(simulationState['numParticles'], dtype = simulationState['fluidPosition'].dtype, device = simulationState['fluidPosition'].device)
+                simulationState['fluidPressure'] = torch.zeros(simulationState['numParticles'], dtype = simulationState['fluidPosition'].dtype, device = simulationState['fluidPosition'].device)
+                
+                # simulation.sync(simulationState['fluidPressure2'])
                 # simulation.periodicBC.syncQuantity(simulationState['fluidPressure2'], simulationState, simulation)
                 totalArea = torch.sum(simulationState['fluidArea'])
 
@@ -300,7 +302,7 @@ class dfsphModule(Module):
                 
             with record_function("DFSPH - compute accel"):
                 simulationState['fluidPredAccel'] = self.computeAcceleration(simulationState, simulation, density)
-                simulation.sync(simulationState['fluidPredAccel'])
+                # simulation.sync(simulationState['fluidPredAccel'])
                 # simulation.periodicBC.syncQuantity(simulationState['fluidPredAccel'], simulationState, simulation)
                 simulationState['fluidPressure'][:] = simulationState['fluidPressure2'][:]
 

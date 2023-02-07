@@ -415,7 +415,7 @@ class sdfBoundaryModule(Module):
         self.dtype = simulationConfig['compute']['precision']
         self.device = simulationConfig['compute']['device']  
 
-        self.pressureScheme = simulationConfig['simulation']['pressureTerm'] 
+        self.pressureScheme = simulationConfig['pressure']['boundaryPressureTerm'] 
         self.computeBodyForces = simulationConfig['simulation']['bodyForces'] 
         self.boundaryCounter = len(simulationConfig['solidBC']) if 'solidBC' in simulationConfig else 0
         self.relaxedJacobiOmega = simulationConfig['dfsph']['relaxedJacobiOmega'] if 'dfsph'in simulationConfig else 0.5
