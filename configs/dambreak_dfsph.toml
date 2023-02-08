@@ -61,7 +61,7 @@ adjust = true
 device='cpu'
 
 [particle]
-radius = 0.01
+radius = 0.025
 
 [gravity2]
 magnitude = 0
@@ -90,7 +90,7 @@ kinematic = 0.01
 
 [integration]
 scheme = 'semiImplicitEuler'
-dt = 0.0025
+dt = 0.005
 
 [shifting]
 enabled = false

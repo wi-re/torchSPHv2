@@ -163,109 +163,109 @@ class datasetLoader(Dataset):
             p = cs[i]
         return None, None
 
-from pytorchSPH.neighborhood import *
-from pytorchSPH.periodicBC import *
-from pytorchSPH.solidBC import *
-from pytorchSPH.sph import *
+# from pytorchSPH.neighborhood import *
+# from pytorchSPH.periodicBC import *
+# from pytorchSPH.solidBC import *
+# from pytorchSPH.sph import *
 
-from sphUtils import *
+# from sphUtils import *
 
-def loadFrame(simFile, frameIdx, compute = True):
-    inFile = h5py.File(simFile)
-    grp = inFile['%04d' % frameIdx]
-    cached = {                
-                'position' : torch.from_numpy(grp['position'][:]),
-                # 'features' : torch.from_numpy(grp['features'][:]),
-                'outPosition' : torch.from_numpy(grp['positionAfterShift'][:]),
-                'velocity' : torch.from_numpy(grp['velocity'][:]),
-                'area' : torch.from_numpy(grp['area'][:]),
-                'density' : torch.from_numpy(grp['density'][:]),
-                'ghostIndices' : torch.from_numpy(grp['ghostIndices'][:]),
-                'finalPosition' : torch.from_numpy(grp['positionAfterStep'][:]),
-                'shiftedPosition': torch.from_numpy(grp['positionAfterShift'][:]),
-                'UID' : torch.from_numpy(grp['UID'][:]),
-                'boundaryIntegral' : torch.from_numpy(grp['boundaryIntegral'][:]),
-                'boundaryGradient' : torch.from_numpy(grp['boundaryGradient'][:]),
-                'support': inFile.attrs['support'],
-                'dt': inFile.attrs['dt'],
-                'radius': inFile.attrs['radius'],
-                    }
+# def loadFrame(simFile, frameIdx, compute = True):
+#     inFile = h5py.File(simFile)
+#     grp = inFile['%04d' % frameIdx]
+#     cached = {                
+#                 'position' : torch.from_numpy(grp['position'][:]),
+#                 # 'features' : torch.from_numpy(grp['features'][:]),
+#                 'outPosition' : torch.from_numpy(grp['positionAfterShift'][:]),
+#                 'velocity' : torch.from_numpy(grp['velocity'][:]),
+#                 'area' : torch.from_numpy(grp['area'][:]),
+#                 'density' : torch.from_numpy(grp['density'][:]),
+#                 'ghostIndices' : torch.from_numpy(grp['ghostIndices'][:]),
+#                 'finalPosition' : torch.from_numpy(grp['positionAfterStep'][:]),
+#                 'shiftedPosition': torch.from_numpy(grp['positionAfterShift'][:]),
+#                 'UID' : torch.from_numpy(grp['UID'][:]),
+#                 'boundaryIntegral' : torch.from_numpy(grp['boundaryIntegral'][:]),
+#                 'boundaryGradient' : torch.from_numpy(grp['boundaryGradient'][:]),
+#                 'support': inFile.attrs['support'],
+#                 'dt': inFile.attrs['dt'],
+#                 'radius': inFile.attrs['radius'],
+#                     }
     
-    config = {}
-    config['dt'] = inFile.attrs['dt']
-    config['area'] = inFile.attrs['area']
-    config['support'] = inFile.attrs['support']
-    config['radius'] = inFile.attrs['radius']
-    config['viscosityConstant'] = inFile.attrs['viscosityConstant']
-    config['boundaryViscosityConstant'] = inFile.attrs['boundaryViscosityConstant']
-    config['packing'] = inFile.attrs['packing']
-    config['spacing'] = inFile.attrs['spacing']
-    config['spacingContribution'] = inFile.attrs['spacingContribution']
-    config['precision'] = torch.float32
-    config['device'] = 'cuda'
+#     config = {}
+#     config['dt'] = inFile.attrs['dt']
+#     config['area'] = inFile.attrs['area']
+#     config['support'] = inFile.attrs['support']
+#     config['radius'] = inFile.attrs['radius']
+#     config['viscosityConstant'] = inFile.attrs['viscosityConstant']
+#     config['boundaryViscosityConstant'] = inFile.attrs['boundaryViscosityConstant']
+#     config['packing'] = inFile.attrs['packing']
+#     config['spacing'] = inFile.attrs['spacing']
+#     config['spacingContribution'] = inFile.attrs['spacingContribution']
+#     config['precision'] = torch.float32
+#     config['device'] = 'cuda'
 
-    config['domain'] = ast.literal_eval(inFile.attrs['domain'])
-    config['solidBoundary'] = [ast.literal_eval(v) for v in inFile.attrs['solidBoundary']]
-    config['velocitySources'] = [ast.literal_eval(v) for v in inFile.attrs['velocitySources']]
-    config['emitters'] = [ast.literal_eval(v) for v in inFile.attrs['emitters']]
-    config['dfsph'] = ast.literal_eval(inFile.attrs['dfsph'])
+#     config['domain'] = ast.literal_eval(inFile.attrs['domain'])
+#     config['solidBoundary'] = [ast.literal_eval(v) for v in inFile.attrs['solidBoundary']]
+#     config['velocitySources'] = [ast.literal_eval(v) for v in inFile.attrs['velocitySources']]
+#     config['emitters'] = [ast.literal_eval(v) for v in inFile.attrs['emitters']]
+#     config['dfsph'] = ast.literal_eval(inFile.attrs['dfsph'])
 
-    config['max_neighbors'] = 256
+#     config['max_neighbors'] = 256
 
-    for b in config['solidBoundary']:
-        b['polygon'] = torch.tensor(b['polygon']).to(config['device']).type(config['precision'])
-    #     print(b['polygon'])
-    state = {}
-    state['fluidPosition'] = cached['position'].type(config['precision']).to(config['device'])
-    state['UID'] = cached['UID'].to(config['device'])
-    state['fluidArea'] = torch.ones(state['fluidPosition'].shape[0], dtype=config['precision'], device=config['device']) * config['area']
-
-
-    state['realParticles'] = torch.sum(cached['ghostIndices'] == -1).item()
-    state['numParticles'] = state['fluidPosition'].shape[0]
-    # state['fluidPosition'] = cached['position'].type(config['precision']).to(config['device'])
-
-    if compute:    
-        enforcePeriodicBC(config, state)
+#     for b in config['solidBoundary']:
+#         b['polygon'] = torch.tensor(b['polygon']).to(config['device']).type(config['precision'])
+#     #     print(b['polygon'])
+#     state = {}
+#     state['fluidPosition'] = cached['position'].type(config['precision']).to(config['device'])
+#     state['UID'] = cached['UID'].to(config['device'])
+#     state['fluidArea'] = torch.ones(state['fluidPosition'].shape[0], dtype=config['precision'], device=config['device']) * config['area']
 
 
-        state['fluidNeighbors'], state['fluidDistances'], state['fluidRadialDistances'] = \
-            neighborSearch(state['fluidPosition'], state['fluidPosition'], config, state)
+#     state['realParticles'] = torch.sum(cached['ghostIndices'] == -1).item()
+#     state['numParticles'] = state['fluidPosition'].shape[0]
+#     # state['fluidPosition'] = cached['position'].type(config['precision']).to(config['device'])
 
-        state['boundaryNeighbors'], state['boundaryDistances'], state['boundaryGradients'], \
-            state['boundaryIntegrals'], state['boundaryIntegralGradients'], \
-            state['boundaryFluidNeighbors'], state['boundaryFluidPositions'] = boundaryNeighborSearch(config, state)
+#     if compute:    
+#         enforcePeriodicBC(config, state)
 
-        state['fluidDensity'] = sphDensity(config, state)  
 
-        state['fluidVelocity'] = torch.from_numpy(grp['velocity'][:]).type(config['precision']).to(config['device'])
+#         state['fluidNeighbors'], state['fluidDistances'], state['fluidRadialDistances'] = \
+#             neighborSearch(state['fluidPosition'], state['fluidPosition'], config, state)
 
-        state['velocityAfterBC'] = torch.from_numpy(grp['velocityAfterBC'][:]).type(config['precision']).to(config['device'])
-        state['positionAfterStep'] = torch.from_numpy(grp['positionAfterStep'][:]).type(config['precision']).to(config['device'])
-        state['positionAfterShift'] = torch.from_numpy(grp['positionAfterShift'][:]).type(config['precision']).to(config['device'])
+#         state['boundaryNeighbors'], state['boundaryDistances'], state['boundaryGradients'], \
+#             state['boundaryIntegrals'], state['boundaryIntegralGradients'], \
+#             state['boundaryFluidNeighbors'], state['boundaryFluidPositions'] = boundaryNeighborSearch(config, state)
 
-        computeGamma(config, state)
+#         state['fluidDensity'] = sphDensity(config, state)  
+
+#         state['fluidVelocity'] = torch.from_numpy(grp['velocity'][:]).type(config['precision']).to(config['device'])
+
+#         state['velocityAfterBC'] = torch.from_numpy(grp['velocityAfterBC'][:]).type(config['precision']).to(config['device'])
+#         state['positionAfterStep'] = torch.from_numpy(grp['positionAfterStep'][:]).type(config['precision']).to(config['device'])
+#         state['positionAfterShift'] = torch.from_numpy(grp['positionAfterShift'][:]).type(config['precision']).to(config['device'])
+
+#         computeGamma(config, state)
         
-    state['time'] = frameIdx * config['dt']
-    state['timestep'] = frameIdx
+#     state['time'] = frameIdx * config['dt']
+#     state['timestep'] = frameIdx
 
-    inFile.close()
+#     inFile.close()
     
-    return config, state
+#     return config, state
 
-def prepareInput(config, state):
-    positions = state['fluidPosition']
+# def prepareInput(config, state):
+#     positions = state['fluidPosition']
     
-    areas = state['fluidArea']
-    velocities = state['fluidVelocity']
-    bIntegral = torch.zeros(state['fluidArea'].shape).to(config['device']).type(config['precision'])
-    bGradient = torch.zeros(state['fluidVelocity'].shape).to(config['device']).type(config['precision'])
-    # if state['boundaryNeighbors'].size() != 0:
-        # bIntegral[state['boundaryNeighbors'][0]] = state['boundaryIntegrals']
-        # bGradient[state['boundaryNeighbors'][0]] = state['boundaryIntegralGradients']
+#     areas = state['fluidArea']
+#     velocities = state['fluidVelocity']
+#     bIntegral = torch.zeros(state['fluidArea'].shape).to(config['device']).type(config['precision'])
+#     bGradient = torch.zeros(state['fluidVelocity'].shape).to(config['device']).type(config['precision'])
+#     # if state['boundaryNeighbors'].size() != 0:
+#         # bIntegral[state['boundaryNeighbors'][0]] = state['boundaryIntegrals']
+#         # bGradient[state['boundaryNeighbors'][0]] = state['boundaryIntegralGradients']
     
-    gamma = state['fluidGamma']
+#     gamma = state['fluidGamma']
     
-    features = torch.hstack((areas[:,None], velocities, bIntegral[:,None], bGradient, gamma[:,None]))
+#     features = torch.hstack((areas[:,None], velocities, bIntegral[:,None], bGradient, gamma[:,None]))
     
-    return positions, features
+#     return positions, features

@@ -202,17 +202,17 @@ class dfsphSimulation(SPHSimulation):
         # step = '11 - Velocity update step'
         # if self.verbose: print(step)
         # with record_function(step):
-        #     self.simulationState['fluidVelocity'] += self.simulationState['dt'] * self.simulationState['fluidAcceleration']
-        #     self.periodicBC.syncQuantity(self.simulationState['fluidVelocity'], self.simulationState, self)
+            # self.simulationState['fluidVelocity'] += self.simulationState['dt'] * self.simulationState['fluidAcceleration']
+            # self.periodicBC.syncQuantity(self.simulationState['fluidVelocity'], self.simulationState, self)
            
-        # step = '11 - velocity diffusion'
-        # if self.verbose: print(step)
-        # with record_function(step):     
-        #     self.velocityDiffusionModule.evaluate(self.simulationState, self)    
-        # step = '12 - laminar viscosity'
-        # if self.verbose: print(step)
-        # with record_function(step):       
-        #     self.laminarViscosityModule.computeLaminarViscosity(self.simulationState, self)   
+        step = '11 - velocity diffusion'
+        if self.verbose: print(step)
+        with record_function(step):     
+            self.velocityDiffusionModule.evaluate(self.simulationState, self)    
+        step = '12 - laminar viscosity'
+        if self.verbose: print(step)
+        with record_function(step):       
+            self.laminarViscosityModule.computeLaminarViscosity(self.simulationState, self)   
 
         # step = '12 - XSPH diffusion evaluation'
         # if self.verbose: print(step)
