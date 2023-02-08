@@ -98,9 +98,9 @@ def genParticlesSphere(minCoord, maxCoord, radius, packing, support, dtype, devi
     
         xx, yy = torch.meshgrid(xi,yi, indexing = 'xy')
         positions = (packing * support) * torch.vstack((xx.flatten(), yy.flatten()))
-        dist = torch.linalg.norm(positions ,dim=0)
+        dist = torch.linalg.norm(positions ,dim=0)**2
         # debugPrint(dist)
-        positions = positions[:,dist < rad]
+        positions = positions[:,dist <= rad]
         
         positions[:] += (maxCoord[:,None] + minCoord[:,None])/2
         
