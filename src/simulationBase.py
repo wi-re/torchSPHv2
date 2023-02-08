@@ -441,7 +441,7 @@ class SPHSimulation():
                 self.outFile.attrs['fixedDt'] = self.config['timestep']['fixed']
 
                 if not self.config['gravity']['pointSource']:
-                    self.outFile.attrs['fluidGravity'] = self.config['gravity']['magnitude'] * self.config['gravity']['direction']
+                    self.outFile.attrs['fluidGravity'] = self.config['gravity']['magnitude'] * np.array(self.config['gravity']['direction'])
 
                 if self.config['export']['staticBoundary']:
                     grp = self.outFile.create_group('boundaryInformation')

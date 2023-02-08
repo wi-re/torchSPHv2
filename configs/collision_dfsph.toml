@@ -100,7 +100,7 @@ scheme = 'deltaPlus'
 targetNeighbors = 20
 
 [export]
-active = false
+active = true
 prefix = 'dambreak'
 staticBoundary = true
 interval = 1

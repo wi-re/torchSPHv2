@@ -143,9 +143,9 @@ class cutlass(torch.autograd.Function):
 
             with record_function("cutlass forward batchprep"): 
                 # print(features)
-                # print(features.shape)
+                # print('features.shape', features.shape)
                 # print(edge_index[1])
-                # print(edge_index[1].shape)
+                # print('edge_index[1].shape', edge_index[1].shape)
                 x_j = torch.index_select(features, 0, edge_index[1])
                 x_j = x_j if edge_weights is None else x_j * edge_weights[:,None]
 
@@ -155,6 +155,8 @@ class cutlass(torch.autograd.Function):
                 convs = []
 
             for batch in batches:
+                # print('batch', batch)
+                # print(edge_attr[batch,0])
                 if ctx.dimensions == 1:
                     with record_function("cutlass forward batch"): 
                         with record_function("cutlass forward basis"): 
@@ -170,6 +172,13 @@ class cutlass(torch.autograd.Function):
                             v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
 
                         with record_function("cutlass forward einsum"): 
+                            # print('u', u.shape)
+                            # print('v', v.shape)
+                            # print('weight', weight.shape)
+                            # print('x_j', x_j.shape)
+                            # print('batch', batch.shape)
+
+
                             convs.append(torch.einsum('nu, nv, uvio,ni -> no',u,v,weight, x_j[batch]))
                         del u,v
                 if ctx.dimensions == 3:
@@ -188,7 +197,7 @@ class cutlass(torch.autograd.Function):
             
             
             with record_function("cutlass forward aggregation"): 
-                out = aggr(out, index = edge_index[1], ptr = None, dim_size = ctx.dim_size, dim = ctx.dim)
+                out = aggr(out, index = edge_index[0], ptr = None, dim_size = ctx.dim_size, dim = ctx.dim)
             return out
     
     @staticmethod
@@ -202,7 +211,7 @@ class cutlass(torch.autograd.Function):
             with record_function("cutlass backward batching"): 
                 x_j = torch.index_select(features, 0, edge_index[1])
                 x_j = x_j if edge_weights is None else x_j * edge_weights[:,None]
-                gradFeatures = torch.index_select(grad_output, 0, edge_index[1])
+                gradFeatures = torch.index_select(grad_output, 0, edge_index[0])
 
                 indices = torch.arange(0,edge_attr.shape[0])
             
@@ -246,7 +255,7 @@ class cutlass(torch.autograd.Function):
                     with record_function("cutlass backward feature grad stacking"):   
                         out = torch.vstack(convs)
                     with record_function("cutlass backward feature grad aggregation"):   
-                        featureGrad = aggr(out, index = edge_index[1], ptr = None, dim_size = features.shape[0], dim = ctx.dim)       
+                        featureGrad = aggr(out, index = edge_index[0], ptr = None, dim_size = features.shape[0], dim = ctx.dim)       
             if ctx.needs_input_grad[4] and not ctx.needs_input_grad[1]:   
                 with record_function("cutlass backward weight grad"):    
                     weightGrad = weight.new_zeros(weight.shape)                    
@@ -334,7 +343,7 @@ class cutlass(torch.autograd.Function):
                     with record_function("cutlass backward stacking"):   
                         out = torch.vstack(convs)
                     with record_function("cutlass backward aggregation"):   
-                        featureGrad = aggr(out, index = edge_index[1], ptr = None, dim_size = features.shape[0], dim = ctx.dim)        
+                        featureGrad = aggr(out, index = edge_index[0], ptr = None, dim_size = features.shape[0], dim = ctx.dim)        
             
             # print('index:       ', edge_index)
             # print('features:    ', features)

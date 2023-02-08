@@ -33,6 +33,35 @@ class akinciBoundaryModule(BoundaryModule):
         ]
         
 
+    def exportState(self, simulationState, simulation, grp, mask):        
+        if not simulation.config['export']['staticBoundary']:
+            grp.create_dataset('boundaryPosition', data = self.boundaryPositions.detach().cpu().numpy())
+            grp.create_dataset('boundaryVelocity', data = self.boundaryVelocity.detach().cpu().numpy())
+            grp.create_dataset('boundarySupport', data = self.boundarySupport.detach().cpu().numpy())
+            grp.create_dataset('boundaryRestDensity', data = self.boundaryRestDensity.detach().cpu().numpy())
+            grp.create_dataset('boundaryArea', data = self.boundaryVolume.detach().cpu().numpy())
+            grp.create_dataset('boundaryNormals', data = self.boundaryNormals.detach().cpu().numpy())
+            grp.create_dataset('boundaryBodyAssociation', data = self.bodyAssociation.detach().cpu().numpy())
+
+        grp.create_dataset('boundaryDensity', data = self.boundaryDensity.detach().cpu().numpy())
+        grp.create_dataset('boundaryPressure', data = self.boundaryPressure.detach().cpu().numpy())
+
+
+    def saveState(self, perennialState, copy):
+        perennialState['boundaryPosition']    = self.boundaryPositions    if not copy else torch.clone(self.boundaryPositions)
+        perennialState['boundaryVelocity']    = self.boundaryVelocity     if not copy else torch.clone(self.boundaryVelocity)
+        perennialState['boundaryDensity']     = self.boundaryDensity      if not copy else torch.clone(self.boundaryDensity)
+        perennialState['boundarySupport']     = self.boundarySupport      if not copy else torch.clone(self.boundarySupport)
+        perennialState['boundaryRestDensity'] = self.boundaryRestDensity  if not copy else torch.clone(self.boundaryRestDensity)
+        perennialState['boundaryArea']        = self.boundaryVolume       if not copy else torch.clone(self.boundaryVolume)
+        perennialState['boundaryPressure']    = self.boundaryPressure             if not copy else torch.clone(self.boundaryPressure)
+        perennialState['boundaryNormals']     = self.boundaryNormals             if not copy else torch.clone(self.boundaryNormals)
+        perennialState['boundaryBodyAssociation'] =  self.bodyAssociation             if not copy else torch.clone(self.bodyAssociation)
+        # perennialState['boundaryPressureForce']    = self.boundaryModule.boundaryPressureForce             if not copy else torch.clone(self.boundaryModule.boundaryPressureForce)
+        # perennialState['boundaryDragForce']        = self.boundaryModule.boundaryDragForce             if not copy else torch.clone(self.boundaryModule.boundaryDragForce)
+        
+        perennialState['boundaryParticles'] = perennialState['boundaryPosition'].shape[0]
+
 
     def __init__(self):
         super().__init__('densityInterpolation', 'Evaluates density at the current timestep')
@@ -127,9 +156,11 @@ class akinciBoundaryModule(BoundaryModule):
         self.boundaryDensityTerm = (boundaryDensity).type(self.dtype)
         self.boundaryVolume = self.gamma / boundaryVolume
         self.boundarySupport = torch.ones_like(boundaryVolume) * self.support
+        self.boundaryPressure = torch.zeros_like(boundaryVolume)
         self.boundaryRestDensity = torch.ones_like(boundaryVolume) * simulationConfig['fluid']['restDensity'] 
         self.boundaryVelocity = torch.zeros_like(self.boundaryPositions) 
         self.boundaryAcceleration = torch.zeros_like(self.boundaryPositions) 
+        self.boundaryDensity = torch.clone(boundaryDensity).type(self.dtype)
 
 
     def dfsphPrepareSolver(self, simulationState, simulation, density = True):
@@ -242,6 +273,9 @@ class akinciBoundaryModule(BoundaryModule):
                 self.pressureForces = scatter_sum(boundaryForces, self.bodyAssociation, dim=0, dim_size = self.boundaryCounter)
 
             return boundaryAccelTerm
+        
+    def computeVelocityDiffusion(self, simulationState, simulation):
+        return torch.zeros_like(simulationState['fluidAcceleration'])
 
     def dfsphBoundaryPressureSum(self, simulationState, simulation, density):
         if not(density) or self.boundaryToFluidNeighbors == None:
@@ -383,7 +417,7 @@ class akinciBoundaryModule(BoundaryModule):
 
         self.boundaryDensityContribution = scatter(k * self.boundaryVolume[bb], bf, dim=0, dim_size = simulationState['numParticles'], reduce = 'add')
         self.boundaryDensity = self.boundaryDensityTerm + scatter(k * simulationState['fluidArea'][bf], bb, dim=0, dim_size = self.numPtcls, reduce = 'add') + self.beta
-        return self.boundaryDensityContribution
+        simulationState['fluidDensity'] += self.boundaryDensityContribution
 
     def evalBoundaryFriction(self, simulationState, simulation):
         raise Exception('Operation boundaryFriction not implemented for ', self.identifier)

@@ -14,6 +14,7 @@ import numpy as np
 from typing import Any
 from typing import List, Tuple, Union
 from torch_sparse import SparseTensor
+from torch_scatter import scatter
 
 def uniform(size: int, value: Any):
     if isinstance(value, Tensor):
@@ -231,10 +232,29 @@ class RbfConv(MessagePassing):
         # if args.cutlad:
             # out = self.propagate(edge_index, x=x, edge_attr=edge_attr, size=size)
         # else:
-        out = self.propagate2(edge_index, x=x, edge_attr=edge_attr, size=size)
+        # out = self.propagate2(edge_index, x=x, edge_attr=edge_attr, size=size)
 #         print('out: ', out.shape, out)
 
-        x_r = x[1]
+    
+        inFeatures = x[1]
+        
+        edge_weights = None
+        if not(self.windowFn is None):
+            edge_weights = self.windowFn(torch.linalg.norm(edge_attr, axis = 1))
+
+        convolution = cutlass.apply
+            
+        out = convolution(edge_index, inFeatures, edge_attr, edge_weights, self.weight, 
+                                        x[0].shape[0], self.node_dim,
+                                    self.size , self.rbfs, self.periodic, 
+                                    self.batchSize[0],self.batchSize[1])
+
+        # print('out', out.shape)
+
+        # out = scatter(out, edge_index[0], dim=0, dim_size = x[0].shape[0], reduce='sum')
+
+        # print('out', out.shape)
+        x_r = x[0]
         if x_r is not None and self.root_weight:
             out = out + self.lin(x_r)
 
@@ -290,7 +310,10 @@ class RbfConv(MessagePassing):
             if decomposed_layers > 1:
                 for arg in decomp_args:
                     kwargs[arg] = decomp_kwargs[arg][i]
-
+            # print('self.__user_args__', self.__user_args__)
+            # print('edge_index', edge_index)
+            # print('size', size)
+            # print('kwargs', kwargs)
             coll_dict = self.__collect__(self.__user_args__, edge_index,
                                             size, kwargs)
 
