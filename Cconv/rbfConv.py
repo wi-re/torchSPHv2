@@ -317,7 +317,7 @@ class RbfConv(MessagePassing):
                 # print(inFeatures.shape)
 
 
-            out = convolution(edge_index, inFeatures, kwargs['edge_attr'], edge_weights, self.weight, 
+            out = convolution(edge_index, kwargs['x'][0], kwargs['x'][1], kwargs['edge_attr'], edge_weights, self.weight, 
                                             size[1], self.node_dim,
                                         self.size , self.rbfs, self.periodic, 
                                         self.batchSize[0],self.batchSize[1])
