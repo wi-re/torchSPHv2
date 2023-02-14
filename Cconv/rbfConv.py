@@ -117,6 +117,98 @@ def optimizeWeights2D(weights, basis, periodicity, nmc = 32 * 1024, targetIntegr
         print('stdConstraint:', np.std(res.x))
     return result, res.constr, res.fun, M.dot(w), M.dot(res.x)
 
+def mapToSpherical(positions):
+    x = positions[:,0]
+    y = positions[:,1]
+    z = positions[:,2]
+    r = torch.sqrt(x**2 + y**2 + z**2)
+    theta = torch.atan2(y, x)
+    phi = torch.acos(z / (r + 1e-7))
+    
+    return torch.vstack((r,theta,phi)).mT
+
+
+def ballToCylinder(positions):
+    r = torch.linalg.norm(positions, dim = 1)
+    xy = torch.linalg.norm(positions[:,:2], dim = 1)
+    absz = torch.abs(positions[:,2])
+
+#     debugPrint(r)
+#     debugPrint(xy)
+#     debugPrint(absz)
+
+    x = positions[:,0]
+    y = positions[:,1]
+    z = positions[:,2]
+
+    termA = torch.zeros_like(positions)
+
+    eps = 1e-7
+
+    xB = x * r / (xy + eps)
+    yB = y * r / (xy + eps)
+    zB = 3 / 2 * z
+    termB = torch.vstack((xB, yB, zB)).mT
+
+    xC = x * torch.sqrt(3 * r / (r + absz + eps))
+    yC = y * torch.sqrt(3 * r / (r + absz + eps))
+    zC = torch.sign(z) * r
+    termC = torch.vstack((xC, yC, zC)).mT
+
+    mapped = torch.zeros_like(positions)
+
+    maskA = r < eps
+    maskB = torch.logical_and(torch.logical_not(maskA), 5/4 * z**2 <= x**2 + y**2)
+    maskC = torch.logical_and(torch.logical_not(maskA), torch.logical_not(maskB))
+
+    mapped[maskB] = termB[maskB]
+    mapped[maskC] = termC[maskC]
+
+#     debugPrint(mapped)
+    return mapped
+# debugPrint(cylinderPositions)
+
+def cylinderToCube(positions):
+    x = positions[:,0]
+    y = positions[:,1]
+    z = positions[:,2]
+    xy = torch.linalg.norm(positions[:,:2], dim = 1)
+    eps = 1e-7
+
+    termA = torch.vstack((torch.zeros_like(x), torch.zeros_like(y), z)).mT
+    # debugPrint(termA)
+
+    xB = torch.sign(x) * xy
+    yB = 4. / np.pi * torch.sign(x) * xy * torch.atan(y/(x+eps))
+    zB = z
+    termB = torch.vstack((xB, yB, zB)).mT
+
+    xC = 4. / np.pi * torch.sign(y) * xy * torch.atan(x / (y + eps))
+    yC = torch.sign(y) * xy
+    zC = z
+    termC = torch.vstack((xC, yC, zC)).mT
+
+    maskA = torch.logical_and(torch.abs(x) < eps, torch.abs(y) < eps)
+    maskB = torch.logical_and(torch.logical_not(maskA), torch.abs(y) <= torch.abs(x))
+    maskC = torch.logical_and(torch.logical_not(maskA), torch.logical_not(maskB))
+
+    # debugPrint(torch.sum(maskA))
+    # debugPrint(torch.sum(maskB))
+    # debugPrint(torch.sum(maskC))
+
+
+    mapped = torch.zeros_like(positions)
+    mapped[maskA] = termA[maskA]
+    mapped[maskB] = termB[maskB]
+    mapped[maskC] = termC[maskC]
+    
+    return mapped
+
+def mapToSpherePreserving(positions):
+    cylinderPositions = ballToCylinder(positions)
+    cubePositions = cylinderToCube(cylinderPositions)
+    return cubePositions
+
 class RbfConv(MessagePassing):
     def __init__(
         self,
@@ -124,13 +216,20 @@ class RbfConv(MessagePassing):
         out_channels: int,
         dim: int,
         size: Union[int, List[int]] = 3,
-        periodic : Union[int, List[int]] = False,
+        coordinateMapping : str = 'cartesian',
         rbf : Union[int, List[int]] = 'chebyshev',
         aggr: str = 'sum',
-        dense_for_center: bool = False,
-        bias: bool = False,
+
+        linearLayer: bool = False,
+        feedThrough: bool = False,
+        biasOffset: bool = False,
+
+        preActivation = None,
+        postActivation = None,
+
         initializer = torch.nn.init.xavier_normal_,
-        activation = None,
+
+        
         batch_size = [16,16],
         windowFn = None,
         normalizeWeights = True,
@@ -142,12 +241,16 @@ class RbfConv(MessagePassing):
         self.out_channels = out_channels
 
         self.dim = dim
-        self.periodic = periodic if isinstance(periodic, list) else repeat(periodic, dim)
+        self.coordinateMapping = coordinateMapping
+        # print('coordinate mapping', self.coordinateMapping)
         self.size = size if isinstance(size, list) else repeat(size, dim)
         self.rbfs = rbf if is_list_of_strings(rbf) else [rbf] * dim
+        self.periodic = [False, False] if coordinateMapping != 'polar' else [False,True]
         self.initializer = initializer
         self.batchSize = batch_size
-        self.activation = None if activation is None else getattr(nn.functional, activation)
+        self.feedThrough = feedThrough
+        self.preActivation = None if preActivation is None else getattr(nn.functional, preActivation)
+        self.postActivation = None if postActivation is None else getattr(nn.functional, postActivation)
         self.windowFn = windowFn
         
         # print('Creating layer %d -> %d features'%( in_channels, out_channels))
@@ -201,12 +304,12 @@ class RbfConv(MessagePassing):
                             # self.weight[:,:,i,j] /= in_channels[0]
                     print('Done with normalization\n------------------------------------------')
 
-        self.root_weight = dense_for_center
-        if dense_for_center:
+        self.root_weight = linearLayer
+        if linearLayer:
             self.lin = Linear(in_channels[1], out_channels, bias=False,
                               weight_initializer= 'uniform')
 
-        if bias:
+        if biasOffset:
             self.bias = Parameter(torch.Tensor(out_channels))
         else:
             self.register_parameter('bias', None)
@@ -232,16 +335,22 @@ class RbfConv(MessagePassing):
             # out = self.propagate(edge_index, x=x, edge_attr=edge_attr, size=size)
         # else:
         out = self.propagate2(edge_index, x=x, edge_attr=edge_attr, size=size)
+        
+
 #         print('out: ', out.shape, out)
 
         x_r = x[1]
-        if x_r is not None and self.root_weight:
-            out = out + self.lin(x_r)
+        if self.preActivation is not None:
+            out = self.preActivation(out)
 
+        if x_r is not None and self.root_weight:
+            out = out + self.lin(x_r) if self.preActivation is not None else self.preActivation(self.lin(x_r))
         if self.bias is not None:
             out = out + self.bias
-        if self.activation is not None:
-            out = self.activation(out)
+        if self.feedThrough:
+            out = out + x_r if self.preActivation is not None else self.preActivation(x_r)
+        if self.postActivation is not None:
+            out = self.postActivation(out)
         return out
 
 
@@ -317,7 +426,18 @@ class RbfConv(MessagePassing):
                 # print(inFeatures.shape)
 
 
-            out = convolution(edge_index, kwargs['x'][0], kwargs['x'][1], kwargs['edge_attr'], edge_weights, self.weight, 
+            positions = torch.hstack((kwargs['edge_attr'], torch.zeros(kwargs['edge_attr'].shape[0],1, device = kwargs['edge_attr'].device, dtype = kwargs['edge_attr'].dtype)))
+            if self.coordinateMapping == 'polar':
+                spherical = mapToSpherical(positions)
+                mapped = torch.vstack((spherical[:,0] * 2. - 1.,spherical[:,1] / np.pi)).mT
+            if self.coordinateMapping == 'cartesian':
+                mapped = kwargs['edge_attr']
+            if self.coordinateMapping == 'preserving':
+                cubePositions = mapToSpherePreserving(positions)
+                mapped = torch.vstack((cubePositions[:,0],cubePositions[:,1] / np.pi)).mT
+
+
+            out = convolution(edge_index, kwargs['x'][0], kwargs['x'][1], mapped, edge_weights, self.weight, 
                                             size[0], self.node_dim,
                                         self.size , self.rbfs, self.periodic, 
                                         self.batchSize[0],self.batchSize[1])
@@ -343,3 +463,88 @@ class RbfConv(MessagePassing):
 
         return out
   
+
+# #Eval Mapping
+# x = torch.linspace(-1,1,127)
+# y = torch.linspace(-1,1,127)
+
+# xx,yy = torch.meshgrid(x,y,indexing='xy')
+
+# # debugPrint(xx)
+
+# xxf = xx.flatten()
+# yyf = yy.flatten()
+
+# mask = xxf**2 + yyf**2 <= 1
+# # xxf = xxf[mask]
+# # yyf = yyf[mask]
+
+# positions = torch.hstack((torch.vstack((xxf, yyf)).mT, torch.zeros(xxf.shape[0],1, device = xxf.device, dtype = xxf.dtype)))
+# cylinderPositions = ballToCylinder(positions)
+# cubePositions = cylinderToCube(cylinderPositions)
+
+# debugPrint(torch.min(cubePositions[mask,0]))
+# debugPrint(torch.min(cubePositions[mask,1]))
+# debugPrint(torch.max(cubePositions[mask,0]))
+# debugPrint(torch.max(cubePositions[mask,1]))
+
+
+# fig, axis = plt.subplots(1, 3, figsize=(15,5), sharex = False, sharey = False, squeeze = False)
+
+# # pc = axis[0,0].tripcolor(xxf,yyf, (cubePositions[:,0]))
+# pc = axis[0,0].pcolormesh(xx,yy, (cubePositions[:,0]).reshape(xx.shape))
+# ax1_divider = make_axes_locatable(axis[0,0])
+# cax1 = ax1_divider.append_axes("right", size="7%", pad="2%")
+# predCbar = fig.colorbar(pc, cax=cax1,orientation='vertical')
+# predCbar.ax.tick_params(labelsize=8) 
+# axis[0,0].axis('equal')
+
+# # pc = axis[0,1].tripcolor(xxf,yyf, (cubePositions[:,1]))
+# pc = axis[0,1].pcolormesh(xx,yy, (cubePositions[:,1]).reshape(xx.shape))
+# ax1_divider = make_axes_locatable(axis[0,1])
+# cax1 = ax1_divider.append_axes("right", size="7%", pad="2%")
+# predCbar = fig.colorbar(pc, cax=cax1,orientation='vertical')
+# predCbar.ax.tick_params(labelsize=8) 
+# axis[0,1].axis('equal')
+
+# # pc = axis[0,2].tripcolor(xxf,yyf, torch.linalg.norm(positions - cubePositions, dim = 1))
+# pc = axis[0,2].pcolormesh(xx,yy, (torch.linalg.norm(positions - cubePositions, dim = 1)).reshape(xx.shape))
+# ax1_divider = make_axes_locatable(axis[0,2])
+# cax1 = ax1_divider.append_axes("right", size="7%", pad="2%")
+# predCbar = fig.colorbar(pc, cax=cax1,orientation='vertical')
+# predCbar.ax.tick_params(labelsize=8) 
+# axis[0,2].axis('equal')
+
+# fig.tight_layout()
+
+
+# spherePositions = mapToSpherical(positions)
+# spherePositions[:,1:] =  spherePositions[:,1:] / np.pi
+
+# fig, axis = plt.subplots(1, 3, figsize=(15,5), sharex = False, sharey = False, squeeze = False)
+
+# # pc = axis[0,0].tripcolor(xxf,yyf, (cubePositions[:,0]))
+# pc = axis[0,0].pcolormesh(xx,yy, (spherePositions[:,0]).reshape(xx.shape))
+# ax1_divider = make_axes_locatable(axis[0,0])
+# cax1 = ax1_divider.append_axes("right", size="7%", pad="2%")
+# predCbar = fig.colorbar(pc, cax=cax1,orientation='vertical')
+# predCbar.ax.tick_params(labelsize=8) 
+# axis[0,0].axis('equal')
+
+# # pc = axis[0,1].tripcolor(xxf,yyf, (cubePositions[:,1]))
+# pc = axis[0,1].pcolormesh(xx,yy, (spherePositions[:,1]).reshape(xx.shape), cmap = cm.twilight)
+# ax1_divider = make_axes_locatable(axis[0,1])
+# cax1 = ax1_divider.append_axes("right", size="7%", pad="2%")
+# predCbar = fig.colorbar(pc, cax=cax1,orientation='vertical')
+# predCbar.ax.tick_params(labelsize=8) 
+# axis[0,1].axis('equal')
+
+# # pc = axis[0,1].tripcolor(xxf,yyf, (cubePositions[:,1]))
+# pc = axis[0,2].pcolormesh(xx,yy, (torch.linalg.norm(positions[:,:2] - spherePositions[:,:2] , dim = 1)).reshape(xx.shape))
+# ax1_divider = make_axes_locatable(axis[0,2])
+# cax1 = ax1_divider.append_axes("right", size="7%", pad="2%")
+# predCbar = fig.colorbar(pc, cax=cax1,orientation='vertical')
+# predCbar.ax.tick_params(labelsize=8) 
+# axis[0,2].axis('equal')
+
+# fig.tight_layout()

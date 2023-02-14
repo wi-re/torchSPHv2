@@ -1,3 +1,13 @@
+
+import inspect
+import re
+def debugPrint(x):
+    frame = inspect.currentframe().f_back
+    s = inspect.getframeinfo(frame).code_context[0]
+    r = re.search(r"\((.*)\)", s).group(1)
+    print("{} [{}] = {}".format(r,type(x).__name__, x))
+
+
 import torch
 from torch.profiler import record_function
 from torch_geometric.nn.resolver import aggregation_resolver as aggr_resolver
@@ -46,7 +56,7 @@ def getDistances(n, x, periodic = False):
         
     spacing = getSpacing(n, False)
     
-    centroids = torch.linspace(-1.,1.,n, device = x.device) if n > 1 else torch.Tensor([0.], device = x.device)
+    centroids = torch.linspace(-1.,1.,n, device = x.device) if n > 1 else torch.tensor([0.], device = x.device)
     centroids = torch.unsqueeze(centroids, axis = 1)
     centroidCache[periodic][x.device.type][n] = centroids
 #     tx = torch.constant(x, dtype='float32')
@@ -55,8 +65,11 @@ def getDistances(n, x, periodic = False):
 
 
 def evalRBFSeries(n, x, which = 'linear', epsilon = 1., periodic = False):    
+
     k = int(epsilon)
     r = getDistances(n, x, periodic)    
+    if n == 1:
+        return torch.ones_like(r)
     
     cpow = lambda x, p: torch.maximum(x, torch.zeros_like(r))**p
     
@@ -220,7 +233,10 @@ class cutlass(torch.autograd.Function):
             
             with record_function("cutlass backward batching"): 
                 x_j = torch.index_select(features_j, 0, edge_index[1])
+                # debugPrint(x_j)
                 x_j = x_j if edge_weights is None else x_j * edge_weights[:,None]
+                # debugPrint(x_j)
+                # debugPrint(edge_weights)
                 gradFeatures = torch.index_select(grad_output, 0, edge_index[0])
 
                 indices = torch.arange(0,edge_attr.shape[0]).to(features_i.device)
@@ -228,6 +244,7 @@ class cutlass(torch.autograd.Function):
                 batches = torch.split(indices, ctx.backwardBatchSize * 1024)
             
             if ctx.needs_input_grad[2] and not ctx.needs_input_grad[5]:  
+                # debugPrint('if ctx.needs_input_grad[2] and not ctx.needs_input_grad[5]:')
                 with record_function("cutlass backward feature grad"):    
                     
                     transposedWeights = torch.transpose(weight, 2, 3)        
@@ -250,7 +267,10 @@ class cutlass(torch.autograd.Function):
                                     v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
                                 
                                 with record_function("cutlass backward feature grad einsum"):    
-                                    convs.append(torch.einsum('nu, nv, uvio,ni -> no',u,v, transposedWeights, gradFeatures[batch]))
+                                    if edge_weights is not None:
+                                        convs.append(torch.einsum('nu, nv, n, uvio,ni -> no',u,v, edge_weights[batch], transposedWeights, gradFeatures[batch]))
+                                    else:
+                                        convs.append(torch.einsum('nu, nv, uvio,ni -> no',u,v, transposedWeights, gradFeatures[batch]))
                                 del u,v
                         if ctx.dimensions == 3:
                             with record_function("cutlass backward feature grad batch"):    
@@ -267,6 +287,7 @@ class cutlass(torch.autograd.Function):
                     with record_function("cutlass backward feature grad aggregation"):   
                         featureGrad = aggr(out, index = edge_index[1], ptr = None, dim_size = features_j.shape[0], dim = ctx.dim)       
             if ctx.needs_input_grad[5] and not ctx.needs_input_grad[2]:   
+                # debugPrint('if ctx.needs_input_grad[5] and not ctx.needs_input_grad[2]:')
                 with record_function("cutlass backward weight grad"):    
                     weightGrad = weight.new_zeros(weight.shape)                    
                     for batch in batches:
@@ -302,6 +323,7 @@ class cutlass(torch.autograd.Function):
                                 del u,v,w
 
             if ctx.needs_input_grad[2] and ctx.needs_input_grad[5]:  
+                # debugPrint('if ctx.needs_input_grad[2] and ctx.needs_input_grad[5]:')
                 with record_function("cutlass backward"):      
                     weightGrad = weight.new_zeros(weight.shape)
                     
@@ -329,7 +351,10 @@ class cutlass(torch.autograd.Function):
                                 uvw = torch.einsum('nu, nv -> nuv', u, v)
                                 # del u,v
                             with record_function("cutlass backward einsum features"):   
-                                convs.append(torch.einsum('nuv, uvio,ni -> no',uvw, transposedWeights, gradFeatures[batch]))
+                                if edge_weights is not None:
+                                    convs.append(torch.einsum('nuv, n, uvio,ni -> no',uvw, edge_weights[batch], transposedWeights, gradFeatures[batch]))
+                                else:
+                                    convs.append(torch.einsum('nuv, uvio,ni -> no',uvw, transposedWeights, gradFeatures[batch]))
                             with record_function("cutlass backward einsum grad"):   
                                 io = torch.einsum('ni, no -> nio', x_j[batch], gradFeatures[batch])
                                 localGrad = torch.einsum('nuv, nio -> uvio', uvw, io)

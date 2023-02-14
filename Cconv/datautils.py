@@ -269,3 +269,41 @@ class datasetLoader(Dataset):
 #     features = torch.hstack((areas[:,None], velocities, bIntegral[:,None], bGradient, gamma[:,None]))
     
 #     return positions, features
+
+from torch.utils.data import Dataset
+from torch_geometric.loader import DataLoader
+
+
+class datasetLoader(Dataset):
+    def __init__(self, data):
+        self.frameCounts = [indices[0].shape[0] for s, indices in data]
+        self.fileNames = [s for s, indices in data]
+        
+        self.indices = [indices[0] for s, indices in data]
+        self.counters = [indices[1] for s, indices in data]
+        
+#         print(frameCounts)
+        
+        
+    def __len__(self):
+#         print('len', np.sum(self.frameCounts))
+        return np.sum(self.frameCounts)
+    
+    def __getitem__(self, idx):
+#         print(idx , ' / ', np.sum(self.frameCounts))
+        cs = np.cumsum(self.frameCounts)
+        p = 0
+        for i in range(cs.shape[0]):
+#             print(p, idx, cs[i])
+            if idx < cs[i] and idx >= p:
+#                 print('Found index ', idx, 'in dataset ', i)
+#                 print('Loading frame ', self.indices[i][idx - p], ' from dataset ', i, ' for ', idx, p)
+                return self.fileNames[i], self.indices[i][idx - p], self.counters[i][idx-p]
+        
+
+                return (i, self.indices[i][idx - p]), (i, self.indices[i][idx-p])
+#                 return torch.rand(10,1), 2
+            p = cs[i]
+        return None, None
+
+

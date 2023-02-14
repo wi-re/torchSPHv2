@@ -348,19 +348,19 @@ class SPHSimulation():
                             emitterPositions = emitterPositions[polyDist >= self.config['particle']['spacing'] * self.config['particle']['support'] * 0.99,:]
                             # print('Particle count after filtering: ', particles.shape[0])
 
-                if emitter['shape'] == 'sphere':
-                    center = (torch.tensor(emitter['max'], dtype = self.dtype, device = self.device) + \
-                        torch.tensor(emitter['min'], dtype = self.dtype, device = self.device)) / 2
-                    dist = (torch.tensor(emitter['max'], dtype = self.dtype, device = self.device) - \
-                        torch.tensor(emitter['min'], dtype = self.dtype, device = self.device))
-#                     debugPrint(center)
-#                     debugPrint(dist)
-                    rad = max(dist[0], dist[1]) / 2
-#                     debugPrint(rad)
-                    centerDist = torch.linalg.norm(emitterPositions - center,axis=1)
-#                     debugPrint(centerDist)
-                    emitterPositions = emitterPositions[centerDist <= rad,:]
-#                     debugPrint(emitterPositions)
+#                 if emitter['shape'] == 'sphere':
+#                     center = (torch.tensor(emitter['max'], dtype = self.dtype, device = self.device) + \
+#                         torch.tensor(emitter['min'], dtype = self.dtype, device = self.device)) / 2
+#                     dist = (torch.tensor(emitter['max'], dtype = self.dtype, device = self.device) - \
+#                         torch.tensor(emitter['min'], dtype = self.dtype, device = self.device))
+# #                     debugPrint(center)
+# #                     debugPrint(dist)
+#                     rad = max(dist[0], dist[1]) / 2
+# #                     debugPrint(rad)
+#                     centerDist = torch.linalg.norm(emitterPositions - center,axis=1)
+# #                     debugPrint(centerDist)
+#                     emitterPositions = emitterPositions[centerDist <= rad,:]
+# #                     debugPrint(emitterPositions)
                     
                         
                 emitterAreas = torch.ones(emitterPositions.shape[0], dtype = self.dtype, device=self.device) * self.config['particle']['area']
@@ -616,7 +616,7 @@ class SPHSimulation():
             grp.create_dataset('UID', data = self.simulationState['UID'].detach().cpu().numpy())
             grp.create_dataset('fluidPosition', data = self.simulationState['fluidPosition'].detach().cpu().numpy())
             grp.create_dataset('fluidVelocity', data = self.simulationState['fluidVelocity'].detach().cpu().numpy())
-            grp.create_dataset('fluidArea', data = self.simulationState['fluidDensity'].detach().cpu().numpy())
+            grp.create_dataset('fluidArea', data = self.simulationState['fluidArea'].detach().cpu().numpy())
             grp.create_dataset('fluidDensity', data = self.simulationState['fluidDensity'].detach().cpu().numpy())
             grp.create_dataset('fluidSupport', data = self.simulationState['fluidSupport'].detach().cpu().numpy())
             grp.create_dataset('fluidPressure', data = self.simulationState['fluidPressure'].detach().cpu().numpy())

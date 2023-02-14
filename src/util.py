@@ -88,7 +88,7 @@ def genParticlesSphere(minCoord, maxCoord, radius, packing, support, dtype, devi
         rad = min(maxCoord[0] - minCoord[0], maxCoord[1] - minCoord[1]) / 2
         
         diff = maxCoord - minCoord
-        requiredSlices = torch.ceil(diff / packing / support).type(torch.int64) // 2
+        requiredSlices = torch.div(torch.ceil(diff / packing / support).type(torch.int64), 2, rounding_mode = 'trunc') + 2
         xi = torch.arange(requiredSlices[0] ).type(dtype).to(device)
         xi = torch.hstack((-torch.flip(xi[1:],(0,)), xi))
         yi = torch.arange(requiredSlices[1] ).type(dtype).to(device)
@@ -98,9 +98,13 @@ def genParticlesSphere(minCoord, maxCoord, radius, packing, support, dtype, devi
     
         xx, yy = torch.meshgrid(xi,yi, indexing = 'xy')
         positions = (packing * support) * torch.vstack((xx.flatten(), yy.flatten()))
-        dist = torch.linalg.norm(positions ,dim=0)**2
+        dist = torch.linalg.norm(positions ,dim=0)
         # debugPrint(dist)
+
+#         debugPrint(rad)
+
         positions = positions[:,dist <= rad]
+        dist = torch.linalg.norm(positions ,dim=0)
         
         positions[:] += (maxCoord[:,None] + minCoord[:,None])/2
         
