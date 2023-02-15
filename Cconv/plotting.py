@@ -162,7 +162,7 @@ def plotLossesv1(epochLosses):
     ax1_divider = make_axes_locatable(axis[1,3])
     cax1 = ax1_divider.append_axes("right", size="7%", pad="2%")
 
-    cbar = mpl.colorbar.ColorbarBase(cax1,orientation='vertical', norm=mpl.colors.Normalize(vmin=0, vmax=25))
+    cbar = mpl.colorbar.ColorbarBase(cax1,orientation='vertical', norm=mpl.colors.Normalize(vmin=0, vmax=overallLosses.shape[0]))
     cbar.ax.tick_params(labelsize=8) 
     cbar.set_label('epoch')
 
@@ -387,7 +387,7 @@ def plotLossesv2(epochLosses, logScale = True):
     ax1_divider = make_axes_locatable(axis[1,3])
     cax1 = ax1_divider.append_axes("right", size="7%", pad="2%")
 
-    cbar = mpl.colorbar.ColorbarBase(cax1,orientation='vertical', norm=mpl.colors.Normalize(vmin=0, vmax=25))
+    cbar = mpl.colorbar.ColorbarBase(cax1,orientation='vertical', norm=mpl.colors.Normalize(vmin=0, vmax=overallLosses.shape[0]))
     cbar.ax.tick_params(labelsize=8) 
     cbar.set_label('epoch')
 
