@@ -48,7 +48,7 @@ densityScheme = 'MOG'
 alpha = 0.01
 
 [integration]
-scheme = 'semiImplicitEuler'
+scheme = 'RK4'
 dt = 0.001
 
 [shifting]

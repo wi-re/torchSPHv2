@@ -51,136 +51,268 @@ np.random.seed(args.seed)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # print('running on: ', device)
 torch.set_num_threads(1)
-
-class RbfNet(torch.nn.Module):
-    def __init__(self, inputDimensions, outputDimensions, layerDescription, dropout = None):
+class DensityNet(torch.nn.Module):
+    def __init__(self, fluidFeatures, boundaryFeatures, layers = [32,64,64,2], denseLayer = True, acitvation = 'relu',
+                coordinateMapping = 'polar', n = 8, m = 8, windowFn = None, rbf_x = 'linear', rbf_y = 'linear', batchSize = 32):
         super().__init__()
+#         debugPrint(layers)
+        
+        self.features = copy.copy(layers)
+#         debugPrint(fluidFeatures)
+#         debugPrint(boundaryFeatures)
         self.convs = torch.nn.ModuleList()
-        self.dropout = dropout
-        outFeatures = inputDimensions
-        for layer in layerDescription['Layers']:
-            inFeatures = layer['inFeatures'] if 'inFeatures' in layer else outFeatures
-            outFeatures = layer['outFeatures'] if 'outFeatures' in layer else outputDimensions
-            dimension = layer['dimension'] if 'dimension' in layer else 2
-            size = layer['size'] if 'size' in layer else args.n
-            rbf = layer['rbf'] if 'rbf' in layer else [args.rbf_x, args.rbf_y]
-            bias = layer['bias'] if 'bias' in layer else False
-            centerLayer = layer['centerLayer'] if 'centerLayer' in layer else False
-            periodic = layer['periodic'] if 'periodic' in layer else False
-            activation = layer['activation'] if 'activation' in layer else None
-            batchSize = layer['batchSize'] if 'batchSize' in layer else [args.forwardBatch, args.backwardBatch]
+        self.fcs = torch.nn.ModuleList()
+        self.relu = getattr(nn.functional, 'relu')
+#         debugPrint(fluidFeatures)
 
-            self.convs.append(RbfConv(
-                in_channels = inFeatures, out_channels = outFeatures,
-                dim = dimension, size = size,
-                rbf = rbf, periodic = periodic,
-                dense_for_center = centerLayer, bias = bias, activation = activation,
-                batch_size = batchSize))
+        self.convs.append(RbfConv(
+            in_channels = fluidFeatures, out_channels = 1,
+            dim = 2, size = [n,m],
+            rbf = [rbf_x, rbf_y],
+            linearLayer = False, biasOffset = False, feedThrough = False,
+            preActivation = None, postActivation = None,
+            coordinateMapping = coordinateMapping,
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        
+        self.convs.append(RbfConv(
+            in_channels = boundaryFeatures, out_channels = 1,
+            dim = 2, size = [n,m],
+            rbf = [rbf_x, rbf_y], 
+            linearLayer = False, biasOffset = False, feedThrough = False,
+            preActivation = None, postActivation = None,
+            coordinateMapping = coordinateMapping,
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        
 
-    def forward(self, positions, features, output, ghostIndices, support, batches = None, persistent_batches = None):
-        if batches == None:
-            ghosts = ghostIndices[ghostIndices != -1]
+    def forward(self, \
+                fluidPositions, boundaryPositions, \
+                fluidFeatures, boundaryFeatures,\
+                support, fluidBatches = None, boundaryBatches = None):
+        fi, fj = radius(fluidPositions, fluidPositions, support, max_num_neighbors = 256, batch_x = fluidBatches, batch_y = fluidBatches)
+        bf, bb = radius(boundaryPositions, fluidPositions, support, max_num_neighbors = 256, batch_x = boundaryBatches, batch_y = fluidBatches)
+        
+        i, ni = torch.unique(fi, return_counts = True)
+        b, nb = torch.unique(bf, return_counts = True)
+        ni[i[b]] += nb
 
-            row, col = radius(output, positions, support, max_num_neighbors = 256)
-            edge_index = torch.stack([row, col], dim = 0)
-            print(self.dropout)
-            if dropout is not None:
-                rperm = torch.randperm(row.shape[0] * (1-self.dropout))
-                print(rperm)
-                row = row[rperm]
-                col = col[rperm]
-                print(row, col)
-                idx = torch.argsort(row)
-                print(idx)
-                row = row[idx]
-                col = col[idx]
-                print(row, col)
-                edge_index = torch.stack([row, col], dim = 0)
-
-            pseudo = (output[edge_index[1]] - positions[edge_index[0]])
-            pseudo = pseudo.clamp(-1,1)
-
-            ans = features
-
-            for layer in self.convs:
-                ans = (ans, ans[ghostIndices == -1])
-
-                ansc = layer(ans, edge_index, pseudo)
-                ghostFeatures = torch.index_select(ansc, 0, ghosts)
-                ans = torch.concat([ansc, ghostFeatures], axis =0)
-            return ans
-        else:
-            ghosts = ghostIndices[ghostIndices != -1]
-            row, col = radius(output, positions, support, max_num_neighbors = 256, batch_y = batches, batch_x = persistent_batches)
-            edge_index = torch.stack([row, col], dim = 0)
-
-            if self.dropout is not None:
-                rperm = torch.randperm(int(row.shape[0] * (1-self.dropout)))
-                row = row[rperm]
-                col = col[rperm]
-                idx = torch.argsort(row)
-                row = row[idx]
-                col = col[idx]
-                edge_index = torch.stack([row, col], dim = 0)
-
-            pseudo = (output[edge_index[1]] - positions[edge_index[0]])
-            pseudo = pseudo.clamp(-1,1)
-            ans = features
-            for layer in self.convs:
-                ans = (ans, ans[ghostIndices == -1])
-
-                ansc = layer(ans, edge_index, pseudo)
-                ghostFeatures = torch.index_select(ansc, 0, ghosts)
-                ans = torch.concat([ansc, ghostFeatures], axis =0)
-            return ans
-
-layerDescription = yaml.load('''
-Layers:
-    - inFeatures: 1
-      outFeatures: 1
-      dimension: 2
-      bias: False
-      centerLayer: False
-      periodic: False
-''', Loader = yaml.Loader)
-
-layerDescription ='Layers:'
+        self.li = torch.exp(-1 / np.float32(attributes['targetNeighbors']) * ni)
+        
+        boundaryEdgeIndex = torch.stack([bf, bb], dim = 0)
+        boundaryEdgeLengths = (boundaryPositions[boundaryEdgeIndex[1]] - fluidPositions[boundaryEdgeIndex[0]])/support
+        boundaryEdgeLengths = boundaryEdgeLengths.clamp(-1,1)
+            
+        fluidEdgeIndex = torch.stack([fi, fj], dim = 0)
+        fluidEdgeLengths = (fluidPositions[fluidEdgeIndex[1]] - fluidPositions[fluidEdgeIndex[0]])/support
+#         debugPrint(torch.min(fluidEdgeLengths))
+#         debugPrint(torch.max(fluidEdgeLengths))
+        fluidEdgeLengths = fluidEdgeLengths.clamp(-1,1)
+        
+#         debugPrint(fluidFeatures)
+#         debugPrint(boundaryFeatures)
+        
+        boundaryConvolution = self.convs[1]((fluidFeatures, boundaryFeatures), boundaryEdgeIndex, boundaryEdgeLengths)
+#         debugPrint(fluidPositions)
+#         debugPrint(fluidFeatures)
+#         debugPrint(fluidEdgeIndex)
+#         debugPrint(fluidEdgeLengths)
+        fluidConvolution = self.convs[0]((fluidFeatures, fluidFeatures), fluidEdgeIndex, fluidEdgeLengths)
+#         debugPrint(fluidConvolution[:,0][:8])
+#         debugPrint(boundaryConvolution[:,0][:8])
+        # return fluidConvolution
+        return fluidConvolution  + boundaryConvolution
 
 
-train_ds = compressedFluidDataset('~/sphdata/', train = True,  test = False, split = True, cutoff = args.cutoff)
-valid_ds = compressedFluidDataset('~/sphdata/', train = False, test = False, split = True, cutoff = args.cutoff)
-test_ds  = compressedFluidDataset('~/sphdata/', train = False, test = True,  split = True, cutoff = args.cutoff)
 
-# positions, features, persistent_output, ghostIndices, batches, persistent_batches, gt, support, indices
-_,featureVec,_,_,_,_,_,_,_ = prepareData([0], train_ds, 'cpu')
-inputFeatures = featureVec.shape[1]
+#  semi implicit euler, network predicts velocity update
+def integrateState(inputPositions, inputVelocities, modelOutput, dt):
+    predictedVelocity = modelOutput #inputVelocities +  modelOutput 
+    predictedPosition = inputPositions + attributes['dt'] * predictedVelocity
+    
+    return predictedPosition, predictedVelocity
+# velocity loss
+def computeLoss(predictedPosition, predictedVelocity, groundTruth, modelOutput):
+#     debugPrint(modelOutput.shape)
+#     debugPrint(groundTruth.shape)
+#     return torch.sqrt((modelOutput - groundTruth[:,-1:].to(device))**2)
+    return torch.abs(modelOutput - groundTruth[:,-1:].to(device))
+    return torch.linalg.norm(groundTruth[:,2:] - predictedVelocity, dim = 1)
+
+def processBatch(train_ds, bdata, unroll):
+    fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, fluidBatches, boundaryBatches, groundTruths = loadBatch(train_ds, bdata, unroll)    
+    
+    predictedPositions = fluidPositions.to(device)
+    predictedVelocity = fluidFeatures[:,1:3].to(device)
+    
+    unrolledLosses = []
+    bLosses = []
+#     debugPrint(bdata)
+    boundaryPositions = boundaryPositions.to(device)
+    fluidFeatures = fluidFeatures.to(device)
+    boundaryFeatures = boundaryFeatures.to(device)
+    
+#     debugPrint(bdata)
+#     debugPrint(predictedPosition)
+    
+    ls = []
+    
+    for u in range(1):
+        predictions = model(predictedPositions, boundaryPositions, fluidFeatures, boundaryFeatures, attributes['support'], fluidBatches, boundaryBatches)
+
+        predictedPositions, predictedVelocities = integrateState(predictedPositions, predictedVelocity, predictions, attributes['dt'])
+        
+        fluidFeatures = torch.hstack((fluidFeatures[:,0][:,None], predictedVelocity, fluidFeatures[:,3:]))
+#         fluidFeatures[:,1:3] = predictedVelocity
+
+#         debugPrint(prediction.shape)
+#         debugPrint(groundTruths[0].shape)
+#         loss = model.li * (predictions - groundTruths[0][:,-1:].to(device)) ** 0.5
+#         debugPrint(model.li)
+#         loss = computeLoss(predictedPositions, predictedVelocities, groundTruths[u].to(device), predictions)
+#         loss = model.li * torch.sqrt(computeLoss(predictedPositions, predictedVelocities, groundTruths[u].to(device), predictions))
+#         loss = model.li * computeLoss(predictedPositions, predictedVelocities, groundTruths[u].to(device), predictions)
+        loss = computeLoss(predictedPositions, predictedVelocities, groundTruths[u].to(device), predictions)
+#         p = 8
+#         debugPrint(loss[:p,0].detach().cpu().numpy())
+#         debugPrint(predictions[:p,0].detach().cpu().numpy())
+#         debugPrint(groundTruths[0][:,-1:][:p,0].detach().cpu().numpy())
+#         print('----------------------')
+        ls.append(torch.mean(loss))
+        batchedLoss = []
+#         debugPrint(fluidBatches)
+        for i in range(len(bdata)):
+            L = loss[fluidBatches == i]
+#             debugPrint(L)
+            Lterms = (torch.mean(L), torch.max(torch.abs(L)), torch.min(torch.abs(L)), torch.std(L))
+            
+            
+            batchedLoss.append(torch.hstack(Lterms))
+        batchedLoss = torch.vstack(batchedLoss).unsqueeze(0)
+#         debugPrint(batchedLoss.shape)
+        batchLoss = torch.mean(loss)# + torch.max(torch.abs(loss))
+        bLosses.append(batchedLoss)
+        unrolledLosses.append(batchLoss)
+        
+#     debugPrint(bLosses)
+#     debugPrint(torch.cat(bLosses))
+#     debugPrint(bLosses.shape)
+#     debugPrint(bLosses)
+    
+#     return torch.mean(torch.hstack(ls))
+    
+    bLosses = torch.vstack(bLosses)
+    maxLosses = torch.max(bLosses[:,:,1], dim = 0)[0]
+    minLosses = torch.min(bLosses[:,:,2], dim = 0)[0]
+    meanLosses = torch.mean(bLosses[:,:,0], dim = 0)
+    stdLosses = torch.mean(bLosses[:,:,3], dim = 0)
+    
+    
+    del predictedPositions, predictedVelocities, boundaryPositions, fluidFeatures, boundaryFeatures, fluidBatches, boundaryBatches
+    
+    bLosses = bLosses.transpose(0,1)
+    
+    return bLosses, meanLosses, minLosses, maxLosses, stdLosses
+
+import os
+
+basePath = '../export'
+basePath = os.path.expanduser(basePath)
+
+simulationFiles = [basePath + '/' + f for f in os.listdir(basePath) if f.endswith('.hdf5')]
+# for i, c in enumerate(simulationFiles):
+#     print(i ,c)
+    
+simulationFiles  = [simulationFiles[0]]
+
+training = []
+validation = []
+testing = []
 
 
-widths = args.arch.strip().split(' ')
-for i, w in enumerate(widths):
-    win = inputFeatures if i == 0 else widths[i-1]
-    wout = 2 if i == len(widths) - 1 else widths[i]
-    relu = 'placeholder' if i == len(widths) -1 else 'activation'
-    layerDescription = layerDescription + f'''
-    - inFeatures: {win}
-      outFeatures: {wout}
-      dimension: 2
-      bias: False
-      centerLayer: True
-      periodic: False 
-      {relu}: relu    '''
+for s in simulationFiles:    
+    _, train, valid, test = splitFile(s, split = True, limitRollOut = False, skip = 0, cutoff = 800)
+    training.append((s,train))
+    validation.append((s,valid))
+    testing.append((s,test))
 
-layerDescription = yaml.load(layerDescription, Loader = yaml.Loader)
+batch_size = 4
 
-model = RbfNet(1,1, layerDescription, dropout = 0.5)
+train_ds = datasetLoader(training)
+train_dataloader = DataLoader(train_ds, shuffle=True, batch_size = batch_size).batch_sampler
 
-optimizer = Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+validation_ds = datasetLoader(validation)
+validation_dataloader = DataLoader(validation_ds, shuffle=True, batch_size = batch_size).batch_sampler
+
+fileName, frameIndex, maxRollout = train_ds[len(train_ds)//2]
+# frameIndex = 750
+attributes, inputData, groundTruthData = loadFrame(simulationFiles[0], 400, 1 + np.arange(1))
+fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures = constructFluidFeatures(inputData)
+
+debugPrint(fluidFeatures.shape)
+
+
+n = 8
+m = 8
+coordinateMapping = 'polar'
+windowFn = lambda r: torch.clamp(torch.pow(1. - r, 4) * (1.0 + 4.0 * r), min = 0)
+rbf_x = 'linear'
+rbf_y = 'linear'
+initialLR = 1e-2
+maxRollOut = 10
+epochs = 25
+frameDistance = 0
+
+
+
+
+model = DensityNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = 64)
+
+
+
+lr = initialLR
+optimizer = Adam(model.parameters(), lr=lr)
 model = model.to(device)
+
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 if args.gpus == 1:
     print('Number of parameters', count_parameters(model))
+
+optimizer.zero_grad()
+model.train()
+
+hyperParameterDict = {}
+hyperParameterDict['n'] = n
+hyperParameterDict['m'] = m
+hyperParameterDict['coordinateMapping'] = coordinateMapping
+hyperParameterDict['rbf_x'] = rbf_x
+hyperParameterDict['rbf_y'] = rbf_y
+hyperParameterDict['windowFunction'] = 'yes' if windowFn is not None else 'no'
+hyperParameterDict['initialLR'] = initialLR
+hyperParameterDict['maxRollOut'] = maxRollOut
+hyperParameterDict['epochs'] = epochs
+hyperParameterDict['frameDistance'] = frameDistance
+hyperParameterDict['parameters'] =  count_parameters(model)
+
+# debugPrint(hyperParameterDict)
+
+
+timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+networkPrefix = 'DensityNet'
+
+exportString = '%s - n=[%2d,%2d] rbf=[%s,%s] map = %s window = %s d = %2d e = %2d - %s' % (networkPrefix, hyperParameterDict['n'], hyperParameterDict['m'], hyperParameterDict['rbf_x'], hyperParameterDict['rbf_y'], hyperParameterDict['coordinateMapping'], hyperParameterDict['windowFunction'], hyperParameterDict['frameDistance'], hyperParameterDict['epochs'], timestamp)
+
+debugPrint(hyperParameterDict)
+debugPrint(exportString)
+exit() 
+
+
+# exportPath = './trainingData/%s - %s.hdf5' %(self.config['export']['prefix'], timestamp)
+if not os.path.exists('./trainingData/%s' % exportString):
+    os.makedirs('./trainingData/%s' % exportString)
+# self.outFile = h5py.File(self.exportPath,'w')
+
+
 
 train_dataloader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True).batch_sampler
 train_dataloader_fwd = DataLoader(train_ds, batch_size=1, shuffle=False).batch_sampler

@@ -53,7 +53,7 @@ adjust = true
 [emitter.damBreak]
 fillDomain = false
 min = [-2.0,-2.0]
-max = [-1.0, -1.0]
+max = [-0.5, -1.0]
 velocity = [ 0.0, 0.0]
 adjust = true
 
@@ -61,7 +61,7 @@ adjust = true
 device='cpu'
 
 [particle]
-radius = 0.025
+radius = 0.01
 
 [gravity2]
 magnitude = 0
@@ -70,7 +70,7 @@ magnitude = 0
 c0 = 100
 
 [simulation]
-boundaryScheme = 'solid'
+boundaryScheme = 'Akinci'
 verbose = false
 densityScheme = 'summation'
 scheme = 'dfsph'

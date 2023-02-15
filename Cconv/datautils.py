@@ -307,3 +307,110 @@ class datasetLoader(Dataset):
         return None, None
 
 
+
+
+def loadFrame(filename, frame, frameOffsets = [1], frameDistance = 1):
+    inFile = h5py.File(filename)
+    inGrp = inFile['simulationExport']['%05d' % frame]
+#     debugPrint(inFile.attrs.keys())
+    attributes = {
+     'support': np.max(inGrp['fluidSupport'][:]),
+     'targetNeighbors': inFile.attrs['targetNeighbors'],
+     'restDensity': inFile.attrs['restDensity'],
+     'dt': inGrp.attrs['dt'],
+     'time': inGrp.attrs['time'],
+     'radius': inFile.attrs['radius'],
+     'area': inFile.attrs['radius'] **2 * np.pi,
+    }
+#     debugPrint(inGrp.attrs['timestep'])
+
+    support = inFile.attrs['restDensity']
+    targetNeighbors = inFile.attrs['targetNeighbors']
+    restDensity = inFile.attrs['restDensity']
+    dt = inFile.attrs['initialDt']
+
+    inputData = {
+        'fluidPosition': torch.from_numpy(inGrp['fluidPosition'][:]).type(torch.float32),
+        'fluidVelocity': torch.from_numpy(inGrp['fluidVelocity'][:]).type(torch.float32),
+        'fluidArea' : torch.from_numpy(inGrp['fluidArea'][:]).type(torch.float32),
+        'fluidDensity' : torch.from_numpy(inGrp['fluidDensity'][:]).type(torch.float32),
+        'fluidSupport' : torch.from_numpy(inGrp['fluidSupport'][:]).type(torch.float32),
+        'fluidGravity' : torch.from_numpy(inGrp['fluidGravity'][:]).type(torch.float32) if 'fluidGravity' not in inFile.attrs else torch.from_numpy(inFile.attrs['fluidGravity']).type(torch.float32) * torch.ones(inGrp['fluidDensity'][:].shape[0])[:,None],
+        'boundaryPosition': torch.from_numpy(inFile['boundaryInformation']['boundaryPosition'][:]).type(torch.float32),
+        'boundaryNormal': torch.from_numpy(inFile['boundaryInformation']['boundaryNormals'][:]).type(torch.float32),
+        'boundaryArea': torch.from_numpy(inFile['boundaryInformation']['boundaryArea'][:]).type(torch.float32),
+        'boundaryVelocity': torch.from_numpy(inFile['boundaryInformation']['boundaryVelocity'][:]).type(torch.float32)
+    }
+    
+    groundTruthData = []
+    for i in frameOffsets:
+        gtGrp = inFile['simulationExport']['%05d' % (frame + i * frameDistance)]
+#         debugPrint((frame + i * frameDistance))
+#         debugPrint(gtGrp.attrs['timestep'])
+        gtData = {
+            'fluidPosition'    : torch.from_numpy(gtGrp['fluidPosition'][:]),
+            'fluidVelocity'    : torch.from_numpy(gtGrp['fluidVelocity'][:]),
+            'fluidDensity'     : torch.from_numpy(gtGrp['fluidDensity'][:]),
+    #         'fluidPressure'    : torch.from_numpy(gtGrp['fluidPressure'][:]),
+    #         'boundaryDensity'  : torch.from_numpy(gtGrp['fluidDensity'][:]),
+    #         'boundaryPressure' : torch.from_numpy(gtGrp['fluidPressure'][:]),
+        }
+        
+        groundTruthData.append(torch.hstack((gtData['fluidPosition'].type(torch.float32), gtData['fluidVelocity'], gtData['fluidDensity'][:,None])))
+        
+    
+    inFile.close()
+    
+    return attributes, inputData, groundTruthData
+
+
+def loadData(dataset, index, featureFun, unroll = 1, frameDistance = 1):
+    fileName, frameIndex, maxRollouts = dataset[index]
+
+    attributes, inputData, groundTruthData = loadFrame(fileName, frameIndex, 1 + np.arange(unroll), frameDistance = frameDistance)
+    fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures = featureFun(inputData)
+    
+    return attributes, fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, groundTruthData
+
+
+def loadBatch(train_ds, bdata, featureFun, unroll = 1, frameDistance = 1):
+    fluidPositions = []
+    boundaryPositions = []
+    fluidFeatures = []
+    boundaryFeatures = []
+    fluidBatchIndices = []
+    boundaryBatchIndices = []
+    groundTruths = []
+    for i in range(unroll):
+        groundTruths.append([])
+    
+    for i,b in enumerate(bdata):
+#         debugPrint(i)
+#         debugPrint(b)
+        attribute, fluidPosition, boundaryPosition, fluidFeature, boundaryFeature, groundTruth = loadData(train_ds, b, featureFun, unroll = unroll, frameDistance = frameDistance)     
+#         debugPrint(groundTruth)
+        fluidPositions.append(fluidPosition)
+#         debugPrint(fluidPositions)
+        boundaryPositions.append(boundaryPosition)
+        fluidFeatures.append(fluidFeature)
+        boundaryFeatures.append(boundaryFeature)
+        
+        batchIndex = torch.ones(fluidPosition.shape[0]) * i
+        fluidBatchIndices.append(batchIndex)
+        
+        batchIndex = torch.ones(boundaryPosition.shape[0]) * i
+        boundaryBatchIndices.append(batchIndex)
+        for u in range(unroll):
+            groundTruths[u].append(groundTruth[u])
+        
+    fluidPositions = torch.vstack(fluidPositions)
+    boundaryPositions = torch.vstack(boundaryPositions)
+    fluidFeatures = torch.vstack(fluidFeatures)
+    boundaryFeatures = torch.vstack(boundaryFeatures)
+    fluidBatchIndices = torch.hstack(fluidBatchIndices)
+    boundaryBatchIndices = torch.hstack(boundaryBatchIndices)
+    for u in range(unroll):
+        groundTruths[u] = torch.vstack(groundTruths[u])
+    
+    return fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, fluidBatchIndices, boundaryBatchIndices, groundTruths
+    

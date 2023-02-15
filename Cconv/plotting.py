@@ -217,8 +217,12 @@ def histPlot(fig, axis, dataSet, binCount = 32, xLabel = None, yLabel = None, lo
     
     for e in range(dataSet.shape[0]):
         data = dataSet[e,:]
-        minV = max(1e-11, np.min(data))
-        maxV = max(1e-9, np.max(data))
+        if np.sum(data > 0) > 0:
+            minV = max(1e-11, np.min(data[data > 0]))
+            maxV = max(1e-9, np.max(data[data > 0]))
+        else:
+            minV = max(1e-11, np.min(data))
+            maxV = max(1e-9, np.max(data))
         bs = 10 ** np.linspace(np.log10(minV), np.log10(maxV), binCount) if logScale else np.linspace(minV, maxV, binCount)
 #         debugPrint(bs)
 
@@ -259,11 +263,12 @@ def histPlot(fig, axis, dataSet, binCount = 32, xLabel = None, yLabel = None, lo
     minVal = np.min(oCounts[oCounts > 0]) if np.sum(oCounts > 0) > 0 else 0
     maxVal = np.max(oCounts)
 
-    for e, (cts, bins) in enumerate(zip(histCounts, histBins)):
-        mapped = (cts[cts>0] - minVal ) / (maxVal - minVal) if (maxVal - minVal > 0) else 0
 
-        x = np.ones_like(bins)[cts > 0] * e
-        y = bins[cts > 0]
+    for e, (cts, bins) in enumerate(zip(histCounts, histBins)):
+        mapped = (cts - minVal ) / (maxVal - minVal) if (maxVal - minVal > 0) else 0
+
+        x = np.ones_like(bins)* e
+        y = bins
         z = mapped
 
         points = np.array([x, y]).T.reshape(-1, 1, 2)
@@ -271,7 +276,7 @@ def histPlot(fig, axis, dataSet, binCount = 32, xLabel = None, yLabel = None, lo
         lc = LineCollection(segments, cmap=cm.viridis, lw = 4)
         lc.set_array(z)
 
-        sc = axis.scatter(np.ones_like(bins)[cts > 0] * e, bins[cts > 0], c = cts[cts > 0], alpha = 1.00 , s = 0.1, vmin = minVal, vmax = maxVal)
+        sc = axis.scatter(np.ones_like(bins) * e, bins, c = cts, alpha = 1.00 , s = 0.1, vmin = minVal, vmax = maxVal)
         # axis[0,0].plot(np.ones_like(bins)[cts > 0] * e, bins[cts > 0], \
             # c = cm.viridis(mapped), alpha = 1.00 , s = 1)
         axis.add_collection(lc)
@@ -417,6 +422,8 @@ def plotLossesv2(epochLosses, logScale = True):
     cbar.set_label('loss')
 
     fig.tight_layout()
+
+    return fig, axis
 
 def findSize(n, maxX = 10):
     combinations = []    
