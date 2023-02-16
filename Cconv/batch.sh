@@ -1,64 +1,64 @@
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf square" --rbf_y="rbf square"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf square" --rbf_y="rbf linear"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf square" --rbf_y="rbf bump"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf square" --rbf_y="rbf spiky"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf square" --rbf_y="rbf cubic_spline"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf square" --rbf_y="rbf gaussian"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf square" --rbf_y="fourier"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf square" --rbf_y="chebyshev"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf linear" --rbf_y="rbf square"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf linear" --rbf_y="rbf linear"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf linear" --rbf_y="rbf bump"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf linear" --rbf_y="rbf spiky"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf linear" --rbf_y="rbf cubic_spline"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf linear" --rbf_y="rbf gaussian"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf linear" --rbf_y="fourier"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf linear" --rbf_y="chebyshev"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf bump" --rbf_y="rbf square"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf bump" --rbf_y="rbf linear"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf bump" --rbf_y="rbf bump"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf bump" --rbf_y="rbf spiky"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf bump" --rbf_y="rbf cubic_spline"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf bump" --rbf_y="rbf gaussian"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf bump" --rbf_y="fourier"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf bump" --rbf_y="chebyshev"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf spiky" --rbf_y="rbf square"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf spiky" --rbf_y="rbf linear"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf spiky" --rbf_y="rbf bump"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf spiky" --rbf_y="rbf spiky"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf spiky" --rbf_y="rbf cubic_spline"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf spiky" --rbf_y="rbf gaussian"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf spiky" --rbf_y="fourier"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf spiky" --rbf_y="chebyshev"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf cubic_spline" --rbf_y="rbf square"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf cubic_spline" --rbf_y="rbf linear"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf cubic_spline" --rbf_y="rbf bump"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf cubic_spline" --rbf_y="rbf spiky"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf cubic_spline" --rbf_y="rbf cubic_spline"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf cubic_spline" --rbf_y="rbf gaussian"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf cubic_spline" --rbf_y="fourier"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf cubic_spline" --rbf_y="chebyshev"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf gaussian" --rbf_y="rbf square"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf gaussian" --rbf_y="rbf linear"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf gaussian" --rbf_y="rbf bump"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf gaussian" --rbf_y="rbf spiky"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf gaussian" --rbf_y="rbf cubic_spline"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf gaussian" --rbf_y="rbf gaussian"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf gaussian" --rbf_y="fourier"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="rbf gaussian" --rbf_y="chebyshev"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="fourier" --rbf_y="rbf square"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="fourier" --rbf_y="rbf linear"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="fourier" --rbf_y="rbf bump"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="fourier" --rbf_y="rbf spiky"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="fourier" --rbf_y="rbf cubic_spline"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="fourier" --rbf_y="rbf gaussian"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="fourier" --rbf_y="fourier"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="fourier" --rbf_y="chebyshev"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="chebyshev" --rbf_y="rbf square"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="chebyshev" --rbf_y="rbf linear"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="chebyshev" --rbf_y="rbf bump"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="chebyshev" --rbf_y="rbf spiky"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="chebyshev" --rbf_y="rbf cubic_spline"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="chebyshev" --rbf_y="rbf gaussian"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="chebyshev" --rbf_y="fourier"
-clear && python rbfnn.py --lr=0.001 --epochs=50 --cutoff=800 --n=8 --batch_size=1 --forwardBatch=512 --backwardBatch=512 --rbf_x="chebyshev" --rbf_y="chebyshev"
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'rbf square'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'rbf linear'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'rbf bump'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'rbf spiky'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'rbf cubic_spline'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'rbf gaussian'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'fourier'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'chebyshev'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'rbf square'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'rbf linear'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'rbf bump'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'rbf spiky'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'rbf cubic_spline'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'rbf gaussian'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'fourier'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'chebyshev'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'rbf square'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'rbf linear'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'rbf bump'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'rbf spiky'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'rbf cubic_spline'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'rbf gaussian'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'fourier'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'chebyshev'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'rbf square'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'rbf linear'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'rbf bump'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'rbf spiky'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'rbf cubic_spline'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'rbf gaussian'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'fourier'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'chebyshev'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'rbf square'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'rbf linear'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'rbf bump'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'rbf spiky'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'rbf cubic_spline'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'rbf gaussian'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'fourier'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'chebyshev'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'rbf square'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'rbf linear'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'rbf bump'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'rbf spiky'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'rbf cubic_spline'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'rbf gaussian'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'fourier'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'chebyshev'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'rbf square'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'rbf linear'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'rbf bump'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'rbf spiky'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'rbf cubic_spline'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'rbf gaussian'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'fourier'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'chebyshev'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'rbf square'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'rbf linear'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'rbf bump'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'rbf spiky'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'rbf cubic_spline'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'rbf gaussian'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'fourier'
+clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'chebyshev'

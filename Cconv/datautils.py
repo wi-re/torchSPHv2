@@ -367,7 +367,7 @@ def loadData(dataset, index, featureFun, unroll = 1, frameDistance = 1):
     fileName, frameIndex, maxRollouts = dataset[index]
 
     attributes, inputData, groundTruthData = loadFrame(fileName, frameIndex, 1 + np.arange(unroll), frameDistance = frameDistance)
-    fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures = featureFun(inputData)
+    fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures = featureFun(attributes, inputData)
     
     return attributes, fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, groundTruthData
 
@@ -386,7 +386,7 @@ def loadBatch(train_ds, bdata, featureFun, unroll = 1, frameDistance = 1):
     for i,b in enumerate(bdata):
 #         debugPrint(i)
 #         debugPrint(b)
-        attribute, fluidPosition, boundaryPosition, fluidFeature, boundaryFeature, groundTruth = loadData(train_ds, b, featureFun, unroll = unroll, frameDistance = frameDistance)     
+        attributes, fluidPosition, boundaryPosition, fluidFeature, boundaryFeature, groundTruth = loadData(train_ds, b, featureFun, unroll = unroll, frameDistance = frameDistance)     
 #         debugPrint(groundTruth)
         fluidPositions.append(fluidPosition)
 #         debugPrint(fluidPositions)
