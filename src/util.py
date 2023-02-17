@@ -119,6 +119,11 @@ def genParticles(minCoord, maxCoord, radius, packing, support, dtype, device):
         
         gen_position = lambda r, i, j: torch.tensor([r * i, r * j], dtype=dtype, device = device)
         
+        # debugPrint(minCoord)
+        # debugPrint(maxCoord)
+        # debugPrint(radius)
+        # debugPrint(packing)
+        # debugPrint(support)
     #     packing *= support
         # debugPrint(minCoord)
         # debugPrint(maxCoord)
@@ -136,7 +141,7 @@ def genParticles(minCoord, maxCoord, radius, packing, support, dtype, device):
 
 def evalBoundarySpacing(spacing, support, packing, radius, gamma, plot = False):
     x = spacing  * support
-    particles = genParticles(torch.tensor([-2*support,x]),torch.tensor([2*support,2* support + x]), radius, packing, support, torch.float32, 'cpu')
+    particles = genParticles(torch.tensor([-2*support,x[0]]),torch.tensor([2*support,2* support + x[0]]), radius, packing, support, torch.float32, 'cpu')
     particleAreas = torch.ones(particles.shape[0]) * (np.pi * radius**2)
 #     particleAreas = torch.ones(particles.shape[0]) * (packing * support)**2
     if plot:

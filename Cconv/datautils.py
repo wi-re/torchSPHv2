@@ -92,9 +92,9 @@ def getSamples(frames, maxRollOut = 8, chunked = False, trainValidationSplit = 0
     
     return trainingFrames, validationFrames, counter
 
-def splitFile(s, skip = 32, cutoff = 300, chunked = True, maxRollOut = 8, split = True, trainValidationSplit = 0.8, testSplit = 0.1, limitRollOut = False):
+def splitFile(s, skip = 32, cutoff = 300, chunked = True, maxRollOut = 8, split = True, trainValidationSplit = 0.8, testSplit = 0.1, limitRollOut = False, distance = 1):
     inFile = h5py.File(s, 'r')
-    frameCount = int(len(inFile['simulationExport'].keys()) -1) # adjust for bptcls
+    frameCount = int(len(inFile['simulationExport'].keys()) -1) // distance # adjust for bptcls
     inFile.close()
     if cutoff > 0:
         frameCount = min(cutoff+skip, frameCount)
@@ -110,15 +110,15 @@ def splitFile(s, skip = 32, cutoff = 300, chunked = True, maxRollOut = 8, split 
     
     # print(frameCount, cutoff, testSamples)
     testingIndices, _, testingCounter = getSamples(testSamples, maxRollOut = maxRollOut, chunked = chunked, trainValidationSplit = 1.)
-    testingIndices = testingIndices + testIndex
+    testingIndices = testingIndices * distance + testIndex
     
     # print(frameCount, cutoff, testIndex - skip)
     trainingIndices, validationIndices, trainValidationCounter = getSamples(testIndex - skip, maxRollOut = maxRollOut, chunked = chunked, trainValidationSplit = trainValidationSplit, limitRollOut = limitRollOut)
     trainingCounter = trainValidationCounter[trainingIndices]
     validationCounter = -trainValidationCounter[validationIndices]
     
-    trainingIndices = trainingIndices + skip
-    validationIndices = validationIndices + skip
+    trainingIndices = trainingIndices * distance + skip
+    validationIndices = validationIndices * distance + skip
     
     # print(trainingIndices.shape[0])
     # print(validationIndices.shape[0])
