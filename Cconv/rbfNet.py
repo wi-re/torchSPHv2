@@ -100,10 +100,15 @@ class RbfNet(torch.nn.Module):
                 attributes, fluidBatches = None, boundaryBatches = None):
         fi, fj = radius(fluidPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = fluidBatches, batch_y = fluidBatches)
         bf, bb = radius(boundaryPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = boundaryBatches, batch_y = fluidBatches)
-        if self.centerIgnore:
-            nequals = fi != fj
-            fi = fi[nequals]
-            fj = fj[nequals]
+        # if self.centerIgnore:
+        #     nequals = fi != fj
+        #     fi = fi[nequals]
+        #     fj = fj[nequals]
+
+        i, ni = torch.unique(fi, return_counts = True)
+        b, nb = torch.unique(bf, return_counts = True)
+        ni[i[b]] += nb
+        self.li = torch.exp(-1 / np.float32(attributes['targetNeighbors']) * ni)
         
         boundaryEdgeIndex = torch.stack([bf, bb], dim = 0)
         boundaryEdgeLengths = (boundaryPositions[boundaryEdgeIndex[1]] - fluidPositions[boundaryEdgeIndex[0]])/attributes['support']
@@ -133,8 +138,10 @@ class RbfNet(torch.nn.Module):
 
 #  semi implicit euler, network predicts velocity update
 def integrateState(attributes, inputPositions, inputVelocities, modelOutput, frameDistance):
-    predictedVelocity = modelOutput #inputVelocities +  modelOutput 
-    predictedPosition = inputPositions + frameDistance * attributes['dt'] * predictedVelocity
+    # predictedVelocity = modelOutput #inputVelocities +  modelOutput 
+    # predictedPosition = inputPositions + frameDistance * attributes['dt'] * predictedVelocity
+    predictedVelocity = modelOutput / (frameDistance * attributes['dt']) #inputVelocities +  modelOutput 
+    predictedPosition = inputPositions + modelOutput
     
     return predictedPosition, predictedVelocity
 # velocity loss
@@ -143,7 +150,8 @@ def computeLoss(predictedPosition, predictedVelocity, groundTruth, modelOutput):
 #     debugPrint(groundTruth.shape)
 #     return torch.sqrt((modelOutput - groundTruth[:,-1:].to(device))**2)
     # return torch.abs(modelOutput - groundTruth[:,-1:].to(modelOutput.device))
-    return torch.linalg.norm(groundTruth[:,2:4] - predictedVelocity, dim = 1)
+    # return torch.linalg.norm(groundTruth[:,2:4] - predictedVelocity, dim = 1)
+    return torch.linalg.norm(groundTruth[:,:2] - modelOutput, dim = 1)
 
 def constructFluidFeatures(attributes, inputData):
     fluidFeatures = torch.hstack(\
