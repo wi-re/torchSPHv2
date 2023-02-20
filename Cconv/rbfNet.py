@@ -100,10 +100,8 @@ class RbfNet(torch.nn.Module):
                 attributes, fluidBatches = None, boundaryBatches = None):
         fi, fj = radius(fluidPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = fluidBatches, batch_y = fluidBatches)
         bf, bb = radius(boundaryPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = boundaryBatches, batch_y = fluidBatches)
-        # if self.centerIgnore:
-        #     nequals = fi != fj
-        #     fi = fi[nequals]
-        #     fj = fj[nequals]
+        if self.centerIgnore:
+            nequals = fi != fj
 
         i, ni = torch.unique(fi, return_counts = True)
         b, nb = torch.unique(bf, return_counts = True)
@@ -113,20 +111,23 @@ class RbfNet(torch.nn.Module):
         boundaryEdgeIndex = torch.stack([bf, bb], dim = 0)
         boundaryEdgeLengths = (boundaryPositions[boundaryEdgeIndex[1]] - fluidPositions[boundaryEdgeIndex[0]])/attributes['support']
         boundaryEdgeLengths = boundaryEdgeLengths.clamp(-1,1)
-        fluidEdgeIndex = torch.stack([fi, fj], dim = 0)
+        if self.centerIgnore:
+            fluidEdgeIndex = torch.stack([fi[nequals], fj[nequals]], dim = 0)
+        else:
+            fluidEdgeIndex = torch.stack([fi, fj], dim = 0)
         fluidEdgeLengths = -(fluidPositions[fluidEdgeIndex[1]] - fluidPositions[fluidEdgeIndex[0]])/attributes['support']
         fluidEdgeLengths = fluidEdgeLengths.clamp(-1,1)
             
         linearOutput = self.relu(self.fcs[0](fluidFeatures))
         boundaryConvolution = self.convs[1]((fluidFeatures, boundaryFeatures), boundaryEdgeIndex, boundaryEdgeLengths)
         fluidConvolution = self.convs[0]((fluidFeatures, fluidFeatures), fluidEdgeIndex, fluidEdgeLengths)
-        ans = torch.hstack((boundaryConvolution, fluidConvolution, boundaryConvolution))
+        ans = torch.hstack((linearOutput, fluidConvolution, boundaryConvolution))
         
         layers = len(self.convs)
         for i in range(2,layers):
             ansConv = self.convs[i]((ans, ans), fluidEdgeIndex, fluidEdgeLengths)
             ansDense = self.fcs[i - 1](ans)
-            if self.features[i-2] == self.features[i-1]:
+            if self.features[i-2] == self.features[i-1] and ans.shape == ansConv.shape:
                 ans = ansConv + ansDense + ans
             else:
                 ans = ansConv + ansDense
@@ -151,13 +152,14 @@ def computeLoss(predictedPosition, predictedVelocity, groundTruth, modelOutput):
 #     return torch.sqrt((modelOutput - groundTruth[:,-1:].to(device))**2)
     # return torch.abs(modelOutput - groundTruth[:,-1:].to(modelOutput.device))
     # return torch.linalg.norm(groundTruth[:,2:4] - predictedVelocity, dim = 1)
-    return torch.linalg.norm(groundTruth[:,:2] - modelOutput, dim = 1)
+    return torch.sqrt(torch.linalg.norm(groundTruth[:,:2] - predictedPosition, dim = 1))
+    # return torch.sqrt(torch.linalg.norm(groundTruth[:,2:4] - modelOutput, dim = 1))
 
 def constructFluidFeatures(attributes, inputData):
     fluidFeatures = torch.hstack(\
                 (torch.ones(inputData['fluidArea'].shape[0]).type(torch.float32).unsqueeze(dim=1), \
                  inputData['fluidVelocity'].type(torch.float32), 
-                 inputData['fluidGravity'].type(torch.float32)))
+                 torch.ones(inputData['fluidArea'].shape[0]).type(torch.float32).unsqueeze(dim=1)))
 
     # fluidFeatures = torch.ones(inputData['fluidArea'].shape[0]).type(torch.float32).unsqueeze(dim=1)
     # fluidFeatures[:,0] *= 7 / np.pi * inputData['fluidArea']  / attributes['support']**2
@@ -174,7 +176,7 @@ def processBatch(model, device, li, attributes, e, unroll, train_ds, bdata, fram
     
 
     predictedPositions = fluidPositions.to(device)
-    predictedVelocity = fluidFeatures[:,1:3].to(device)
+    predictedVelocities = fluidFeatures[:,1:3].to(device)
     
     bLosses = []
     boundaryPositions = boundaryPositions.to(device)
@@ -185,8 +187,8 @@ def processBatch(model, device, li, attributes, e, unroll, train_ds, bdata, fram
             
     for u in range(unroll):
         predictions = model(predictedPositions, boundaryPositions, fluidFeatures, boundaryFeatures, attributes, fluidBatches, boundaryBatches)
-        predictedPositions, predictedVelocities = integrateState(attributes, predictedPositions, predictedVelocity, predictions, frameDistance)        
-        fluidFeatures = torch.hstack((fluidFeatures[:,0][:,None], predictedVelocity, fluidFeatures[:,3:]))
+        predictedPositions, predictedVelocities = integrateState(attributes, predictedPositions, predictedVelocities, predictions, frameDistance)        
+        fluidFeatures = torch.hstack((fluidFeatures[:,0][:,None], predictedVelocities, fluidFeatures[:,3:]))
                 
         if li:
             loss = model.li * computeLoss(predictedPositions, predictedVelocities, groundTruths[u].to(device), predictions)

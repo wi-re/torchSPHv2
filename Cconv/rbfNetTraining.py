@@ -29,9 +29,9 @@ parser.add_argument('-cmap','--coordinateMapping', type=str, default='preserving
 parser.add_argument('-w','--windowFunction', type=str, default='Wendland2')
 parser.add_argument('-c','--cutoff', type=int, default=1800)
 parser.add_argument('-b','--batch_size', type=int, default=8)
-parser.add_argument('--cutlassBatchSize', type=int, default=32)
-parser.add_argument('-r','--lr', type=float, default=0.0001)
-parser.add_argument('--lr_decay_factor', type=float, default=0.999)
+parser.add_argument('--cutlassBatchSize', type=int, default=128)
+parser.add_argument('-r','--lr', type=float, default=0.001)
+parser.add_argument('--lr_decay_factor', type=float, default=0.99)
 parser.add_argument('--lr_decay_step_size', type=int, default=1)
 parser.add_argument('--weight_decay', type=float, default=0)
 parser.add_argument('-x','--rbf_x', type=str, default='linear')
@@ -47,6 +47,8 @@ parser.add_argument('-f','--forwardLoss', type=bool, default=False)
 parser.add_argument('-v','--verbose', type=bool, default=False)
 parser.add_argument('-l','--li', type=bool, default=True)
 parser.add_argument('-a','--activation', type=str, default='relu')
+parser.add_argument('--arch', type=str, default='32 64 64 2')
+parser.add_argument('--limitData', type=int, default=-1)
 
 args = parser.parse_args()
 
@@ -88,7 +90,13 @@ basePath = '../export'
 basePath = os.path.expanduser(basePath)
 
 simulationFiles = [basePath + '/' + f for f in os.listdir(basePath) if f.endswith('.hdf5')]
-simulationFiles = [simulationFiles[0]]
+
+if args.limitData > 0:
+    files = []
+    for i in range(args.limitData):
+        files.append(simulationFiles[i])
+    simulationFiles = files
+# simulationFiles = [simulationFiles[0]]
 if args.verbose:
     print('Input files:')
     for i, c in enumerate(simulationFiles):
@@ -149,11 +157,15 @@ if args.verbose:
     print('Training for %d epochs' % epochs)
     print('Rollout limit (if applicable):', maxRollout)
     print('Training with frame offset of', frameDistance)
+    print('Network architecture', args.arch)
 
 
+widths = args.arch.strip().split(' ')
+layers = [int(s) for s in widths]
+# debugPrint(layers)
 if args.verbose:
     print('Building Network')
-model = RbfNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
+model = RbfNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
 
 
 
@@ -185,13 +197,15 @@ hyperParameterDict['frameDistance'] = frameDistance
 hyperParameterDict['dataDistance'] = args.dataDistance
 hyperParameterDict['parameters'] =  count_parameters(model)
 hyperParameterDict['cutoff'] =  args.cutoff
+hyperParameterDict['dataLimit'] =  args.limitData 
+hyperParameterDict['arch'] =  args.arch
 lr = initialLR
 
 
 timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 networkPrefix = 'RbfNet'
 
-exportString = '%s - n=[%2d,%2d] rbf=[%s,%s] map = %s window = %s d = %2d e = %2d - %s' % (networkPrefix, hyperParameterDict['n'], hyperParameterDict['m'], hyperParameterDict['rbf_x'], hyperParameterDict['rbf_y'], hyperParameterDict['coordinateMapping'], args.windowFunction, hyperParameterDict['frameDistance'], hyperParameterDict['epochs'], timestamp)
+exportString = '%s - n=[%2d,%2d] rbf=[%s,%s] map = %s window = %s d = %2d e = %2d arch %s distance = %2d - %s' % (networkPrefix, hyperParameterDict['n'], hyperParameterDict['m'], hyperParameterDict['rbf_x'], hyperParameterDict['rbf_y'], hyperParameterDict['coordinateMapping'], args.windowFunction, hyperParameterDict['frameDistance'], hyperParameterDict['epochs'], args.arch, frameDistance, timestamp)
 
 # if args.gpus == 1:
 #     debugPrint(hyperParameterDict)
@@ -242,11 +256,11 @@ def processDataLoader(e, rollout, ds, dataLoader, model, optimizer, train = True
         sumLosses.backward()
         if train:
             optimizer.step()
-        # lossString = np.array2string(meanLosses.detach().cpu().numpy(), formatter={'float_kind':lambda x: "%.4e" % x})
+        lossString = np.array2string(torch.mean(batchLosses[:,:,0],dim=0).detach().cpu().numpy(), formatter={'float_kind':lambda x: "%.4e" % x})
         batchString = str(np.array2string(np.array(bdata), formatter={'float_kind':lambda x: "%.2f" % x, 'int':lambda x:'%04d' % x}))
         
         with portalocker.Lock('README.md', flags = 0x2, timeout = None):
-            pbl.set_description('%24s[gpu %d]: %3d [%1d] @ %1.5e: %s -> %.4e' %(prefix, args.gpu, e, rollout, lr, batchString, sumLosses.detach().cpu().numpy()))
+            pbl.set_description('%24s[gpu %d]: %3d [%1d] @ %1.5e: %s -> %.4e' %(prefix, args.gpu, e, rollout, lr, lossString, sumLosses.detach().cpu().numpy()))
             pbl.update()
             if prefix == 'training':
                 pb.set_description('[gpu %d] Learning: %1.4e Validation: %1.4e' %(args.gpu, np.mean(np.mean(np.vstack(losses)[:,:,0], axis = 1)), validationLoss))
