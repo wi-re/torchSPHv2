@@ -30,8 +30,8 @@ parser.add_argument('-w','--windowFunction', type=str, default='Wendland2')
 parser.add_argument('-c','--cutoff', type=int, default=1800)
 parser.add_argument('-b','--batch_size', type=int, default=8)
 parser.add_argument('--cutlassBatchSize', type=int, default=128)
-parser.add_argument('-r','--lr', type=float, default=0.001)
-parser.add_argument('--lr_decay_factor', type=float, default=0.99)
+parser.add_argument('-r','--lr', type=float, default=0.01)
+parser.add_argument('--lr_decay_factor', type=float, default=0.9)
 parser.add_argument('--lr_decay_step_size', type=int, default=1)
 parser.add_argument('--weight_decay', type=float, default=0)
 parser.add_argument('-x','--rbf_x', type=str, default='linear')
@@ -252,7 +252,7 @@ def processDataLoader(e, rollout, ds, dataLoader, model, optimizer, train = True
         batchIndices.append(np.array(bdata))
         losses.append(batchLosses.detach().cpu().numpy())
         
-        sumLosses = torch.mean(batchLosses[:,:,0])
+        sumLosses = torch.mean(batchLosses[:,:,0]) #+ torch.mean(batchLosses[:,:,1])
         sumLosses.backward()
         if train:
             optimizer.step()
@@ -260,7 +260,7 @@ def processDataLoader(e, rollout, ds, dataLoader, model, optimizer, train = True
         batchString = str(np.array2string(np.array(bdata), formatter={'float_kind':lambda x: "%.2f" % x, 'int':lambda x:'%04d' % x}))
         
         with portalocker.Lock('README.md', flags = 0x2, timeout = None):
-            pbl.set_description('%24s[gpu %d]: %3d [%1d] @ %1.5e: %s -> %.4e' %(prefix, args.gpu, e, rollout, lr, lossString, sumLosses.detach().cpu().numpy()))
+            pbl.set_description('%24s[gpu %d]: %3d [%1d] @ %1.5e: :  %s -> %.4e' %(prefix, args.gpu, e, rollout, lr, lossString, sumLosses.detach().cpu().numpy()))
             pbl.update()
             if prefix == 'training':
                 pb.set_description('[gpu %d] Learning: %1.4e Validation: %1.4e' %(args.gpu, np.mean(np.mean(np.vstack(losses)[:,:,0], axis = 1)), validationLoss))

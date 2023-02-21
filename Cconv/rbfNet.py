@@ -66,7 +66,8 @@ class RbfNet(torch.nn.Module):
             batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
         
         self.fcs.append(nn.Linear(in_features=fluidFeatures,out_features= layers[0],bias=False))
-        
+        torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+
         self.features[0] = self.features[0]
 #         self.fcs.append(nn.Linear(in_features=96,out_features= 2,bias=False))
         
@@ -82,6 +83,7 @@ class RbfNet(torch.nn.Module):
                 coordinateMapping = coordinateMapping,
                 batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
             self.fcs.append(nn.Linear(in_features=3 * layers[0] if i == 0 else layers[i],out_features=layers[i+1],bias=False))
+            torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
             
         self.convs.append(RbfConv(
             in_channels = self.features[-2], out_channels = 2,
@@ -92,6 +94,7 @@ class RbfNet(torch.nn.Module):
                 coordinateMapping = coordinateMapping,
                 batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
         self.fcs.append(nn.Linear(in_features=layers[-2],out_features=2,bias=False))
+        torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
 
 
     def forward(self, \
@@ -172,11 +175,12 @@ def constructFluidFeatures(attributes, inputData):
 
 
 def processBatch(model, device, li, attributes, e, unroll, train_ds, bdata, frameDistance):
-    fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, fluidBatches, boundaryBatches, groundTruths = loadBatch(train_ds, bdata, constructFluidFeatures, unroll, frameDistance)    
+    fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, fluidBatches, boundaryBatches, groundTruths = \
+        loadBatch(train_ds, bdata, constructFluidFeatures, unroll, frameDistance)    
     
 
     predictedPositions = fluidPositions.to(device)
-    predictedVelocities = fluidFeatures[:,1:3].to(device)
+    predictedVelocity = fluidFeatures[:,1:3].to(device)
     
     bLosses = []
     boundaryPositions = boundaryPositions.to(device)
@@ -185,15 +189,29 @@ def processBatch(model, device, li, attributes, e, unroll, train_ds, bdata, fram
     fluidBatches = fluidBatches.to(device)
     boundaryBatches = boundaryBatches.to(device)
             
+    gravity = torch.zeros_like(predictedVelocity)
+    gravity[:,1] = -9.81
+        
     for u in range(unroll):
-        predictions = model(predictedPositions, boundaryPositions, fluidFeatures, boundaryFeatures, attributes, fluidBatches, boundaryBatches)
-        predictedPositions, predictedVelocities = integrateState(attributes, predictedPositions, predictedVelocities, predictions, frameDistance)        
-        fluidFeatures = torch.hstack((fluidFeatures[:,0][:,None], predictedVelocities, fluidFeatures[:,3:]))
+        vel2 = predictedVelocity + attributes['dt'] * gravity
+        pos2 = predictedPositions + attributes['dt'] * (predictedVelocity + vel2) / 2
+
+        fluidFeatures = torch.hstack((fluidFeatures[:,0][:,None], vel2, fluidFeatures[:,3:]))
+
+        predictions = model(pos2, boundaryPositions, fluidFeatures, boundaryFeatures, attributes, fluidBatches, boundaryBatches)
+
+        predictedVelocity = (pos2 + predictions - predictedPositions) / (frameDistance * attributes['dt'])
+        predictedPositions = pos2 + predictions
+
+
+        # predictions = model(predictedPositions, boundaryPositions, fluidFeatures, boundaryFeatures, attributes, fluidBatches, boundaryBatches)
+        # predictedPositions, predictedVelocities = integrateState(attributes, predictedPositions, predictedVelocities, predictions, frameDistance)        
+        # fluidFeatures = torch.hstack((fluidFeatures[:,0][:,None], predictedVelocities, fluidFeatures[:,3:]))
                 
         if li:
-            loss = model.li * computeLoss(predictedPositions, predictedVelocities, groundTruths[u].to(device), predictions)
+            loss = model.li * computeLoss(predictedPositions, predictedVelocity, groundTruths[u].to(device), predictions)
         else:
-            loss = computeLoss(predictedPositions, predictedVelocities, groundTruths[u].to(device), predictions)
+            loss = computeLoss(predictedPositions, predictedVelocity, groundTruths[u].to(device), predictions)
 
         batchedLoss = []
         for i in range(len(bdata)):
@@ -210,7 +228,7 @@ def processBatch(model, device, li, attributes, e, unroll, train_ds, bdata, fram
     stdLosses = torch.mean(bLosses[:,:,3], dim = 0)
     
     
-    del predictedPositions, predictedVelocities, boundaryPositions, fluidFeatures, boundaryFeatures, fluidBatches, boundaryBatches
+    del predictedPositions, predictedVelocity, boundaryPositions, fluidFeatures, boundaryFeatures, fluidBatches, boundaryBatches
     
     bLosses = bLosses.transpose(0,1)
     
