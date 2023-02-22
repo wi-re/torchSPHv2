@@ -86,14 +86,14 @@ class RbfNet(torch.nn.Module):
             torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
             
         self.convs.append(RbfConv(
-            in_channels = self.features[-2], out_channels = 2,
+            in_channels = self.features[-2], out_channels = self.features[-1],
                 dim = 2, size = [n,m],
                 rbf = [rbf_x, rbf_y],
                 linearLayer = False, biasOffset = False, feedThrough = False,
                 preActivation = None, postActivation = None,
                 coordinateMapping = coordinateMapping,
                 batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
-        self.fcs.append(nn.Linear(in_features=layers[-2],out_features=2,bias=False))
+        self.fcs.append(nn.Linear(in_features=layers[-2],out_features=self.features[-1],bias=False))
         torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
 
 
@@ -154,15 +154,22 @@ def computeLoss(predictedPosition, predictedVelocity, groundTruth, modelOutput):
 #     debugPrint(groundTruth.shape)
 #     return torch.sqrt((modelOutput - groundTruth[:,-1:].to(device))**2)
     # return torch.abs(modelOutput - groundTruth[:,-1:].to(modelOutput.device))
-    # return torch.linalg.norm(groundTruth[:,2:4] - predictedVelocity, dim = 1)
-    return torch.sqrt(torch.linalg.norm(groundTruth[:,:2] - predictedPosition, dim = 1))
+    # return torch.linalg.norm(groundTruth[:,2:4] - predictedVelocity, dim = 1) 
+    # debugPrint(groundTruth.shape)
+    # debugPrint(predictedPosition.shape)
+    # debugPrint(predictedVelocity.shape)
+    posLoss = torch.sqrt(torch.linalg.norm(groundTruth[:,:2] - predictedPosition, dim = 1))
+    return posLoss
+    velLoss = torch.sqrt(torch.linalg.norm(groundTruth[:,2:4] - predictedVelocity, dim = 1))
+    return posLoss + velLoss
     # return torch.sqrt(torch.linalg.norm(groundTruth[:,2:4] - modelOutput, dim = 1))
 
 def constructFluidFeatures(attributes, inputData):
     fluidFeatures = torch.hstack(\
                 (torch.ones(inputData['fluidArea'].shape[0]).type(torch.float32).unsqueeze(dim=1), \
                  inputData['fluidVelocity'].type(torch.float32), 
-                 torch.ones(inputData['fluidArea'].shape[0]).type(torch.float32).unsqueeze(dim=1)))
+                 inputData['fluidGravity'].type(torch.float32)))
+                #  torch.ones(inputData['fluidArea'].shape[0]).type(torch.float32).unsqueeze(dim=1)))
 
     # fluidFeatures = torch.ones(inputData['fluidArea'].shape[0]).type(torch.float32).unsqueeze(dim=1)
     # fluidFeatures[:,0] *= 7 / np.pi * inputData['fluidArea']  / attributes['support']**2
@@ -193,15 +200,22 @@ def processBatch(model, device, li, attributes, e, unroll, train_ds, bdata, fram
     gravity[:,1] = -9.81
         
     for u in range(unroll):
-        vel2 = predictedVelocity + attributes['dt'] * gravity
-        pos2 = predictedPositions + attributes['dt'] * (predictedVelocity + vel2) / 2
+# Heun's method:
+        vel2 = predictedVelocity + frameDistance * attributes['dt'] * gravity
+        pos2 = predictedPositions + frameDistance * attributes['dt'] * (predictedVelocity + vel2) / 2
+# semi implicit euler
+        d = (frameDistance) * ((frameDistance) + 1) / 2
+        vel2 = predictedVelocity + frameDistance * attributes['dt'] * gravity
+        pos2 = predictedPositions + frameDistance * attributes['dt'] * predictedVelocity + d * attributes['dt']**2 * gravity
 
         fluidFeatures = torch.hstack((fluidFeatures[:,0][:,None], vel2, fluidFeatures[:,3:]))
 
         predictions = model(pos2, boundaryPositions, fluidFeatures, boundaryFeatures, attributes, fluidBatches, boundaryBatches)
 
         predictedVelocity = (pos2 + predictions - predictedPositions) / (frameDistance * attributes['dt'])
-        predictedPositions = pos2 + predictions
+        # predictedPositions = pos2 + predictions
+        # predictedVelocity = vel2 + predictions[:,2:]
+        predictedPositions = pos2 + predictions[:,:2]
 
 
         # predictions = model(predictedPositions, boundaryPositions, fluidFeatures, boundaryFeatures, attributes, fluidBatches, boundaryBatches)

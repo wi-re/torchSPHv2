@@ -47,6 +47,7 @@ traceGPU.json
 profile.txt
 
 Cconv/trainingData*/
+export*/
 export/
 out/
 .VSCodeCounter/

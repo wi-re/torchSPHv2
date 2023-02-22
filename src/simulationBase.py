@@ -614,8 +614,10 @@ class SPHSimulation():
 
 
             grp.create_dataset('UID', data = self.simulationState['UID'].detach().cpu().numpy())
-            grp.create_dataset('fluidPosition', data = self.simulationState['fluidPosition'].detach().cpu().numpy())
-            grp.create_dataset('fluidVelocity', data = self.simulationState['fluidVelocity'].detach().cpu().numpy())
+            grp.create_dataset('fluidPosition', data = self.perennialState['fluidPosition'].detach().cpu().numpy())
+            grp.create_dataset('fluidVelocity', data = self.perennialState['fluidVelocity'].detach().cpu().numpy())
+            grp.create_dataset('finalPosition', data = self.simulationState['fluidPosition'].detach().cpu().numpy())
+            grp.create_dataset('finalVelocity', data = self.simulationState['fluidVelocity'].detach().cpu().numpy())
             grp.create_dataset('fluidArea', data = self.simulationState['fluidArea'].detach().cpu().numpy())
             grp.create_dataset('fluidDensity', data = self.simulationState['fluidDensity'].detach().cpu().numpy())
             grp.create_dataset('fluidSupport', data = self.simulationState['fluidSupport'].detach().cpu().numpy())
