@@ -362,6 +362,121 @@ def loadFrame(filename, frame, frameOffsets = [1], frameDistance = 1):
     
     return attributes, inputData, groundTruthData
 
+import zstandard as zstd
+import msgpack
+import msgpack_numpy
+msgpack_numpy.patch()    
+    
+
+def splitFileZSTD(s, skip = 32, cutoff = 300, chunked = True, maxRollOut = 8, split = True, trainValidationSplit = 0.8, testSplit = 0.1, limitRollOut = False, distance = 1):
+    decompressor = zstd.ZstdDecompressor()
+    with open(s, 'rb') as f:
+        data = msgpack.unpackb(decompressor.decompress(f.read()),
+                               raw=False)
+        frameCount = len(data)
+#     inFile = h5py.File(s, 'r')
+#     frameCount = int(len(inFile['simulationExport'].keys()) -1) // distance # adjust for bptcls
+#     inFile.close()
+    if cutoff > 0:
+        frameCount = min(cutoff+skip, frameCount)
+    actualCount = frameCount - 1 - skip
+    
+    if cutoff < 0:
+        actualCount = frameCount + cutoff
+    
+    if not split:
+        # print(frameCount, cutoff, actualCount)
+        training, _, counter = getSamples(actualCount, maxRollOut = maxRollOut, chunked = chunked, trainValidationSplit = 1.)
+        return s, training + skip, counter
+    
+    testIndex = frameCount - 1 - int(actualCount * testSplit)
+    testSamples = frameCount - 1 - testIndex
+    
+    # print(frameCount, cutoff, testSamples)
+    testingIndices, _, testingCounter = getSamples(testSamples, maxRollOut = maxRollOut, chunked = chunked, trainValidationSplit = 1.)
+    testingIndices = testingIndices * distance + testIndex
+    
+    # print(frameCount, cutoff, testIndex - skip)
+    trainingIndices, validationIndices, trainValidationCounter = getSamples(testIndex - skip, maxRollOut = maxRollOut, chunked = chunked, trainValidationSplit = trainValidationSplit, limitRollOut = limitRollOut)
+    trainingCounter = trainValidationCounter[trainingIndices]
+    validationCounter = -trainValidationCounter[validationIndices]
+    
+    trainingIndices = trainingIndices * distance + skip
+    validationIndices = validationIndices * distance + skip
+    
+    # print(trainingIndices.shape[0])
+    # print(validationIndices.shape[0])
+    # print(testingIndices.shape[0])
+    
+    return s, (trainingIndices, trainingCounter), (validationIndices, validationCounter), (testingIndices, testingCounter)
+
+def loadFrameZSTD(filename, frame, frameOffsets = [1], frameDistance = 1):
+    decompressor = zstd.ZstdDecompressor()
+    with open(filename, 'rb') as f:
+        data = msgpack.unpackb(decompressor.decompress(f.read()),
+                               raw=False)
+        frameCount = len(data)
+        # debugPrint(data[0]['box'])
+        
+#     inFile = h5py.File(filename)
+#     inGrp = inFile['simulationExport']['%05d' % frame]
+#     debugPrint(inFile.attrs.keys())
+        attributes = {
+         'support': 0.0025,
+         'targetNeighbors': 20,
+         'restDensity': 4,
+         'dt': 0.0025,
+         'time': frame * 0.0025,
+         'radius': 0.0025,
+         'area': 0.0025**2 * np.pi,
+        }
+    #     debugPrint(inGrp.attrs['timestep'])
+
+    #     support = inFile.attrs['restDensity']
+    #     targetNeighbors = inFile.attrs['targetNeighbors']
+    #     restDensity = inFile.attrs['restDensity']
+    #     dt = inFile.attrs['initialDt']
+
+        gravity =  torch.zeros_like(torch.from_numpy(data[frame]['vel'][:]).type(torch.float32))
+        gravity[:,0] = data[frame]['grav'][0]
+        gravity[:,1] = data[frame]['grav'][1]
+
+        inputData = {
+            'fluidPosition': torch.from_numpy(data[frame]['pos'][:,:2]).type(torch.float32),
+            'fluidVelocity': torch.from_numpy(data[frame]['vel'][:,:2]).type(torch.float32),
+            'fluidArea' : torch.from_numpy(data[frame]['m']).type(torch.float32),
+    #         'fluidDensity' : torch.from_numpy(inGrp['fluidDensity'][:]).type(torch.float32),
+    #         'fluidSupport' : torch.from_numpy(inGrp['fluidSupport'][:]).type(torch.float32),
+            'fluidGravity': gravity,
+    #         'fluidGravity' : torch.from_numpy(inGrp['fluidGravity'][:]).type(torch.float32) if 'fluidGravity' not in inFile.attrs else torch.from_numpy(inFile.attrs['fluidGravity']).type(torch.float32) * torch.ones(inGrp['fluidDensity'][:].shape[0])[:,None],
+            'boundaryPosition': torch.from_numpy(data[0]['box'][:,:2]).type(torch.float32),
+            'boundaryNormal': torch.from_numpy(data[0]['box_normals'][:,:2]).type(torch.float32),
+    #         'boundaryArea': torch.from_numpy(inFile[frame]['boundaryArea'][:]).type(torch.float32),
+    #         'boundaryVelocity': torch.from_numpy(inFile['boundaryInformation']['boundaryVelocity'][:]).type(torch.float32)
+        }
+
+        groundTruthData = []
+        for i in frameOffsets:
+#             gtGrp = inFile['simulationExport']['%05d' % (frame + i * frameDistance)]
+    #         debugPrint((frame + i * frameDistance))
+    #         debugPrint(gtGrp.attrs['timestep'])
+            gtData = {
+                'fluidPosition'    : torch.from_numpy(data[frame + i * frameDistance]['pos'][:,:2]).type(torch.float32),
+                'fluidVelocity'    : torch.from_numpy(data[frame + i * frameDistance]['vel'][:,:2]).type(torch.float32),
+                'fluidDensity'     : torch.from_numpy(data[frame + i * frameDistance]['m'][:]).type(torch.float32)
+        #         'fluidPressure'    : torch.from_numpy(gtGrp['fluidPressure'][:]),
+        #         'boundaryDensity'  : torch.from_numpy(gtGrp['fluidDensity'][:]),
+        #         'boundaryPressure' : torch.from_numpy(gtGrp['fluidPressure'][:]),
+            }
+        
+            groundTruthData.append(torch.hstack((gtData['fluidPosition'].type(torch.float32), gtData['fluidVelocity'], gtData['fluidDensity'])))
+
+
+        # inFile.close()
+
+        return attributes, inputData, groundTruthData
+
+
 
 def loadData(dataset, index, featureFun, unroll = 1, frameDistance = 1):
     fileName, frameIndex, maxRollouts = dataset[index]
@@ -387,6 +502,56 @@ def loadBatch(train_ds, bdata, featureFun, unroll = 1, frameDistance = 1):
 #         debugPrint(i)
 #         debugPrint(b)
         attributes, fluidPosition, boundaryPosition, fluidFeature, boundaryFeature, groundTruth = loadData(train_ds, b, featureFun, unroll = unroll, frameDistance = frameDistance)     
+#         debugPrint(groundTruth)
+        fluidPositions.append(fluidPosition)
+#         debugPrint(fluidPositions)
+        boundaryPositions.append(boundaryPosition)
+        fluidFeatures.append(fluidFeature)
+        boundaryFeatures.append(boundaryFeature)
+        
+        batchIndex = torch.ones(fluidPosition.shape[0]) * i
+        fluidBatchIndices.append(batchIndex)
+        
+        batchIndex = torch.ones(boundaryPosition.shape[0]) * i
+        boundaryBatchIndices.append(batchIndex)
+        for u in range(unroll):
+            groundTruths[u].append(groundTruth[u])
+        
+    fluidPositions = torch.vstack(fluidPositions)
+    boundaryPositions = torch.vstack(boundaryPositions)
+    fluidFeatures = torch.vstack(fluidFeatures)
+    boundaryFeatures = torch.vstack(boundaryFeatures)
+    fluidBatchIndices = torch.hstack(fluidBatchIndices)
+    boundaryBatchIndices = torch.hstack(boundaryBatchIndices)
+    for u in range(unroll):
+        groundTruths[u] = torch.vstack(groundTruths[u])
+    
+    return fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, fluidBatchIndices, boundaryBatchIndices, groundTruths
+
+def loadDataZSTD(dataset, index, featureFun, unroll = 1, frameDistance = 1):
+    fileName, frameIndex, maxRollouts = dataset[index]
+
+    attributes, inputData, groundTruthData = loadFrameZSTD(fileName, frameIndex, 1 + np.arange(unroll), frameDistance = frameDistance)
+    fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures = featureFun(attributes, inputData)
+    
+    return attributes, fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, groundTruthData
+
+
+def loadBatchZSTD(train_ds, bdata, featureFun, unroll = 1, frameDistance = 1):
+    fluidPositions = []
+    boundaryPositions = []
+    fluidFeatures = []
+    boundaryFeatures = []
+    fluidBatchIndices = []
+    boundaryBatchIndices = []
+    groundTruths = []
+    for i in range(unroll):
+        groundTruths.append([])
+    
+    for i,b in enumerate(bdata):
+#         debugPrint(i)
+#         debugPrint(b)
+        attributes, fluidPosition, boundaryPosition, fluidFeature, boundaryFeature, groundTruth = loadDataZSTD(train_ds, b, featureFun, unroll = unroll, frameDistance = frameDistance)     
 #         debugPrint(groundTruth)
         fluidPositions.append(fluidPosition)
 #         debugPrint(fluidPositions)
