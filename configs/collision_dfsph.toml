@@ -1,13 +1,13 @@
 [timestep]
 fixed = true
-max = 0.0004
-min = 0.0004
+max = 0.0025
+min = 0.0025
 [dfsph]
 minDensitySolverIterations = 2
 minDivergenceSolverIterations = 2
 maxDensitySolverIterations = 256
 maxDivergenceSolverIterations = 8
-densityThreshold = 1e-3
+densityThreshold = 1e-4
 divergenceThreshold = 1e-2
 divergenceSolver = false
 backgroundPressure = false
@@ -90,14 +90,14 @@ kinematic = 0.01
 
 [integration]
 scheme = 'semiImplicitEuler'
-dt = 0.001
+dt = 0.0025
 
 [shifting]
 enabled = false
 scheme = 'deltaPlus'
 
 [kernel]
-targetNeighbors = 20
+targetNeighbors = 30
 
 [export]
 active = true
