@@ -312,7 +312,7 @@ class datasetLoader(Dataset):
 
 def loadFrame(filename, frame, frameOffsets = [1], frameDistance = 1):
     if 'zst' in filename:
-        return loadFrameZSTD(filename)
+        return loadFrameZSTD(filename, frame, frameOffsets, frameDistance)
     inFile = h5py.File(filename)
     inGrp = inFile['simulationExport']['%05d' % frame]
 #     debugPrint(inFile.attrs.keys())
@@ -327,9 +327,9 @@ def loadFrame(filename, frame, frameOffsets = [1], frameDistance = 1):
     }
 #     debugPrint(inGrp.attrs['timestep'])
 
-    support = inFile.attrs['support']
-    targetNeighbors = inFile.attrs['targetNeighbors']
-    restDensity = inFile.attrs['restDensity']
+    # support = inFile.attrs['support']
+    # targetNeighbors = inFile.attrs['targetNeighbors']
+    # restDensity = inFile.attrs['restDensity']
     # dt = inFile.attrs['initialDt']
 
     inputData = {
@@ -351,9 +351,9 @@ def loadFrame(filename, frame, frameOffsets = [1], frameDistance = 1):
 #         debugPrint((frame + i * frameDistance))
 #         debugPrint(gtGrp.attrs['timestep'])
         gtData = {
-            'fluidPosition'    : torch.from_numpy(gtGrp['fluidPosition'][:]),
-            'fluidVelocity'    : torch.from_numpy(gtGrp['fluidVelocity'][:]),
-            'fluidDensity'     : torch.from_numpy(gtGrp['fluidDensity'][:]),
+            'fluidPosition'    : torch.from_numpy(gtGrp['fluidPosition'][:]).type(torch.float32),
+            'fluidVelocity'    : torch.from_numpy(gtGrp['fluidVelocity'][:]).type(torch.float32),
+            'fluidDensity'     : torch.from_numpy(gtGrp['fluidDensity'][:]).type(torch.float32),
     #         'fluidPressure'    : torch.from_numpy(gtGrp['fluidPressure'][:]),
     #         'boundaryDensity'  : torch.from_numpy(gtGrp['fluidDensity'][:]),
     #         'boundaryPressure' : torch.from_numpy(gtGrp['fluidPressure'][:]),
