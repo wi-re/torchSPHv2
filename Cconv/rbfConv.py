@@ -222,10 +222,12 @@ class RbfConv(MessagePassing):
 
         linearLayer: bool = False,
         feedThrough: bool = False,
-        biasOffset: bool = False,
+        # biasOffset: bool = False,
 
         preActivation = None,
         postActivation = None,
+
+        bias = True,
 
         initializer = torch.nn.init.xavier_normal_,
 
@@ -252,7 +254,7 @@ class RbfConv(MessagePassing):
         self.preActivation = None if preActivation is None else getattr(nn.functional, preActivation)
         self.postActivation = None if postActivation is None else getattr(nn.functional, postActivation)
         self.windowFn = windowFn
-        
+        self.use_bias = bias
         # print('Creating layer %d -> %d features'%( in_channels, out_channels))
         # print('For dimensionality: %d'% dim)
         # print('Parameters:')
@@ -262,6 +264,11 @@ class RbfConv(MessagePassing):
 
         if isinstance(in_channels, int):
             in_channels = (in_channels, in_channels)
+
+        if self.use_bias:
+            self.bias = Parameter(torch.Tensor(out_channels))
+        else:
+            self.register_parameter('bias', None)
 
         self.K = torch.tensor(self.size).prod().item()
         if dim == 1:
@@ -306,13 +313,13 @@ class RbfConv(MessagePassing):
 
         self.root_weight = linearLayer
         if linearLayer:
-            self.lin = Linear(in_channels[1], out_channels, bias=False,
+            self.lin = Linear(in_channels[1], out_channels, bias=self.use_bias,
                               weight_initializer= 'uniform')
 
-        if biasOffset:
-            self.bias = Parameter(torch.Tensor(out_channels))
-        else:
-            self.register_parameter('bias', None)
+        # if biasOffset:
+        #     self.bias = Parameter(torch.Tensor(out_channels))
+        # else:
+        #     self.register_parameter('bias', None)
 
         self.reset_parameters()
 
