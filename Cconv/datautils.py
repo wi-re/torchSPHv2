@@ -483,54 +483,61 @@ def loadFrameZSTD(filename, frame, frameOffsets = [1], frameDistance = 1):
 
 
 def loadData(dataset, index, featureFun, unroll = 1, frameDistance = 1):
-    fileName, frameIndex, maxRollouts = dataset[index]
+    with record_function("load data - hdf5"): 
+        fileName, frameIndex, maxRollouts = dataset[index]
 
-    attributes, inputData, groundTruthData = loadFrame(fileName, frameIndex, 1 + np.arange(unroll), frameDistance = frameDistance)
-    fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures = featureFun(attributes, inputData)
-    
-    return attributes, fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, groundTruthData
+        attributes, inputData, groundTruthData = loadFrame(fileName, frameIndex, 1 + np.arange(unroll), frameDistance = frameDistance)
+        attributes['support'] = 4.25 * attributes['support']
+        fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures = featureFun(attributes, inputData)
 
+        return attributes, fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, inputData['fluidGravity'], groundTruthData
 
 def loadBatch(train_ds, bdata, featureFun, unroll = 1, frameDistance = 1):
-    fluidPositions = []
-    boundaryPositions = []
-    fluidFeatures = []
-    boundaryFeatures = []
-    fluidBatchIndices = []
-    boundaryBatchIndices = []
-    groundTruths = []
-    for i in range(unroll):
-        groundTruths.append([])
-    
-    for i,b in enumerate(bdata):
-#         debugPrint(i)
-#         debugPrint(b)
-        attributes, fluidPosition, boundaryPosition, fluidFeature, boundaryFeature, groundTruth = loadData(train_ds, b, featureFun, unroll = unroll, frameDistance = frameDistance)     
-#         debugPrint(groundTruth)
-        fluidPositions.append(fluidPosition)
-#         debugPrint(fluidPositions)
-        boundaryPositions.append(boundaryPosition)
-        fluidFeatures.append(fluidFeature)
-        boundaryFeatures.append(boundaryFeature)
-        
-        batchIndex = torch.ones(fluidPosition.shape[0]) * i
-        fluidBatchIndices.append(batchIndex)
-        
-        batchIndex = torch.ones(boundaryPosition.shape[0]) * i
-        boundaryBatchIndices.append(batchIndex)
+    with record_function("load batch - hdf5"): 
+        fluidPositions = []
+        boundaryPositions = []
+        fluidFeatures = []
+        boundaryFeatures = []
+        fluidBatchIndices = []
+        boundaryBatchIndices = []
+        groundTruths = []
+        fluidGravities = []
+        for i in range(unroll):
+            groundTruths.append([])
+
+        for i,b in enumerate(bdata):
+            with record_function("load batch - hdf5[batch]"): 
+        #         debugPrint(i)
+        #         debugPrint(b)
+                attributes, fluidPosition, boundaryPosition, fluidFeature, boundaryFeature, fluidGravity, groundTruth = loadData(train_ds, b, featureFun, unroll = unroll, frameDistance = frameDistance)     
+        #         debugPrint(groundTruth)
+                fluidPositions.append(fluidPosition)
+        #         debugPrint(fluidPositions)
+                boundaryPositions.append(boundaryPosition)
+                fluidFeatures.append(fluidFeature)
+                boundaryFeatures.append(boundaryFeature)
+                
+                fluidGravities.append(fluidGravity)
+
+                batchIndex = torch.ones(fluidPosition.shape[0]) * i
+                fluidBatchIndices.append(batchIndex)
+
+                batchIndex = torch.ones(boundaryPosition.shape[0]) * i
+                boundaryBatchIndices.append(batchIndex)
+                for u in range(unroll):
+                    groundTruths[u].append(groundTruth[u])
+
+        fluidPositions = torch.vstack(fluidPositions)
+        boundaryPositions = torch.vstack(boundaryPositions)
+        fluidFeatures = torch.vstack(fluidFeatures)
+        boundaryFeatures = torch.vstack(boundaryFeatures)
+        fluidGravities = torch.vstack(fluidGravities)
+        fluidBatchIndices = torch.hstack(fluidBatchIndices)
+        boundaryBatchIndices = torch.hstack(boundaryBatchIndices)
         for u in range(unroll):
-            groundTruths[u].append(groundTruth[u])
-        
-    fluidPositions = torch.vstack(fluidPositions)
-    boundaryPositions = torch.vstack(boundaryPositions)
-    fluidFeatures = torch.vstack(fluidFeatures)
-    boundaryFeatures = torch.vstack(boundaryFeatures)
-    fluidBatchIndices = torch.hstack(fluidBatchIndices)
-    boundaryBatchIndices = torch.hstack(boundaryBatchIndices)
-    for u in range(unroll):
-        groundTruths[u] = torch.vstack(groundTruths[u])
-    
-    return fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, fluidBatchIndices, boundaryBatchIndices, groundTruths
+            groundTruths[u] = torch.vstack(groundTruths[u])
+
+        return fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, fluidGravities, fluidBatchIndices, boundaryBatchIndices, groundTruths
 
 # def loadDataZSTD(dataset, index, featureFun, unroll = 1, frameDistance = 1):
 #     fileName, frameIndex, maxRollouts = dataset[index]
@@ -651,3 +658,10 @@ def getWindowFunction(windowFunction):
     if windowFunction == 'Linear':
         windowFn = lambda r: torch.clamp(1 - r, min = 0)
     return windowFn
+
+
+
+
+
+from torch.profiler import profile, record_function, ProfilerActivity
+
