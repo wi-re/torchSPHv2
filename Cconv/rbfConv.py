@@ -229,7 +229,9 @@ class RbfConv(MessagePassing):
 
         bias = True,
 
-        initializer = torch.nn.init.xavier_normal_,
+        # initializer = torch.nn.init.xavier_uniform_,
+
+        initializer = torch.nn.init.uniform_,
 
         
         batch_size = [16,16],
@@ -266,7 +268,7 @@ class RbfConv(MessagePassing):
             in_channels = (in_channels, in_channels)
 
         if self.use_bias:
-            self.bias = Parameter(torch.Tensor(out_channels))
+            self.bias = Parameter(torch.zeros(out_channels))
         else:
             self.register_parameter('bias', None)
 

@@ -70,6 +70,7 @@ class RbfNet(torch.nn.Module):
         
         self.fcs.append(nn.Linear(in_features=fluidFeatures,out_features= layers[0],bias=True))
         torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+        torch.nn.init.zeros_(self.fcs[-1].bias)
 
         self.features[0] = self.features[0]
 #         self.fcs.append(nn.Linear(in_features=96,out_features= 2,bias=False))
@@ -88,6 +89,7 @@ class RbfNet(torch.nn.Module):
                 batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
             self.fcs.append(nn.Linear(in_features=3 * layers[0] if i == 0 else layers[i],out_features=layers[i+1],bias=True))
             torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+            torch.nn.init.zeros_(self.fcs[-1].bias)
             
         self.convs.append(RbfConv(
             in_channels = self.features[-2], out_channels = self.features[-1],
@@ -100,6 +102,7 @@ class RbfNet(torch.nn.Module):
                 batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
         self.fcs.append(nn.Linear(in_features=layers[-2],out_features=self.features[-1],bias=True))
         torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+        torch.nn.init.zeros_(self.fcs[-1].bias)
 
 
     def forward(self, \
@@ -120,7 +123,7 @@ class RbfNet(torch.nn.Module):
 #         print('nb:', torch.min(nb).detach().cpu().numpy(), torch.median(nb).detach().cpu().numpy(), torch.max(nb).detach().cpu().numpy())
         
         ni[i[b]] += nb
-        self.li = torch.exp(-1 / np.float32(attributes['targetNeighbors']) * ni)
+        self.li = torch.exp(-1 / 16 * ni)
         
         boundaryEdgeIndex = torch.stack([bf, bb], dim = 0)
         boundaryEdgeLengths = (boundaryPositions[boundaryEdgeIndex[1]] - fluidPositions[boundaryEdgeIndex[0]])/attributes['support']
