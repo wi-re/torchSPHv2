@@ -279,7 +279,7 @@ class RbfConv(MessagePassing):
             self.weight = Parameter(torch.Tensor(self.size[0],self.size[1], in_channels[0], out_channels))
         if dim == 3:
             self.weight = Parameter(torch.Tensor(self.size[0],self.size[1], self.size[2], in_channels[0], out_channels))
-        initializer(self.weight)
+        initializer(self.weight, -0.05, 0.05)
         with torch.no_grad():
             if self.rbfs[0] in ['chebyshev', 'fourier', 'gabor']:
                 for i in range(self.dim):

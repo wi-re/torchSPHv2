@@ -317,7 +317,7 @@ def loadFrame(filename, frame, frameOffsets = [1], frameDistance = 1):
     inGrp = inFile['simulationExport']['%05d' % frame]
 #     debugPrint(inFile.attrs.keys())
     attributes = {
-     'support': np.max(inGrp['fluidSupport'][:]),
+     'support': 0.025 * 4.5, # np.max(inGrp['fluidSupport'][:]),
      'targetNeighbors': inFile.attrs['targetNeighbors'],
      'restDensity': inFile.attrs['restDensity'],
      'dt': inGrp.attrs['dt'],

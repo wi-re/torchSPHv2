@@ -263,7 +263,7 @@ def loadData(dataset, index, featureFun, unroll = 1, frameDistance = 1):
         fileName, frameIndex, maxRollouts = dataset[index]
 
         attributes, inputData, groundTruthData = loadFrame(fileName, frameIndex, 1 + np.arange(unroll), frameDistance = frameDistance)
-        attributes['support'] = 4. * attributes['support']
+        attributes['support'] = 4.5 * attributes['support']
         fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures = featureFun(attributes, inputData)
 
         return attributes, fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, inputData['fluidGravity'], groundTruthData
