@@ -327,19 +327,19 @@ def createNoiseFunction(n = 256, res = 2, octaves = 2, lacunarity = 2, persistan
     
     return f, noise
 
-def createVelocityField(f, n = 256):
+def createVelocityField(f, n = 256, dh = 1e-4):
     x = np.linspace(-1,1,n)
     y = np.linspace(-1,1,n)
 
     xx, yy = np.meshgrid(x,y)
 
     z = f((xx, yy))
-    zxp = f((xx + 1e-4, yy))
-    zxn = f((xx - 1e-4, yy))
-    zyp = f((xx, yy + 1e-4))
-    zyn = f((xx, yy - 1e-4))
-    xv = (zxp - zxn) / (2 * 1e-4)
-    yv = (zyp - zyn) / (2 * 1e-4)
+    zxp = f((xx + dh, yy))
+    zxn = f((xx -dh, yy))
+    zyp = f((xx, yy + dh))
+    zyn = f((xx, yy - dh))
+    yv = (zxp - zxn) / (2 * dh)
+    xv = -(zyp - zyn) / (2 * dh)
 #     print(xv)
 #     print(yv)
     
@@ -361,17 +361,29 @@ def createPotentialField(n = 256, res = 4, octaves = 2, lacunarity = 2, persista
     
     return xx,yy,noise
 
-def filterPotential(noise, sdf, d0 = 0.25):
-    r = sdf / d0
-#     ramped = r * r * (3 - 2 * r)
-    ramped = 15/8 * r - 10/8 * r**3 + 3/8 * r**5
-#     ramped = r
-    ramped[r >= 1] = 1
+# def filterPotential(noise, sdf, d0 = 0.25):
+#     r = sdf / d0
+# #     ramped = r * r * (3 - 2 * r)
+#     ramped = 15/8 * r - 10/8 * r**3 + 3/8 * r**5
+# #     ramped = r
+#     ramped[r >= 1] = 1
 #     ramped[r <= 0] = 0
-    ramped[r <= -1] = -1
+# #     ramped[r <= -1] = -1
     
-    return ramped * noise
-    # ramped = r
+#     return ramped * noise
+#     # ramped = r
+    
+# def filterPotential(noise, sdf, d0 = 0.25):
+#     r = sdf / d0 /2  + 0.5
+# #     ramped = r * r * (3 - 2 * r)
+#     ramped = 15/8 * r - 10/8 * r**3 + 3/8 * r**5
+# #     ramped = r
+#     ramped[r >= 1] = 1
+#     ramped[r <= 0] = 0
+# #     ramped[r <= -1] = -1
+    
+#     return ramped * noise
+#     # ramped = r
     
 def generateParticles(nd, nb, border = 3):
 #     nd = 16
@@ -472,7 +484,7 @@ def genNoisyParticles(nd = 8, nb = 16, border = 3, n = 256, res = 2, octaves = 4
     y = np.linspace(-1,1,n)
     f = interpolate.RegularGridInterpolator((x, y), filtered, bounds_error = False, fill_value = None, method = 'linear')
 
-    velocityField, xx, yy, potential = createVelocityField(f, n = n)  
+    velocityField, xx, yy, potential = createVelocityField(f, n = n, dh = 2 / (nd + nb) / 2)  
 #     print(filtered)
     
     f = interpolate.RegularGridInterpolator((x, y), velocityField, bounds_error = False, fill_value = None, method = 'linear')
@@ -488,4 +500,190 @@ def genNoisyParticles(nd = 8, nb = 16, border = 3, n = 256, res = 2, octaves = 4
     centerPtcls = bdyPtcls[csdf < 0]
     centerGhostPtcls = centerPtcls - 2 * (csdfDer[csdf < 0] * (csdf[csdf < 0,None])).numpy()
     
-    return ptcls, vel, domainPtcls, domainGhostPtcls, -sdf[-sdf < 0], -sdfDer[-sdf < 0], centerPtcls, centerGhostPtcls, csdf[csdf < 0], csdfDer[csdf < 0], minDomain, minCenter
+    return ptcls, vel, domainPtcls, domainGhostPtcls, -sdf[-sdf < 0], -sdfDer[-sdf < 0], centerPtcls, centerGhostPtcls, csdf[csdf < 0], csdfDer[csdf < 0], minDomain, minCenter, xx, yy, filtered
+
+
+
+def filterPotential(noise, sdf, d0 = 0.25):
+#     r = sdf / d0 /2  + 0.5
+    r = sdf / d0 / 0.5 - 1
+#     ramped = r * r * (3 - 2 * r)
+    ramped = 15/8 * r - 10/8 * r**3 + 3/8 * r**5
+#     ramped = r
+    ramped[r >= 1] = 1
+    ramped[r <= -1] = -1
+#     ramped[r <= 0] = 0
+#     ramped[r <= -1] = -1
+    
+    return (ramped /2 + 0.5) * (noise)
+    return (ramped /2 + 0.5) * torch.ones_like(noise)
+    # ramped = r
+from torch_geometric.nn import radius
+from torch_scatter import scatter
+
+def genParticlesCentered(minCoord, maxCoord, radius, support, packing, dtype = torch.float32, device = 'cpu'):
+    area = np.pi * radius**2
+    
+    gen_position = lambda r, i, j: torch.tensor([r * i, r * j], dtype=dtype, device = device)
+        
+    diff = maxCoord - minCoord
+    center = (minCoord + maxCoord) / 2
+    requiredSlices = torch.div(torch.ceil(diff / packing / support).type(torch.int64), 2, rounding_mode='floor')
+    
+    generatedParticles = []
+#     print(requiredSlices)
+    for i in range(-requiredSlices[0]-1, requiredSlices[0]+2):
+        for j in range(-requiredSlices[1]-1, requiredSlices[1]+2):
+            p = center
+            g = gen_position(packing * support,i,j)
+            pos = p + g
+            if pos[0] <= maxCoord[0] + support * 0.2 and pos[1] <= maxCoord[1] + support * 0.2 and \
+             pos[0] >= minCoord[0] - support * 0.2 and pos[1] >= minCoord[1] - support * 0.2:
+                generatedParticles.append(pos)
+                
+    return torch.stack(generatedParticles)
+
+@torch.jit.script
+def kernelGrad(q,r,h):
+    C = 7 / np.pi    
+    return - r * C / h**3 * (20. * q * (1. -q)**3)[:,None]
+    
+
+@torch.jit.script
+def kernel(q, h):
+    C = 7 / np.pi
+    b1 = torch.pow(1. - q, 4)
+    b2 = 1.0 + 4.0 * q
+    return b1 * b2 * C / h**2    
+
+def evalPacking(arg, dtype, device, config):
+    packing = torch.tensor(arg, dtype = dtype, device = device)
+
+    minDomain = torch.tensor([\
+            -2 * config['particle']['support'],\
+            -2 * config['particle']['support']\
+        ], device = device, dtype = dtype)
+    maxDomain = torch.tensor([\
+             2 * config['particle']['support'],\
+             2 * config['particle']['support']\
+        ], device = device, dtype = dtype)
+
+    fluidPosition = genParticlesCentered(minDomain, maxDomain, \
+                        config['particle']['radius'], config['particle']['support'], packing, \
+                        dtype, device)
+
+    fluidArea = torch.ones(fluidPosition.shape[0], device = device, dtype=dtype) * config['particle']['area']
+    centralPosition = torch.tensor([[0,0]], device = device, dtype=dtype)
+
+    row, col = radius(centralPosition, fluidPosition, \
+                      config['particle']['support'], max_num_neighbors = 256)
+    fluidNeighbors = torch.stack([row, col], dim = 0)
+
+    fluidDistances = (centralPosition - fluidPosition[fluidNeighbors[0]])
+    fluidRadialDistances = torch.linalg.norm(fluidDistances,axis=1)
+
+    fluidRadialDistances /= config['particle']['support']
+    rho = scatter(\
+            kernel(fluidRadialDistances, config['particle']['support']) * fluidArea[fluidNeighbors[1]], \
+            fluidNeighbors[1], dim=0, dim_size=centralPosition.size(0), reduce="add")
+    print(rho)
+
+    return ((1 - rho)**2).detach().cpu().numpy()[0], fluidPosition
+
+
+def evalRadius(arg, packing, dtype, device):
+    r = torch.tensor(arg, dtype = dtype, device = device)
+
+    area = np.pi * r**2
+    support = np.single(np.sqrt(area / np.pi * 20))
+    
+    minDomain = torch.tensor([\
+            -2 * support,\
+            -2 * support\
+        ], device = device, dtype = dtype)
+    maxDomain = torch.tensor([\
+             2 * support,\
+             2 * support\
+        ], device = device, dtype = dtype)
+
+    fluidPosition = genParticlesCentered(minDomain, maxDomain, \
+                        arg, support, packing / support, \
+                        dtype, device)
+
+    fluidArea = torch.ones(fluidPosition.shape[0], device = device, dtype=dtype) * area
+    centralPosition = torch.tensor([[0,0]], device = device, dtype=dtype)
+
+    row, col = radius(centralPosition, fluidPosition, \
+                      support, max_num_neighbors = 256)
+    fluidNeighbors = torch.stack([row, col], dim = 0)
+
+    fluidDistances = (centralPosition - fluidPosition[fluidNeighbors[0]])
+    fluidRadialDistances = torch.linalg.norm(fluidDistances,axis=1)
+
+    fluidRadialDistances /= support
+    rho = scatter(\
+            kernel(fluidRadialDistances, support) * fluidArea[fluidNeighbors[1]], \
+            fluidNeighbors[1], dim=0, dim_size=centralPosition.size(0), reduce="add")
+#     print(rho)
+
+    return ((1 - rho)**2).detach().cpu().numpy()[0]
+
+
+def noisifyParticles(noiseSampler, allPtcls, area, support):
+    row, col = radius(allPtcls, allPtcls, \
+                      support, max_num_neighbors = 256)
+    fluidNeighbors = torch.stack([row, col], dim = 0)
+
+    i = fluidNeighbors[1]
+    j = fluidNeighbors[0]
+    
+    fluidDistances = (allPtcls[fluidNeighbors[1]] - allPtcls[fluidNeighbors[0]])
+    fluidRadialDistances = torch.linalg.norm(fluidDistances,axis=1)
+
+    fluidRadialDistances /= support
+    
+    x_ij = allPtcls[i] - allPtcls[j]
+    dist_ij = torch.linalg.norm(fluidDistances,axis=1)
+    dir_ij = torch.clone(x_ij)
+    dir_ij[dist_ij > 1e-5] = x_ij[dist_ij > 1e-5] / dist_ij[dist_ij > 1e-5,None]
+    dist_ij = dist_ij / support
+    
+    
+    rho = scatter(kernel(dist_ij, support) * area, i, dim=0, dim_size=allPtcls.size(0), reduce="add")
+    
+    potential = noiseSampler((allPtcls[:,0], allPtcls[:,1]))
+    
+    gradTerm = (area / rho[j]  *  (potential[j] - potential[i]))[:,None] * kernelGrad(dist_ij, dir_ij, support)
+    potentialGradient = scatter(gradTerm, i, dim=0, dim_size=allPtcls.size(0), reduce="add")
+
+    velocities = torch.zeros_like(potentialGradient)
+    velocities[:,0] = potentialGradient[:,1]
+    velocities[:,1] = -potentialGradient[:,0]
+    
+    gterm = area / rho[j]  * torch.einsum('nd, nd -> n', velocities[j] - velocities[i], kernelGrad(dist_ij, dir_ij, support))
+
+    div = scatter(gterm, i, dim=0, dim_size=allPtcls.size(0), reduce="add")
+    
+    return velocities, rho, potential, div
+    
+    
+
+
+def filterNoise(filtered, minDomain, minCenter, boundary, nd, n, dh = 1e-2):
+    c = -minCenter
+    domainBoundary = np.array([[minDomain + boundary,minDomain + boundary],[-minDomain - boundary,minDomain + boundary], [-minDomain - boundary,-minDomain - boundary],[minDomain + boundary,-minDomain - boundary],[minDomain + boundary,minDomain + boundary]])
+    centerBoundary = np.array([[-c,-c],[c,-c],[c,c],[-c,c],[-c,-c]])
+
+    _, _, polySDF, polySDFGrad = buildSDF(centerBoundary, n = n, dh = dh)
+    _, _, domainSDF, domainSDFGrad = buildSDF(domainBoundary, n = n, dh = dh)
+    s = (- domainSDF + boundary).numpy()
+    s = s.reshape(polySDF.shape)
+    
+    # xx, yy, noise = createPotentialField(n = n, res = res, octaves = octaves, lacunarity = lacunarity, persistance = persistance, seed = seed)
+    # filtered = noise
+    
+    filtered = filterPotential(torch.tensor(filtered).flatten(), torch.tensor(s).flatten(), d0 = boundary ).numpy().reshape(filtered.shape)
+    if nd > 0:
+        filtered = filterPotential(torch.tensor(filtered).flatten(), torch.tensor(polySDF).flatten(), d0 = boundary).numpy().reshape(filtered.shape)
+        filtered[polySDF.reshape(filtered.shape) < 0] = 0
+    return filtered 

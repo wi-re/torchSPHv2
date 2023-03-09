@@ -119,7 +119,7 @@ class solidBoundaryModule(BoundaryModule):
         bIndices = []
         bdyCounter = 0
         if simulationConfig['simulation']['mode'] == 'generative':
-            ptcls, vel, domainPtcls, domainGhostPtcls, domainSDF, domainSDFDer, centerPtcls, centerGhostPtcls, centerSDF, centerSDFDer, minDomain, minCenter = \
+            ptcls, vel, domainPtcls, domainGhostPtcls, domainSDF, domainSDFDer, centerPtcls, centerGhostPtcls, centerSDF, centerSDFDer, minDomain, minCenter,_,_,_ = \
                 genNoisyParticles(nd = simulationConfig['generative']['nd'], nb = simulationConfig['generative']['nb'], \
                              border = self.layers, n = simulationConfig['generative']['n'], res = simulationConfig['generative']['res'], \
                                 octaves = simulationConfig['generative']['octaves'], lacunarity = simulationConfig['generative']['lacunarity'], persistance = simulationConfig['generative']['persistance'], \

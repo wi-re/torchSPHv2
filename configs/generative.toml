@@ -63,7 +63,7 @@ device='cpu'
 [particle]
 radius = 0.025
 
-[gravity2]
+[gravity]
 magnitude = 0
 
 [fluid]
@@ -99,7 +99,7 @@ enabled = false
 scheme = 'deltaPlus'
 
 [kernel]
-targetNeighbors = 50
+targetNeighbors = 20
 
 [export]
 active = false

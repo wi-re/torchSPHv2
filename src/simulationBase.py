@@ -6,6 +6,8 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from datetime import datetime
 import os
 import h5py
+from scipy import interpolate
+
 import copy
 
 
@@ -14,7 +16,7 @@ from .parameter import Parameter
 from .util import *
 from .kernels import getKernelFunctions
 from .modules.sdfBoundary import sdPolyDerAndIntegral
-from .randomParticles import genNoisyParticles
+from .randomParticles import genNoisyParticles, filterNoise, noisifyParticles, createPotentialField
 
 class SPHSimulation():
     def getBasicParameters(self):
@@ -48,7 +50,7 @@ class SPHSimulation():
             Parameter('generative', 'lacunarity', 'int', 2, required = False, export = True, hint = ''),
             Parameter('generative', 'persistance', 'float', 0.25, required = False, export = True, hint = ''),
             Parameter('generative', 'seed', 'int', 1337, required = False, export = True, hint = ''),
-            Parameter('generative', 'boundaryWidth', 'float', 0.25, required = False, export = True, hint = ''),
+            Parameter('generative', 'boundaryWidth', 'float', 0.5, required = False, export = True, hint = ''),
         ]
         
         
@@ -762,11 +764,11 @@ class SPHSimulation():
             self.config['particle']['area'] = np.pi * self.config['particle']['radius']**2
             self.config['particle']['support'] = np.single(np.sqrt(self.config['particle']['area'] / np.pi * self.config['kernel']['targetNeighbors']))
             self.config['particle']['packing'] = dx / self.config['particle']['support']
-            print('Computed radius based on dx ', dx, ' for nx = ', nx)
-            print('radius: ', self.config['particle']['radius'])
-            print('area: ', self.config['particle']['area'])
-            print('support: ', self.config['particle']['support'])
-            print('packing: ', self.config['particle']['packing'])
+            # print('Computed radius based on dx ', dx, ' for nx = ', nx)
+            # print('radius: ', self.config['particle']['radius'])
+            # print('area: ', self.config['particle']['area'])
+            # print('support: ', self.config['particle']['support'])
+            # print('packing: ', self.config['particle']['packing'])
         else:
             # self.config['particle']['packing'] = dx
             self.config['particle']['packing'] = minimize(lambda x: self.evalPacking(x), 0.5, method="nelder-mead").x[0]        
@@ -817,16 +819,38 @@ class SPHSimulation():
             
             if self.verbose: print('Domain  is: [%g %g] - [%g %g]' %(self.config['domain']['min'][0], self.config['domain']['min'][1], self.config['domain']['max'][0], self.config['domain']['max'][1]))
         if self.config['simulation']['mode'] == 'generative':
-            ptcls, vel, domainPtcls, domainGhostPtcls, domainSDF, domainSDFDer, centerPtcls, centerGhostPtcls, centerSDF, centerSDFDer, minDomain, minCenter = \
+            ptcls, vel, domainPtcls, domainGhostPtcls, domainSDF, domainSDFDer, centerPtcls, centerGhostPtcls, centerSDF, centerSDFDer, minDomain, minCenter,_,_,_ = \
                 genNoisyParticles(nd = self.config['generative']['nd'], nb = self.config['generative']['nb'], \
                              border = self.config['generative']['border'], n = self.config['generative']['n'], res = self.config['generative']['res'], \
                                 octaves = self.config['generative']['octaves'], lacunarity = self.config['generative']['lacunarity'], persistance = self.config['generative']['persistance'], \
                                     seed = self.config['generative']['seed'], boundary = self.config['generative']['boundaryWidth'], dh = 1e-3)
-            
+            dx = 2 / (2 * (self.config['generative']['nd'] + self.config['generative']['nb']) - 1)
+            area = dx**2
+            r = np.sqrt(area/ np.pi)
+            ropt =  minimize(lambda r: evalRadius(r[0], dx, torch.float32, 'cpu'), r, method="nelder-mead").x[0]        
+
+            r = ropt
+            area = np.pi * r**2
+            support = np.single(np.sqrt(area / np.pi * self.config['kernel']['targetNeighbors']))
+
+            allPtcls = torch.tensor(np.vstack((ptcls, domainPtcls, centerPtcls)))
+            allVels = torch.tensor( np.vstack((vel, np.zeros_like(domainPtcls), np.zeros_like(centerPtcls))))
+                
+            xx, yy, noise = createPotentialField(n = self.config['generative']['n'], res = self.config['generative']['res'], \
+                                octaves = self.config['generative']['octaves'], lacunarity = self.config['generative']['lacunarity'], persistance = self.config['generative']['persistance'], \
+                                    seed = self.config['generative']['seed'])
+            filtered = filterNoise(noise, minDomain, minCenter, boundary = self.config['generative']['boundaryWidth'], nd = self.config['generative']['nd'], n = self.config['generative']['n'], dh = 1e-2)
+            noiseSampler = interpolate.RegularGridInterpolator((np.linspace(-1,1,self.config['generative']['n']), np.linspace(-1,1,self.config['generative']['n'])), filtered, bounds_error = False, fill_value = None, method = 'linear')
+
+            velocities, rho, potential, div = noisifyParticles(noiseSampler, allPtcls, area, support)
+            print('mean divergence:', torch.mean(div))
+                
+
+
             self.config['domain']['min'] = np.array([np.min(domainPtcls[:,0]), np.min(domainPtcls[:,1])])
             self.config['domain']['max'] = np.array([np.max(domainPtcls[:,0]), np.max(domainPtcls[:,1])])
 
-            self.generated = {'ptcls': ptcls, 'vel' : vel, \
+            self.generated = {'ptcls': ptcls, 'vel' : velocities[torch.arange(velocities.shape[0]) < ptcls.shape[0]], \
                               'domainPtcls': domainPtcls, 'domainGhostPtcls': domainGhostPtcls, 'domainSDF': domainSDF, 'domainSDFDer': domainSDFDer,\
                               'centerPtcls': centerPtcls, 'centerGhostPtcls': centerGhostPtcls, 'centerSDF': centerSDF, 'centerSDFDer': centerSDFDer,\
                               'minDomain': minDomain, 'minCenter': minCenter}
