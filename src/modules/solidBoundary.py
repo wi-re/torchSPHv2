@@ -29,6 +29,8 @@ from .densityDiffusion import *
 from .momentum import computeDivergenceTerm
 from .pressure import computePressureAccel, computePressureAccelDeltaPlus
 
+from ..randomParticles import genNoisyParticles
+
 MLSscale = 1
 
 @torch.jit.script
@@ -57,7 +59,7 @@ class solidBoundaryModule(BoundaryModule):
         
     def initialize(self, simulationConfig, simulationState):
         self.support = simulationConfig['particle']['support']
-        self.active = True if 'solidBC' in simulationConfig else False
+        self.active = True if 'solidBC' in simulationConfig or simulationConfig['simulation']['mode'] == 'generative'else False
         self.maxNeighbors = simulationConfig['compute']['maxNeighbors']
         self.layers = simulationConfig['solidBoundary']['layers']
         self.threshold = simulationConfig['neighborSearch']['gradientThreshold']
@@ -70,7 +72,7 @@ class solidBoundaryModule(BoundaryModule):
         self.boundaryPressureScheme = simulationConfig['pressure']['boundaryPressureTerm'] 
         self.fluidPressureScheme = simulationConfig['pressure']['fluidPressureTerm'] 
         self.computeBodyForces = simulationConfig['simulation']['bodyForces'] 
-        self.boundaryCounter = len(simulationConfig['solidBC']) if 'solidBC' in simulationConfig else 0
+        self.boundaryCounter = len(simulationConfig['solidBC']) if 'solidBC' in simulationConfig or simulationConfig['simulation']['mode'] == 'generative' else 0
         self.relaxedJacobiOmega = simulationConfig['dfsph']['relaxedJacobiOmega'] if 'dfsph'in simulationConfig else 0.5
         self.backgroundPressure = simulationConfig['fluid']['backgroundPressure']
 
@@ -96,10 +98,15 @@ class solidBoundaryModule(BoundaryModule):
         self.simulationScheme = simulationConfig['simulation']['scheme']
         if not self.active:
             return
-        self.numBodies = len(simulationConfig['solidBC'])
-        self.boundaryObjects = simulationConfig['solidBC']
-        # simulationState['akinciBoundary'] = {}
-        self.bodies = simulationConfig['solidBC']
+        if simulationConfig['simulation']['mode'] == 'generative':
+            self.numBodies = 2
+            # self.boundaryObjects = {}
+            # self.bodies = {}
+        else:
+            self.numBodies = len(simulationConfig['solidBC'])
+            self.boundaryObjects = simulationConfig['solidBC']
+            # simulationState['akinciBoundary'] = {}
+            self.bodies = simulationConfig['solidBC']
         # self.bodies'] =  simulationConfig['solidBC']
         # self.kernel, _ = getKernelFunctions(simulationConfig['kernel']['defaultKernel'])
         
@@ -111,29 +118,47 @@ class solidBoundaryModule(BoundaryModule):
         bNormals = []
         bIndices = []
         bdyCounter = 0
-        for b in self.bodies:
-            bdy = self.bodies[b]
-            packing = simulationConfig['particle']['packing'] * simulationConfig['particle']['support']
-            offset = packing / 2 if bdy['inverted'] else -packing /2
-            tempPtcls = []
-            tempGPtcls = []
-            for i in range(self.layers):
-                o = 2 * i * offset + offset
-                tempOffset = o
-                cptcls, cgptcls = samplePolygon(bdy['polygon'].cpu(), packing, simulationConfig['particle']['support'], \
-                    offset = tempOffset, mirrored = True )#packing / 2 if bdy['inverted'] else -packing /2)    
-                tempPtcls.append(cptcls)
-                tempGPtcls.append(cgptcls)
-            ptcls = np.vstack(tempPtcls)
-            ghostPtcls = np.vstack(tempGPtcls)
-            # debugPrint(ptcls)
-            ptcls = torch.tensor(ptcls).type(self.dtype).to(self.device)
-            ghostPtcls = torch.tensor(ghostPtcls).type(self.dtype).to(self.device)
-            bptcls.append(ptcls)
-            gptcls.append(ghostPtcls)
-            dist, grad, _, _, _, _ = sdPolyDer(bdy['polygon'], ptcls)
-            bNormals.append(grad)
-            bIndices.append(torch.ones(ptcls.shape[0], dtype = torch.long, device = self.device) * bdyCounter)
+        if simulationConfig['simulation']['mode'] == 'generative':
+            ptcls, vel, domainPtcls, domainGhostPtcls, domainSDF, domainSDFDer, centerPtcls, centerGhostPtcls, centerSDF, centerSDFDer, minDomain, minCenter = \
+                genNoisyParticles(nd = simulationConfig['generative']['nd'], nb = simulationConfig['generative']['nb'], \
+                             border = self.layers, n = simulationConfig['generative']['n'], res = simulationConfig['generative']['res'], \
+                                octaves = simulationConfig['generative']['octaves'], lacunarity = simulationConfig['generative']['lacunarity'], persistance = simulationConfig['generative']['persistance'], \
+                                    seed = simulationConfig['generative']['seed'], boundary = simulationConfig['generative']['boundaryWidth'], dh = 1e-3)
+            print('ptcls:', ptcls.shape[0])
+            print('domainPtcls:', domainPtcls.shape[0])
+            print('centerPtcls:', centerPtcls.shape[0])
+            bptcls.append(torch.tensor(domainPtcls, device = self.device, dtype = self.dtype))
+            gptcls.append(torch.tensor(domainGhostPtcls, device = self.device, dtype = self.dtype))
+            bNormals.append(torch.tensor(domainSDFDer, device = self.device, dtype = self.dtype))
+            bIndices.append(torch.ones(domainPtcls.shape[0], dtype = torch.long, device = self.device) * 0)
+            bptcls.append(torch.tensor(centerPtcls, device = self.device, dtype = self.dtype))
+            gptcls.append(torch.tensor(centerGhostPtcls, device = self.device, dtype = self.dtype))
+            bNormals.append(torch.tensor(centerSDFDer, device = self.device, dtype = self.dtype))
+            bIndices.append(torch.ones(centerPtcls.shape[0], dtype = torch.long, device = self.device) * 0)
+        else:
+            for b in self.bodies:
+                bdy = self.bodies[b]
+                packing = simulationConfig['particle']['packing'] * simulationConfig['particle']['support']
+                offset = packing / 2 if bdy['inverted'] else -packing /2
+                tempPtcls = []
+                tempGPtcls = []
+                for i in range(self.layers):
+                    o = 2 * i * offset + offset
+                    tempOffset = o
+                    cptcls, cgptcls = samplePolygon(bdy['polygon'].cpu(), packing, simulationConfig['particle']['support'], \
+                        offset = tempOffset, mirrored = True )#packing / 2 if bdy['inverted'] else -packing /2)    
+                    tempPtcls.append(cptcls)
+                    tempGPtcls.append(cgptcls)
+                ptcls = np.vstack(tempPtcls)
+                ghostPtcls = np.vstack(tempGPtcls)
+                # debugPrint(ptcls)
+                ptcls = torch.tensor(ptcls).type(self.dtype).to(self.device)
+                ghostPtcls = torch.tensor(ghostPtcls).type(self.dtype).to(self.device)
+                bptcls.append(ptcls)
+                gptcls.append(ghostPtcls)
+                dist, grad, _, _, _, _ = sdPolyDer(bdy['polygon'], ptcls)
+                bNormals.append(grad)
+                bIndices.append(torch.ones(ptcls.shape[0], dtype = torch.long, device = self.device) * bdyCounter)
         # debugPrint(bptcls)
         bptcls = torch.cat(bptcls)
         gptcls = torch.cat(gptcls)
@@ -232,7 +257,7 @@ class solidBoundaryModule(BoundaryModule):
             grp.create_dataset('boundaryBodyAssociation', data = self.bodyAssociation.detach().cpu().numpy())
 
         grp.create_dataset('boundaryDensity', data = self.boundaryDensity.detach().cpu().numpy())
-        grp.create_dataset('boundaryPressure', data = self.pressure.detach().cpu().numpy())
+        # grp.create_dataset('boundaryPressure', data = self.pressure.detach().cpu().numpy())
 
 
     def saveState(self, perennialState, copy):

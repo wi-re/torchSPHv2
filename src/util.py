@@ -556,3 +556,42 @@ def updateWCSPHPlot(fig, plots, simulationState, simulation):
 # cax1 = ax1_divider.append_axes("right", size="4%", pad="1%")
 # cbar = fig.colorbar(sc, cax=cax1,orientation='vertical')
 # cbar.ax.tick_params(labelsize=8) 
+
+
+
+def evalRadius(arg, packing, dtype, device):
+    r = torch.tensor(arg, dtype = dtype, device = device)
+
+    area = np.pi * r**2
+    support = np.single(np.sqrt(area / np.pi * 20))
+    
+    minDomain = torch.tensor([\
+            -2 * support,\
+            -2 * support\
+        ], device = device, dtype = dtype)
+    maxDomain = torch.tensor([\
+             2 * support,\
+             2 * support\
+        ], device = device, dtype = dtype)
+
+    fluidPosition = genParticlesCentered(minDomain, maxDomain, \
+                        arg, support, packing / support, \
+                        dtype, device)
+
+    fluidArea = torch.ones(fluidPosition.shape[0], device = device, dtype=dtype) * area
+    centralPosition = torch.tensor([[0,0]], device = device, dtype=dtype)
+
+    row, col = radius(centralPosition, fluidPosition, \
+                      support, max_num_neighbors = 256)
+    fluidNeighbors = torch.stack([row, col], dim = 0)
+
+    fluidDistances = (centralPosition - fluidPosition[fluidNeighbors[0]])
+    fluidRadialDistances = torch.linalg.norm(fluidDistances,axis=1)
+
+    fluidRadialDistances /= support
+    rho = scatter(\
+            kernel(fluidRadialDistances, support) * fluidArea[fluidNeighbors[1]], \
+            fluidNeighbors[1], dim=0, dim_size=centralPosition.size(0), reduce="add")
+#     print(rho)
+
+    return ((1 - rho)**2).detach().cpu().numpy()[0]

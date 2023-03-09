@@ -14,6 +14,7 @@ from .parameter import Parameter
 from .util import *
 from .kernels import getKernelFunctions
 from .modules.sdfBoundary import sdPolyDerAndIntegral
+from .randomParticles import genNoisyParticles
 
 class SPHSimulation():
     def getBasicParameters(self):
@@ -23,6 +24,7 @@ class SPHSimulation():
         
         basicSimulationParameters = [
             Parameter('simulation', 'scheme', 'string', 'dfsph', required = False, export = True, hint = ''),
+            Parameter('simulation', 'mode', 'string', 'default', required = False, export = True, hint = ''),
             Parameter('simulation', 'verbose', 'bool', True, required = False, export = True, hint = ''),
             Parameter('simulation', 'boundaryScheme', 'string', 'SDF', required = False, export = True, hint = ''),
             Parameter('simulation', 'bodyForces', 'bool', True, required = False, export = True, hint = ''),
@@ -35,6 +37,20 @@ class SPHSimulation():
             Parameter('shifting', 'scheme', 'string', 'deltaPlus', required = False, export = True, hint = ''),
             Parameter('shifting', 'enabled', 'bool', False, required = False, export = True, hint = ''),
         ]
+
+        basicRandomParameters = [
+            Parameter('generative', 'nd', 'int', 0, required = False, export = True, hint = ''),
+            Parameter('generative', 'nb', 'int', 32, required = False, export = True, hint = ''),
+            Parameter('generative', 'border', 'int', 3, required = False, export = True, hint = ''),
+            Parameter('generative', 'n', 'int', 256, required = False, export = True, hint = ''),
+            Parameter('generative', 'res', 'int', 2, required = False, export = True, hint = ''),
+            Parameter('generative', 'octaves', 'int', 4, required = False, export = True, hint = ''),
+            Parameter('generative', 'lacunarity', 'int', 2, required = False, export = True, hint = ''),
+            Parameter('generative', 'persistance', 'float', 0.25, required = False, export = True, hint = ''),
+            Parameter('generative', 'seed', 'int', 1337, required = False, export = True, hint = ''),
+            Parameter('generative', 'boundaryWidth', 'float', 0.25, required = False, export = True, hint = ''),
+        ]
+        
         
         basicKernelParameters = [
             Parameter('kernel', 'targetNeighbors', 'int', 20, required = False, export = True, hint = ''),
@@ -89,7 +105,7 @@ class SPHSimulation():
             
         ]
         
-        return basicParticleParameters + basicSimulationParameters + basicKernelParameters + basicComputeParameters + basicFluidParameters + \
+        return basicParticleParameters + basicRandomParameters + basicSimulationParameters + basicKernelParameters + basicComputeParameters + basicFluidParameters + \
             basicIntegrationParameters + basicViscosityParameters + basicDomainParameters + basicExportParameters + basicPeriodicBCParameters
     
     def evalPacking(self, arg):
@@ -322,62 +338,80 @@ class SPHSimulation():
             supports = []
             emitterVelocities = []
             emitterDensities = []
-            for e in self.config['emitter']:
-                if self.verbose: print(e)
-                emitter = self.config['emitter'][e]
-                if self.verbose: print(emitter)
-                if emitter['shape'] == 'sphere':
-                    emitterPositions = genParticlesSphere(
-                        torch.tensor(emitter['min'], dtype = self.dtype, device = self.device), 
-                        torch.tensor(emitter['max'], dtype = self.dtype, device = self.device), 
-                        emitter['radius'], self.config['particle']['packing'] / emitter['compression'], self.config['particle']['support'], self.dtype, self.device)
-                else:
-                    emitterPositions = genParticles(
-                        torch.tensor(emitter['min'], dtype = self.dtype, device = self.device), 
-                        torch.tensor(emitter['max'], dtype = self.dtype, device = self.device), 
-                        emitter['radius'], self.config['particle']['packing'] / emitter['compression'], self.config['particle']['support'], self.dtype, self.device)
-                    
+            if self.config['simulation']['mode'] == 'generative':
+                emitterPositions = torch.tensor(self.generated['ptcls'], dtype = self.dtype, device = self.device)  
                 
-
-                if 'solidBC' in self.config:
-                    if self.config['simulation']['boundaryScheme'] == 'SDF':
-                        for bdy in self.config['solidBC']:
-                            b = self.config['solidBC'][bdy]
-                            polyDist, polyDer, bIntegral, bGrad = sdPolyDerAndIntegral(b['polygon'], emitterPositions, self.config['particle']['support'], inverted = b['inverted'])
-                            # print('Particle count before filtering: ', particles.shape[0])
-                            emitterPositions = emitterPositions[polyDist >= self.config['particle']['spacing'] * self.config['particle']['support'] * 0.99,:]
-                            # print('Particle count after filtering: ', particles.shape[0])
-
-#                 if emitter['shape'] == 'sphere':
-#                     center = (torch.tensor(emitter['max'], dtype = self.dtype, device = self.device) + \
-#                         torch.tensor(emitter['min'], dtype = self.dtype, device = self.device)) / 2
-#                     dist = (torch.tensor(emitter['max'], dtype = self.dtype, device = self.device) - \
-#                         torch.tensor(emitter['min'], dtype = self.dtype, device = self.device))
-# #                     debugPrint(center)
-# #                     debugPrint(dist)
-#                     rad = max(dist[0], dist[1]) / 2
-# #                     debugPrint(rad)
-#                     centerDist = torch.linalg.norm(emitterPositions - center,axis=1)
-# #                     debugPrint(centerDist)
-#                     emitterPositions = emitterPositions[centerDist <= rad,:]
-# #                     debugPrint(emitterPositions)
-                    
-                        
                 emitterAreas = torch.ones(emitterPositions.shape[0], dtype = self.dtype, device=self.device) * self.config['particle']['area']
                 emitterSupport = torch.ones(emitterPositions.shape[0], dtype = self.dtype, device=self.device) * self.config['particle']['support']
 
                 emitterVelocity = torch.ones((emitterPositions.shape[0], 2), dtype = self.dtype, device=self.device)
-                emitterVelocity[:,0] = emitter['velocity'][0]
-                emitterVelocity[:,1] = emitter['velocity'][1]
+                emitterVelocity[:,0] = torch.tensor(self.generated['vel'][:,0], dtype = self.dtype, device = self.device)  
+                emitterVelocity[:,1] = torch.tensor(self.generated['vel'][:,1], dtype = self.dtype, device = self.device)  
 
-                emitterDensity = torch.ones(emitterPositions.shape[0], dtype = self.dtype, device=self.device) * emitter['restDensity']
+                emitterDensity = torch.ones(emitterPositions.shape[0], dtype = self.dtype, device=self.device) * self.config['fluid']['restDensity']
 
                 positions.append(emitterPositions)
                 areas.append(emitterAreas)
                 supports.append(emitterSupport)
                 emitterVelocities.append(emitterVelocity)
                 emitterDensities.append(emitterDensity)
-            #     break
+            else:
+                for e in self.config['emitter']:
+                    if self.verbose: print(e)
+                    emitter = self.config['emitter'][e]
+                    if self.verbose: print(emitter)
+                    if emitter['shape'] == 'sphere':
+                        emitterPositions = genParticlesSphere(
+                            torch.tensor(emitter['min'], dtype = self.dtype, device = self.device), 
+                            torch.tensor(emitter['max'], dtype = self.dtype, device = self.device), 
+                            emitter['radius'], self.config['particle']['packing'] / emitter['compression'], self.config['particle']['support'], self.dtype, self.device)
+                    else:
+                        emitterPositions = genParticles(
+                            torch.tensor(emitter['min'], dtype = self.dtype, device = self.device), 
+                            torch.tensor(emitter['max'], dtype = self.dtype, device = self.device), 
+                            emitter['radius'], self.config['particle']['packing'] / emitter['compression'], self.config['particle']['support'], self.dtype, self.device)
+                        
+                    
+
+                    if 'solidBC' in self.config:
+                        if self.config['simulation']['boundaryScheme'] == 'SDF':
+                            for bdy in self.config['solidBC']:
+                                b = self.config['solidBC'][bdy]
+                                polyDist, polyDer, bIntegral, bGrad = sdPolyDerAndIntegral(b['polygon'], emitterPositions, self.config['particle']['support'], inverted = b['inverted'])
+                                # print('Particle count before filtering: ', particles.shape[0])
+                                emitterPositions = emitterPositions[polyDist >= self.config['particle']['spacing'] * self.config['particle']['support'] * 0.99,:]
+                                # print('Particle count after filtering: ', particles.shape[0])
+
+    #                 if emitter['shape'] == 'sphere':
+    #                     center = (torch.tensor(emitter['max'], dtype = self.dtype, device = self.device) + \
+    #                         torch.tensor(emitter['min'], dtype = self.dtype, device = self.device)) / 2
+    #                     dist = (torch.tensor(emitter['max'], dtype = self.dtype, device = self.device) - \
+    #                         torch.tensor(emitter['min'], dtype = self.dtype, device = self.device))
+    # #                     debugPrint(center)
+    # #                     debugPrint(dist)
+    #                     rad = max(dist[0], dist[1]) / 2
+    # #                     debugPrint(rad)
+    #                     centerDist = torch.linalg.norm(emitterPositions - center,axis=1)
+    # #                     debugPrint(centerDist)
+    #                     emitterPositions = emitterPositions[centerDist <= rad,:]
+    # #                     debugPrint(emitterPositions)
+                        
+                            
+                    emitterAreas = torch.ones(emitterPositions.shape[0], dtype = self.dtype, device=self.device) * self.config['particle']['area']
+                    emitterSupport = torch.ones(emitterPositions.shape[0], dtype = self.dtype, device=self.device) * self.config['particle']['support']
+
+                    emitterVelocity = torch.ones((emitterPositions.shape[0], 2), dtype = self.dtype, device=self.device)
+                    emitterVelocity[:,0] = emitter['velocity'][0]
+                    emitterVelocity[:,1] = emitter['velocity'][1]
+
+                    emitterDensity = torch.ones(emitterPositions.shape[0], dtype = self.dtype, device=self.device) * emitter['restDensity']
+
+                    positions.append(emitterPositions)
+                    areas.append(emitterAreas)
+                    supports.append(emitterSupport)
+                    emitterVelocities.append(emitterVelocity)
+                    emitterDensities.append(emitterDensity)
+                #     break
 
             self.simulationState[    'fluidPosition'] = torch.vstack(positions)
             self.simulationState[              'UID'] = torch.arange(self.simulationState['fluidPosition'].shape[0], dtype=torch.int64, device = self.device)
@@ -718,7 +752,24 @@ class SPHSimulation():
         self.config['particle']['support'] = np.single(np.sqrt(self.config['particle']['area'] / np.pi * self.config['kernel']['targetNeighbors']))
         
         # print('Computing packing and spacing parameters')
-        self.config['particle']['packing'] = minimize(lambda x: self.evalPacking(x), 0.5, method="nelder-mead").x[0]        
+        if self.config['simulation']['mode'] == 'generative':
+            nx = self.config['generative']['nd'] * 2 + self.config['generative']['nb'] * 2
+            dx = 2 / (nx-1)
+            area = dx**2
+            r = np.sqrt(area / np.pi)
+            ropt =  minimize(lambda r: evalRadius(r[0], dx, torch.float32, 'cpu'), r, method="nelder-mead").x[0]        
+            self.config['particle']['radius'] = ropt
+            self.config['particle']['area'] = np.pi * self.config['particle']['radius']**2
+            self.config['particle']['support'] = np.single(np.sqrt(self.config['particle']['area'] / np.pi * self.config['kernel']['targetNeighbors']))
+            self.config['particle']['packing'] = dx / self.config['particle']['support']
+            print('Computed radius based on dx ', dx, ' for nx = ', nx)
+            print('radius: ', self.config['particle']['radius'])
+            print('area: ', self.config['particle']['area'])
+            print('support: ', self.config['particle']['support'])
+            print('packing: ', self.config['particle']['packing'])
+        else:
+            # self.config['particle']['packing'] = dx
+            self.config['particle']['packing'] = minimize(lambda x: self.evalPacking(x), 0.5, method="nelder-mead").x[0]        
         # self.config['particle']['packing'] = np.float32(0.399023) # minimize(lambda x: self.evalPacking(x), 0.5, method="nelder-mead").x[0]        
         # print('Optimized packing: %g' % self.config['particle']['packing'])
         self.config['particle']['spacing'] = np.float32(0.316313)# -minimize(lambda x: self.evalSpacing(x), 0., method="nelder-mead").x[0]
@@ -728,7 +779,7 @@ class SPHSimulation():
         if self.config['simulation']['boundaryScheme'] == 'solid':
             self.config['particle']['spacing'] = self.config['particle']['packing']
 
-        if self.config['domain']['adjustParticle']:
+        if self.config['domain']['adjustParticle'] and not self.config['simulation']['mode'] == 'generative':
             if self.verbose: print('Adjusting particle size to better match domain size')
             D = (self.config['domain']['max'][1] - self.config['domain']['min'][1])
             spacing = self.config['particle']['spacing']
@@ -752,7 +803,7 @@ class SPHSimulation():
         self.config['particle']['spacingContribution'] = self.evalContrib()
         if self.verbose: print('Spacing contribution: %g' % self.config['particle']['spacingContribution'])
         
-        if self.config['domain']['adjustDomain']:
+        if self.config['domain']['adjustDomain'] and not self.config['simulation']['mode'] == 'generative':
             if self.verbose: print('Adjusting simulation domain to be integer multiple of particle packing')
             p = self.config['particle']['packing'] * self.config['particle']['support']
             nx = int(np.ceil((self.config['domain']['max'][0] - self.config['domain']['min'][0]) / p))
@@ -765,10 +816,24 @@ class SPHSimulation():
             self.config['domain']['max'][1] = self.config['domain']['min'][1] + ny * p
             
             if self.verbose: print('Domain  is: [%g %g] - [%g %g]' %(self.config['domain']['min'][0], self.config['domain']['min'][1], self.config['domain']['max'][0], self.config['domain']['max'][1]))
+        if self.config['simulation']['mode'] == 'generative':
+            ptcls, vel, domainPtcls, domainGhostPtcls, domainSDF, domainSDFDer, centerPtcls, centerGhostPtcls, centerSDF, centerSDFDer, minDomain, minCenter = \
+                genNoisyParticles(nd = self.config['generative']['nd'], nb = self.config['generative']['nb'], \
+                             border = self.config['generative']['border'], n = self.config['generative']['n'], res = self.config['generative']['res'], \
+                                octaves = self.config['generative']['octaves'], lacunarity = self.config['generative']['lacunarity'], persistance = self.config['generative']['persistance'], \
+                                    seed = self.config['generative']['seed'], boundary = self.config['generative']['boundaryWidth'], dh = 1e-3)
+            
+            self.config['domain']['min'] = np.array([np.min(domainPtcls[:,0]), np.min(domainPtcls[:,1])])
+            self.config['domain']['max'] = np.array([np.max(domainPtcls[:,0]), np.max(domainPtcls[:,1])])
 
+            self.generated = {'ptcls': ptcls, 'vel' : vel, \
+                              'domainPtcls': domainPtcls, 'domainGhostPtcls': domainGhostPtcls, 'domainSDF': domainSDF, 'domainSDFDer': domainSDFDer,\
+                              'centerPtcls': centerPtcls, 'centerGhostPtcls': centerGhostPtcls, 'centerSDF': centerSDF, 'centerSDFDer': centerSDFDer,\
+                              'minDomain': minDomain, 'minCenter': minCenter}
 
-        self.processEmitters()
-        self.processVelocitySources()
+        else:
+            self.processEmitters()
+            self.processVelocitySources()
         
         if self.verbose: print('Setting virtual domain limits')
         self.config['domain']['virtualMin'] = self.config['domain']['min'] - self.config['particle']['support'] * self.config['periodicBC']['buffer']
