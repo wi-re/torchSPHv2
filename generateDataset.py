@@ -46,32 +46,55 @@ from torch.profiler import profile, record_function, ProfilerActivity
 
 velocities = []
 
-r = 2
-n = 8
+# r = 2
+n = 2
 
-for i in range(n):
-#     for j in range(8):
-    theta_i = 2 * np.pi * i / 8
-    xi = r * np.cos(theta_i)
-    yi = r * np.sin(theta_i)
+# for i in range(n):
+# #     for j in range(8):
+#     theta_i = 2 * np.pi * i / 8
+#     xi = r * np.cos(theta_i)
+#     yi = r * np.sin(theta_i)
     
-    velocities.append(np.array([xi,yi]))
+#     velocities.append(np.array([xi,yi]))
     
-#     debugPrint(xi)
-debugPrint(velocities)
+# #     debugPrint(xi)
+# debugPrint(velocities)
+
+seeds = np.random.randint(low = 0, high = 2**16, size = (n**2))
+print('seeds:', seeds)
 from src.deltaSPH import deltaSPHSimulation
 from src.dfsph import dfsphSimulation
 from tqdm import trange, tqdm
 
 
-def loadConfig(config, i, j):
+# def loadConfig(config, i, j):
+#     with open(config, 'r') as file:
+#         tomlConfig = file.read()
+#     parsedConfig = tomli.loads(tomlConfig)
+    
+#     parsedConfig['emitter']['fluidL']['velocity'] = velocities[i]
+#     parsedConfig['emitter']['fluidR']['velocity'] = velocities[j]
+#     parsedConfig['export']['prefix'] = 'collision %d x %d' %(i,j)
+    
+#     simulationScheme = 'deltaSPH'
+#     if 'simulation' in parsedConfig:
+#         if 'scheme' in parsedConfig['simulation']:
+#             simulationScheme = parsedConfig['simulation']['scheme']
+            
+#     if simulationScheme == 'deltaSPH' or simulationScheme == 'deltaPlus':
+#         return parsedConfig, deltaSPHSimulation
+#     if simulationScheme == 'dfsph':
+#         return parsedConfig, dfsphSimulation
+
+
+def loadConfig(config, seed):
     with open(config, 'r') as file:
         tomlConfig = file.read()
     parsedConfig = tomli.loads(tomlConfig)
     
-    parsedConfig['emitter']['fluidL']['velocity'] = velocities[i]
-    parsedConfig['emitter']['fluidR']['velocity'] = velocities[j]
-    parsedConfig['export']['prefix'] = 'collision %d x %d' %(i,j)
+    parsedConfig['generative']['seed'] = seed
+    # parsedConfig['emitter']['fluidR']['velocity'] = velocities[j]
+    # parsedConfig['export']['prefix'] = 'collision %d x %d' %(i,j)
     
     simulationScheme = 'deltaSPH'
     if 'simulation' in parsedConfig:
@@ -83,16 +106,27 @@ def loadConfig(config, i, j):
     if simulationScheme == 'dfsph':
         return parsedConfig, dfsphSimulation
 
+# config = 'configs/collision_dfsph.toml'
+config = 'configs/generative.toml'
 
-config = 'configs/collision_dfsph.toml'
+# for i in tqdm(range(n)):
+#     for j in tqdm(range(n)):
+#         parsedConfig, simulationModel = loadConfig(config,i,j)
+#         sphSimulation = simulationModel(parsedConfig)
+#         sphSimulation.initializeSimulation()
 
-for i in tqdm(range(n)):
-    for j in tqdm(range(n)):
-        parsedConfig, simulationModel = loadConfig(config,i,j)
-        sphSimulation = simulationModel(parsedConfig)
-        sphSimulation.initializeSimulation()
+#         for t in tqdm(range(2000), leave = False):
+#             sphSimulation.integrate()
 
-        for t in tqdm(range(2000), leave = False):
-            sphSimulation.integrate()
+#         sphSimulation.outFile.close()
 
-        sphSimulation.outFile.close()
+
+for i in tqdm(seeds):
+    parsedConfig, simulationModel = loadConfig(config,i)
+    sphSimulation = simulationModel(parsedConfig)
+    sphSimulation.initializeSimulation()
+
+    for t in tqdm(range(3200), leave = False):
+        sphSimulation.integrate()
+
+    sphSimulation.outFile.close()

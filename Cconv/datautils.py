@@ -317,7 +317,7 @@ def loadFrame(filename, frame, frameOffsets = [1], frameDistance = 1):
     inGrp = inFile['simulationExport']['%05d' % frame]
 #     debugPrint(inFile.attrs.keys())
     attributes = {
-     'support': 0.025 * 4.5, # np.max(inGrp['fluidSupport'][:]),
+     'support': np.max(inGrp['fluidSupport'][:]),
      'targetNeighbors': inFile.attrs['targetNeighbors'],
      'restDensity': inFile.attrs['restDensity'],
      'dt': inGrp.attrs['dt'],
@@ -487,7 +487,7 @@ def loadData(dataset, index, featureFun, unroll = 1, frameDistance = 1):
         fileName, frameIndex, maxRollouts = dataset[index]
 
         attributes, inputData, groundTruthData = loadFrame(fileName, frameIndex, 1 + np.arange(unroll), frameDistance = frameDistance)
-        attributes['support'] = 4.5 * attributes['support']
+        # attributes['support'] = 4.5 * attributes['support']
         fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures = featureFun(attributes, inputData)
 
         return attributes, fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, inputData['fluidGravity'], groundTruthData

@@ -124,16 +124,16 @@ class solidBoundaryModule(BoundaryModule):
                              border = self.layers, n = simulationConfig['generative']['n'], res = simulationConfig['generative']['res'], \
                                 octaves = simulationConfig['generative']['octaves'], lacunarity = simulationConfig['generative']['lacunarity'], persistance = simulationConfig['generative']['persistance'], \
                                     seed = simulationConfig['generative']['seed'], boundary = simulationConfig['generative']['boundaryWidth'], dh = 1e-3)
-            print('ptcls:', ptcls.shape[0])
-            print('domainPtcls:', domainPtcls.shape[0])
-            print('centerPtcls:', centerPtcls.shape[0])
+            # print('ptcls:', ptcls.shape[0])
+            # print('domainPtcls:', domainPtcls.shape[0])
+            # print('centerPtcls:', centerPtcls.shape[0])
             bptcls.append(torch.tensor(domainPtcls, device = self.device, dtype = self.dtype))
             gptcls.append(torch.tensor(domainGhostPtcls, device = self.device, dtype = self.dtype))
-            bNormals.append(torch.tensor(domainSDFDer, device = self.device, dtype = self.dtype))
+            bNormals.append(domainSDFDer)
             bIndices.append(torch.ones(domainPtcls.shape[0], dtype = torch.long, device = self.device) * 0)
             bptcls.append(torch.tensor(centerPtcls, device = self.device, dtype = self.dtype))
             gptcls.append(torch.tensor(centerGhostPtcls, device = self.device, dtype = self.dtype))
-            bNormals.append(torch.tensor(centerSDFDer, device = self.device, dtype = self.dtype))
+            bNormals.append(centerSDFDer)
             bIndices.append(torch.ones(centerPtcls.shape[0], dtype = torch.long, device = self.device) * 0)
         else:
             for b in self.bodies:

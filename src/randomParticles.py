@@ -346,7 +346,7 @@ def createVelocityField(f, n = 256, dh = 1e-4):
     return np.stack((xv, yv), axis = 2), xx, yy, z
 
 def createPotentialField(n = 256, res = 4, octaves = 2, lacunarity = 2, persistance = 0.5, seed = 1336):
-    f, noise = createNoiseFunction(n = n, res = res, octaves = octaves, lacunarity = lacunarity, persistance = persistance, seed = 1336)
+    f, noise = createNoiseFunction(n = n, res = res, octaves = octaves, lacunarity = lacunarity, persistance = persistance, seed = seed)
 #     noise = Octave(n, octaves = octaves, lacunarity = lacunarity, persistance = persistance, seed = seed)
 
 #     noise[:,0] = noise[:,1] - noise[:,2] + noise[:,1]

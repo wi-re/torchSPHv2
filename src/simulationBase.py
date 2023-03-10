@@ -347,8 +347,8 @@ class SPHSimulation():
                 emitterSupport = torch.ones(emitterPositions.shape[0], dtype = self.dtype, device=self.device) * self.config['particle']['support']
 
                 emitterVelocity = torch.ones((emitterPositions.shape[0], 2), dtype = self.dtype, device=self.device)
-                emitterVelocity[:,0] = torch.tensor(self.generated['vel'][:,0], dtype = self.dtype, device = self.device)  
-                emitterVelocity[:,1] = torch.tensor(self.generated['vel'][:,1], dtype = self.dtype, device = self.device)  
+                emitterVelocity[:,0] = self.generated['vel'][:,0]
+                emitterVelocity[:,1] = self.generated['vel'][:,1] 
 
                 emitterDensity = torch.ones(emitterPositions.shape[0], dtype = self.dtype, device=self.device) * self.config['fluid']['restDensity']
 
@@ -843,7 +843,7 @@ class SPHSimulation():
             noiseSampler = interpolate.RegularGridInterpolator((np.linspace(-1,1,self.config['generative']['n']), np.linspace(-1,1,self.config['generative']['n'])), filtered, bounds_error = False, fill_value = None, method = 'linear')
 
             velocities, rho, potential, div = noisifyParticles(noiseSampler, allPtcls, area, support)
-            print('mean divergence:', torch.mean(div))
+            # print('mean divergence:', torch.mean(div))
                 
 
 
