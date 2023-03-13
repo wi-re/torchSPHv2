@@ -287,9 +287,9 @@ def constructFluidFeatures(attributes, inputData):
     
     return inputData['fluidPosition'].type(torch.float32), inputData['boundaryPosition'].type(torch.float32), fluidFeatures, boundaryFeatures
 
-def processBatch(model, device, li, attributes, e, unroll, train_ds, bdata, frameDistance):
+def processBatch(model, device, li, e, unroll, train_ds, bdata, frameDistance):
     with record_function("process batch"): 
-        fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, fluidGravity, fluidBatches, boundaryBatches, groundTruths = \
+        fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, fluidGravity, fluidBatches, boundaryBatches, groundTruths, attributes = \
             loadBatch(train_ds, bdata, constructFluidFeatures, unroll, frameDistance)    
 
 
@@ -311,7 +311,7 @@ def processBatch(model, device, li, attributes, e, unroll, train_ds, bdata, fram
         for u in range(unroll):
             with record_function("prcess batch[unroll]"): 
     #         loss, predictedPositions, predictedVelocity = runNetwork(fluidPositions.to(device), inputData['fluidVelocity'].to(device), attributes['dt'], frameDistance, gravity, fluidFeatures, boundaryPositions.to(device), boundaryFeatures.to(device), groundTruths[0], model, None, None, True)
-                loss, predictedPositions, predictedVelocity = runNetwork(predictedPositions, predictedVelocity, attributes, frameDistance, gravity, fluidFeatures, boundaryPositions, boundaryFeatures, groundTruths[u], model, fluidBatches, boundaryBatches, li)
+                loss, predictedPositions, predictedVelocity = runNetwork(predictedPositions, predictedVelocity, attributes[0], frameDistance, gravity, fluidFeatures, boundaryPositions, boundaryFeatures, groundTruths[u], model, fluidBatches, boundaryBatches, li)
 
                 batchedLoss = []
                 for i in range(len(bdata)):

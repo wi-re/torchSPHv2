@@ -502,6 +502,7 @@ def loadBatch(train_ds, bdata, featureFun, unroll = 1, frameDistance = 1):
         boundaryBatchIndices = []
         groundTruths = []
         fluidGravities = []
+        attributeArray = []
         for i in range(unroll):
             groundTruths.append([])
 
@@ -512,6 +513,7 @@ def loadBatch(train_ds, bdata, featureFun, unroll = 1, frameDistance = 1):
                 attributes, fluidPosition, boundaryPosition, fluidFeature, boundaryFeature, fluidGravity, groundTruth = loadData(train_ds, b, featureFun, unroll = unroll, frameDistance = frameDistance)     
         #         debugPrint(groundTruth)
                 fluidPositions.append(fluidPosition)
+                attributeArray.append(attributes)
         #         debugPrint(fluidPositions)
                 boundaryPositions.append(boundaryPosition)
                 fluidFeatures.append(fluidFeature)
@@ -537,7 +539,7 @@ def loadBatch(train_ds, bdata, featureFun, unroll = 1, frameDistance = 1):
         for u in range(unroll):
             groundTruths[u] = torch.vstack(groundTruths[u])
 
-        return fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, fluidGravities, fluidBatchIndices, boundaryBatchIndices, groundTruths
+        return fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, fluidGravities, fluidBatchIndices, boundaryBatchIndices, groundTruths, attributeArray
 
 # def loadDataZSTD(dataset, index, featureFun, unroll = 1, frameDistance = 1):
 #     fileName, frameIndex, maxRollouts = dataset[index]
