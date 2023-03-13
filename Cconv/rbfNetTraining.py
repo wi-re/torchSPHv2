@@ -88,7 +88,7 @@ from tqdm.notebook import trange, tqdm
 # from tqdm.notebook import trange, tqdm
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-e','--epochs', type=int, default=25)
+parser.add_argument('-e','--epochs', type=int, default=10)
 parser.add_argument('-cmap','--coordinateMapping', type=str, default='preserving')
 parser.add_argument('-w','--windowFunction', type=str, default='poly6')
 parser.add_argument('-c','--cutoff', type=int, default=1800)
@@ -111,7 +111,7 @@ parser.add_argument('-f','--forwardLoss', type=bool, default=False)
 parser.add_argument('-v','--verbose', type=bool, default=False)
 parser.add_argument('-l','--li', type=bool, default=True)
 parser.add_argument('-a','--activation', type=str, default='relu')
-parser.add_argument('--arch', type=str, default='32 64 64 2')
+parser.add_argument('--arch', type=str, default='32 64 64 3')
 parser.add_argument('--limitData', type=int, default=-1)
 parser.add_argument('--iterations', type=int, default=1000)
 
@@ -152,7 +152,7 @@ from rbfNet import *
 if args.verbose:
     print('Parsing data in ../export')
 basePath = '../export'
-basePath = os.path.expanduser('~/dev/datasets/WBCSPH2Dc')
+basePath = os.path.expanduser('~/dev/datasets/generated2D')
 
 
 # basePath = '~/dev/datasets/WBCSPH2Dc/train'
@@ -160,7 +160,7 @@ basePath = os.path.expanduser('~/dev/datasets/WBCSPH2Dc')
 
 # simulationFiles = [basePath + '/' + f for f in os.listdir(basePath) if f.endswith('.zst')]
 trainingFiles = [basePath + '/train/' + f for f in os.listdir(basePath + '/train/') if f.endswith('.hdf5')]
-validationFiles = [basePath + '/valid/' + f for f in os.listdir(basePath + '/valid/') if f.endswith('.hdf5')]
+# validationFiles = [basePath + '/valid/' + f for f in os.listdir(basePath + '/valid/') if f.endswith('.hdf5')]
 # for i, c in enumerate(simulationFiles):
 #     print(i ,c)
 #     
@@ -199,9 +199,9 @@ testing = []
 for s in tqdm(trainingFiles):
     f, s, u = splitFile(s, split = False, cutoff = -4, skip = 0)
     training.append((f, (s,u)))
-for s in tqdm(validationFiles):
-    f, s, u = splitFile(s, split = False, cutoff = -4, skip = 0)
-    validation.append((f, (s,u)))
+# for s in tqdm(validationFiles):
+#     f, s, u = splitFile(s, split = False, cutoff = -4, skip = 0)
+#     validation.append((f, (s,u)))
     
 if args.verbose:
     print('Processed data into datasets:')
@@ -374,9 +374,9 @@ def processDataLoaderIter(iterations, e, rollout, ds, dataLoader, dataIter, mode
         bIndices  = np.hstack(batchIndices)
         losses = np.vstack(losses)
 
-        idx = np.argsort(bIndices)
-        bIndices = bIndices[idx]
-        losses = losses[idx]
+        # idx = np.argsort(bIndices)
+        # bIndices = bIndices[idx]
+        # losses = losses[idx]
 
         epochLoss = losses
         return epochLoss
@@ -455,11 +455,11 @@ for epoch in range(epochs):
     trainingEpochLoss = processDataLoaderIter(args.iterations, epoch, unroll, train_ds, train_dataloader, train_iter, model, optimizer, True, prefix = 'training')
 #     trainingEpochLoss = processDataLoader(epoch,unroll, train_ds, train_dataloader, model, optimizer, True, prefix = 'training')
     trainingEpochLosses.append(trainingEpochLoss)
-    torch.save(model.state_dict(), './trainingData/%s/model_%03d.torch' % (exportString, epoch))
-    if epoch % 1 == 0:
-        lr = lr * 0.995
+    # torch.save(model.state_dict(), './trainingData/%s/model_%03d.torch' % (exportString, epoch))
+    if (epoch + 1) % 2 == 0:
+        lr = lr * 0.5
         for param_group in optimizer.param_groups:
-            param_group['lr'] = 0.995 * param_group['lr']
+            param_group['lr'] = 0.5 * param_group['lr']
     torch.save(model.state_dict(), './trainingData/%s/model_%03d.torch' % (exportString, epoch))
 
 # for epoch in range(args.epochs):

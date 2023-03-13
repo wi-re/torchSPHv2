@@ -47,7 +47,7 @@ from torch.profiler import profile, record_function, ProfilerActivity
 velocities = []
 
 # r = 2
-n = 2
+n = 4
 
 # for i in range(n):
 # #     for j in range(8):
