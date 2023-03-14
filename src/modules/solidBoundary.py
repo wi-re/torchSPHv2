@@ -120,7 +120,7 @@ class solidBoundaryModule(BoundaryModule):
         bdyCounter = 0
         if simulationConfig['simulation']['mode'] == 'generative':
             ptcls, vel, domainPtcls, domainGhostPtcls, domainSDF, domainSDFDer, centerPtcls, centerGhostPtcls, centerSDF, centerSDFDer, minDomain, minCenter,_,_,_ = \
-                genNoisyParticles(nd = simulationConfig['generative']['nd'], nb = simulationConfig['generative']['nb'], \
+                genNoisyParticles(nd = np.array(simulationConfig['generative']['nd']), nb = np.array(simulationConfig['generative']['nb']), \
                              border = self.layers, n = simulationConfig['generative']['n'], res = simulationConfig['generative']['res'], \
                                 octaves = simulationConfig['generative']['octaves'], lacunarity = simulationConfig['generative']['lacunarity'], persistance = simulationConfig['generative']['persistance'], \
                                     seed = simulationConfig['generative']['seed'], boundary = simulationConfig['generative']['boundaryWidth'], dh = 1e-3)
@@ -134,7 +134,7 @@ class solidBoundaryModule(BoundaryModule):
             bptcls.append(torch.tensor(centerPtcls, device = self.device, dtype = self.dtype))
             gptcls.append(torch.tensor(centerGhostPtcls, device = self.device, dtype = self.dtype))
             bNormals.append(centerSDFDer)
-            bIndices.append(torch.ones(centerPtcls.shape[0], dtype = torch.long, device = self.device) * 0)
+            bIndices.append(torch.ones(centerPtcls.shape[0], dtype = torch.long, device = self.device) * 1)
         else:
             for b in self.bodies:
                 bdy = self.bodies[b]
@@ -160,6 +160,10 @@ class solidBoundaryModule(BoundaryModule):
                 bNormals.append(grad)
                 bIndices.append(torch.ones(ptcls.shape[0], dtype = torch.long, device = self.device) * bdyCounter)
         # debugPrint(bptcls)
+
+        self.centerOfMass = torch.tensor([torch.mean(b, dim = 0)[0] for b in bptcls])
+        # self.bodyVelocity = 
+
         bptcls = torch.cat(bptcls)
         gptcls = torch.cat(gptcls)
         bNormals = torch.cat(bNormals)
@@ -185,7 +189,7 @@ class solidBoundaryModule(BoundaryModule):
         self.boundaryToBoundaryNeighbors = torch.vstack((bj, bi))
         self.boundaryToBoundaryNeighborDistances = bbDistances
         self.boundaryToBoundaryNeighborRadialDistances = bbRadialDistances
-
+        self.staticBoundary = simulationConfig['export']['staticBoundary']
         boundaryKernelTerm = kernel(bbRadialDistances, self.support)
 
         # gamma = 0.7
@@ -274,7 +278,18 @@ class solidBoundaryModule(BoundaryModule):
         # perennialState['boundaryDragForce']        = self.boundaryModule.boundaryDragForce             if not copy else torch.clone(self.boundaryModule.boundaryDragForce)
         
         perennialState['boundaryParticles'] = perennialState['boundaryPosition'].shape[0]
-
+    def setupSimulationState(self, perennialState):
+        self.boundaryPositions  = torch.clone(perennialState['boundaryPosition']) 
+        self.boundaryVelocity  = torch.clone(perennialState['boundaryVelocity']) 
+        self.boundaryDensity  = torch.clone(perennialState['boundaryDensity']) 
+        self.boundarySupport  = torch.clone(perennialState['boundarySupport']) 
+        self.boundaryRestDensity  = torch.clone(perennialState['boundaryRestDensity']) 
+        self.boundaryVolume  = torch.clone(perennialState['boundaryArea']) 
+        self.pressure  = torch.clone(perennialState['boundaryPressure']) 
+        self.boundaryNormals  = torch.clone(perennialState['boundaryNormals']) 
+        self.bodyAssociation  = torch.clone(perennialState['boundaryBodyAssociation']) 
+        
+    
 
     def dfsphPrepareSolver(self, simulationState, simulation, density = True):
         if not(density) or self.boundaryToFluidNeighbors == None:
@@ -354,11 +369,11 @@ class solidBoundaryModule(BoundaryModule):
             # debugPrint(term)
             # debugPrint(grad)
 
-            if self.computeBodyForces:
-                force = -term * (simulationState['fluidArea'] * simulationState['fluidRestDensity'])[bf,None]
-                # self.bodyAssociation']
-                boundaryForces = scatter_sum(force, bb, dim=0, dim_size = self.numPtcls)
-                self.pressureForces = scatter_sum(boundaryForces, self.bodyAssociation, dim=0, dim_size = self.boundaryCounter)
+            # if self.computeBodyForces:
+            #     force = -term * (simulationState['fluidArea'] * simulationState['fluidRestDensity'])[bf,None]
+            #     # self.bodyAssociation']
+            #     boundaryForces = scatter_sum(force, bb, dim=0, dim_size = self.numPtcls)
+            #     self.pressureForces = scatter_sum(boundaryForces, self.bodyAssociation, dim=0, dim_size = self.boundaryCounter)
 
             boundaryAccelTerm = scatter_sum(term, bf, dim=0, dim_size = simulationState['fluidArea'].shape[0])
 
@@ -379,11 +394,11 @@ class solidBoundaryModule(BoundaryModule):
             
             boundaryAccelTerm = scatter_sum(term, bf, dim=0, dim_size=simulationState['fluidArea'].shape[0])
 
-            if self.computeBodyForces:
-                force = -term * (simulationState['fluidArea'] * simulationState['fluidRestDensity'])[bf,None]
-                # self.bodyAssociation']
-                boundaryForces = scatter_sum(force, bb, dim=0, dim_size = self.numPtcls)
-                self.pressureForces = scatter_sum(boundaryForces, self.bodyAssociation, dim=0, dim_size = self.boundaryCounter)
+            # if self.computeBodyForces:
+            #     force = -term * (simulationState['fluidArea'] * simulationState['fluidRestDensity'])[bf,None]
+            #     # self.bodyAssociation']
+            #     boundaryForces = scatter_sum(force, bb, dim=0, dim_size = self.numPtcls)
+            #     self.pressureForces = scatter_sum(boundaryForces, self.bodyAssociation, dim=0, dim_size = self.boundaryCounter)
 
             return boundaryAccelTerm
 
@@ -604,6 +619,21 @@ class solidBoundaryModule(BoundaryModule):
         with record_function('boundaryCondition[mDBC] - neighborhood'):
             if not self.active:
                 return
+            if not self.staticBoundary:
+
+                bj, bi = radius(self.boundaryPositions, self.boundaryPositions, self.support)
+
+                bbDistances = (self.boundaryPositions[bi] - self.boundaryPositions[bj])
+                bbRadialDistances = torch.linalg.norm(bbDistances,axis=1)
+
+                bbDistances[bbRadialDistances < self.threshold,:] = 0
+                bbDistances[bbRadialDistances >= self.threshold,:] /= bbRadialDistances[bbRadialDistances >= self.threshold,None]
+                bbRadialDistances /= self.support
+
+                self.boundaryToBoundaryNeighbors = torch.vstack((bj, bi))
+                self.boundaryToBoundaryNeighborDistances = bbDistances
+                self.boundaryToBoundaryNeighborRadialDistances = bbRadialDistances
+            
             self.boundaryToFluidNeighbors, self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances = simulation.neighborSearch.searchExisting(self.boundaryPositions, self.boundarySupport, simulationState, simulation)
             # self.boundaryToFluidNeighborDistances = -self.boundaryToFluidNeighborDistances
             # if self.pressureScheme == 'ghostMLS' or :

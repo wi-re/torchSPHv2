@@ -11,6 +11,8 @@ class Module():
         return
     def exportState(self, simulationState, simulation, group, mask):
         return
+    def setupSimulationState(self, perennialState):
+        return
     def __init__(self, identifier, moduleDescription):
         self.description = moduleDescription
         self.name = identifier

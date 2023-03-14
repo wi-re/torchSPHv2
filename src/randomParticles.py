@@ -299,7 +299,7 @@ def buildSDF(poly, minCoord = [-1,-1], maxCoord = [1,1], n = 256, dh = 1e-2):
 
     xx, yy = np.meshgrid(x,y)
 
-    sdf, sdfGrad, _, _, _, _ = sdPolyDer(torch.tensor(poly[:-1,:]), torch.tensor(np.vstack((xx.flatten(),yy.flatten()))).mT, dh = dh)
+    sdf, sdfGrad, _, _, _, _ = sdPolyDer(torch.tensor(poly[:-1,:]), torch.tensor(np.vstack((yy.flatten(),xx.flatten()))).mT, dh = dh)
     
     return xx, yy, sdf, sdfGrad
 def plotMesh(xx,yy,z, axis, fig):
@@ -346,7 +346,7 @@ def createVelocityField(f, n = 256, dh = 1e-4):
     return np.stack((xv, yv), axis = 2), xx, yy, z
 
 def createPotentialField(n = 256, res = 4, octaves = 2, lacunarity = 2, persistance = 0.5, seed = 1336):
-    f, noise = createNoiseFunction(n = n, res = res, octaves = octaves, lacunarity = lacunarity, persistance = persistance, seed = seed)
+    f, noise = createNoiseFunction(n = n, res = res, octaves = octaves, lacunarity = lacunarity, persistance = persistance, seed = 1336)
 #     noise = Octave(n, octaves = octaves, lacunarity = lacunarity, persistance = persistance, seed = seed)
 
 #     noise[:,0] = noise[:,1] - noise[:,2] + noise[:,1]
@@ -386,47 +386,56 @@ def createPotentialField(n = 256, res = 4, octaves = 2, lacunarity = 2, persista
 #     # ramped = r
     
 def generateParticles(nd, nb, border = 3):
+    if not isinstance(nd, np.ndarray):
+        nd = np.array([nd,nd])
+    if not isinstance(nb, np.ndarray):
+        nb = np.array([nb,nb])
 #     nd = 16
     nc = 2 * nd
 #     nb = 32
     na = 2 * nb + nc
 #     border = 3
-    xi = np.arange(-border, na + border, dtype = int) + border
-    dx = 2 / (na - 1)
+    xi = np.arange(-border, na[0] + border, dtype = int) + border
+    yi = np.arange(-border, na[1] + border, dtype = int) + border
+    dx = 2 / (na[0] - 1) if na[0] > na[1] else 2 / (na[1] - 1)
+    dy = dx
     px = xi * dx - 1 - border * dx
+    
+    
+    py = yi * dy - 1 - border * dy
     # print(xi)
     # print(x)
-    xx, yy = np.meshgrid(px,px)
-    xxi, yyi = np.meshgrid(xi,xi)
+    xx, yy = np.meshgrid(px,py)
+    xxi, yyi = np.meshgrid(xi,yi)
 
     c = np.ones_like(xx)
 #     print(xx.shape)
 
     c[xxi < border] = -1
-    c[xxi >= na + border] = -1
+    c[xxi >= na[0] + border] = -1
     c[yyi < border] = -1
-    c[yyi >= na + border] = -1
+    c[yyi >= na[1] + border] = -1
 #     print(np.sum(c > 0) - 96**2)
     # print(96**2)
 
-    maskA = xxi >= border + nb
-    maskB = yyi >= border + nb
+    maskA = xxi >= border + nb[0]
+    maskB = yyi >= border + nb[1]
     maskAB = np.logical_and(maskA, maskB)
 
-    maskC = xxi < border + nb + nc
-    maskD = yyi < border + nb + nc
+    maskC = xxi < border + nb[0] + nc[0]
+    maskD = yyi < border + nb[1] + nc[1]
     maskCD = np.logical_and(maskC, maskD)
 
     mask = np.logical_and(maskAB, maskCD)
 #     print(np.sum(mask))
     c[mask] = -1
 
-    maskA = xxi >= 2 * border + nb
-    maskB = yyi >= 2 * border + nb
+    maskA = xxi >= 2 * border + nb[0]
+    maskB = yyi >= 2 * border + nb[1]
     maskAB = np.logical_and(maskA, maskB)
 
-    maskC = xxi < border + nb + nc - border
-    maskD = yyi < border + nb + nc - border
+    maskC = xxi < border + nb[0] + nc[0] - border
+    maskD = yyi < border + nb[1] + nc[1] - border
     maskCD = np.logical_and(maskC, maskD)
 
     mask = np.logical_and(maskAB, maskCD)
@@ -446,6 +455,13 @@ def generateParticles(nd, nb, border = 3):
 
     ptcls = np.vstack((xx[c > 0.5], yy[c>0.5])).transpose()
     bdyPtcls = np.vstack((xx[c < -0.5], yy[c <-0.5])).transpose()
+    
+    center = (np.max(bdyPtcls,axis=0) + np.min(bdyPtcls,axis=0))/2
+#     print(center)
+    ptcls = ptcls - center
+    bdyPtcls = bdyPtcls - center
+    minDomain = np.min(bdyPtcls,axis=0) + (border - .5) * dx
+    
     return ptcls, bdyPtcls, minDomain, minCenter
 
 def genNoisyParticles(nd = 8, nb = 16, border = 3, n = 256, res = 2, octaves = 4, lacunarity = 2, persistance = 0.25, seed = 1336, boundary = 0.25, dh = 1e-3):
@@ -456,8 +472,8 @@ def genNoisyParticles(nd = 8, nb = 16, border = 3, n = 256, res = 2, octaves = 4
 #     boundary = 0.25
 
     c = -minCenter
-    domainBoundary = np.array([[minDomain + boundary,minDomain + boundary],[-minDomain - boundary,minDomain + boundary], [-minDomain - boundary,-minDomain - boundary],[minDomain + boundary,-minDomain - boundary],[minDomain + boundary,minDomain + boundary]])
-    centerBoundary = np.array([[-c,-c],[c,-c],[c,c],[-c,c],[-c,-c]])
+    domainBoundary = np.array([[minDomain[0] + boundary,minDomain[1] + boundary],[-minDomain[0] - boundary,minDomain[1] + boundary], [-minDomain[0] - boundary,-minDomain[1] - boundary],[minDomain[0] + boundary,-minDomain[1] - boundary],[minDomain[0] + boundary,minDomain[1] + boundary]])
+    centerBoundary = np.array([[-c[0],-c[1]],[c[0],-c[1]],[c[0],c[1]],[-c[0],c[1]],[-c[0],-c[1]]])
 
     _, _, polySDF, polySDFGrad = buildSDF(centerBoundary, n = n, dh = dh)
     _, _, domainSDF, domainSDFGrad = buildSDF(domainBoundary, n = n, dh = dh)
@@ -476,22 +492,22 @@ def genNoisyParticles(nd = 8, nb = 16, border = 3, n = 256, res = 2, octaves = 4
     filtered = noise
     
     filtered = filterPotential(torch.tensor(filtered).flatten(), torch.tensor(s).flatten(), d0 = boundary ).numpy().reshape(noise.shape)
-    if nd > 0:
-        filtered = filterPotential(torch.tensor(filtered).flatten(), torch.tensor(polySDF).flatten(), d0 = boundary).numpy().reshape(noise.shape)
+    if np.any(nd > 0):
+        filtered = filterPotential(torch.tensor(filtered).flatten(), (polySDF).flatten(), d0 = boundary).numpy().reshape(noise.shape)
         filtered[polySDF.reshape(noise.shape) < 0] = 0
 
     x = np.linspace(-1,1,n)
     y = np.linspace(-1,1,n)
     f = interpolate.RegularGridInterpolator((x, y), filtered, bounds_error = False, fill_value = None, method = 'linear')
 
-    velocityField, xx, yy, potential = createVelocityField(f, n = n, dh = 2 / (nd + nb) / 2)  
+    velocityField, xx, yy, potential = createVelocityField(f, n = n, dh = 2 / (np.max(nd) + np.max(nb)) / 2)  
 #     print(filtered)
     
     f = interpolate.RegularGridInterpolator((x, y), velocityField, bounds_error = False, fill_value = None, method = 'linear')
     vel = f((ptcls[:,0], ptcls[:,1]))
     
     
-    domainBoundaryActual = np.array([[minDomain,minDomain],[-minDomain,minDomain], [-minDomain,-minDomain],[minDomain,-minDomain],[minDomain,minDomain]])
+    domainBoundaryActual = np.array([[minDomain[0],minDomain[1]],[-minDomain[0],minDomain[1]], [-minDomain[0],-minDomain[1]],[minDomain[0],-minDomain[1]],[minDomain[0],minDomain[1]]])
     sdf, sdfDer, _, _, _, _ = sdPolyDer(torch.tensor(domainBoundaryActual[:-1]), torch.tensor(bdyPtcls), dh = 1e-2)
     domainPtcls = bdyPtcls[-sdf < 0]
     domainGhostPtcls = domainPtcls - 2 * (sdfDer[-sdf < 0] * (sdf[-sdf < 0,None])).numpy()
@@ -665,25 +681,44 @@ def noisifyParticles(noiseSampler, allPtcls, area, support):
     div = scatter(gterm, i, dim=0, dim_size=allPtcls.size(0), reduce="add")
     
     return velocities, rho, potential, div
-    
-    
 
 
-def filterNoise(filtered, minDomain, minCenter, boundary, nd, n, dh = 1e-2):
+
+# def filterNoise(filtered, minDomain, minCenter, boundary, nd, n, dh = 1e-2):
+#     c = -minCenter
+#     domainBoundary = np.array([[minDomain + boundary,minDomain + boundary],[-minDomain - boundary,minDomain + boundary], [-minDomain - boundary,-minDomain - boundary],[minDomain + boundary,-minDomain - boundary],[minDomain + boundary,minDomain + boundary]])
+#     centerBoundary = np.array([[-c,-c],[c,-c],[c,c],[-c,c],[-c,-c]])
+
+#     _, _, polySDF, polySDFGrad = buildSDF(centerBoundary, n = n, dh = dh)
+#     _, _, domainSDF, domainSDFGrad = buildSDF(domainBoundary, n = n, dh = dh)
+#     s = (- domainSDF + boundary).numpy()
+#     s = s.reshape(polySDF.shape)
+    
+#     # xx, yy, noise = createPotentialField(n = n, res = res, octaves = octaves, lacunarity = lacunarity, persistance = persistance, seed = seed)
+#     # filtered = noise
+    
+#     filtered = filterPotential(torch.tensor(filtered).flatten(), torch.tensor(s).flatten(), d0 = boundary ).numpy().reshape(filtered.shape)
+#     if nd > 0:
+#         filtered = filterPotential(torch.tensor(filtered).flatten(), torch.tensor(polySDF).flatten(), d0 = boundary).numpy().reshape(filtered.shape)
+#         filtered[polySDF.reshape(filtered.shape) < 0] = 0
+#     return filtered 
+
+def filterNoise(filtered, minDomain, minCenter, boundary, nd, n , dh):
     c = -minCenter
-    domainBoundary = np.array([[minDomain + boundary,minDomain + boundary],[-minDomain - boundary,minDomain + boundary], [-minDomain - boundary,-minDomain - boundary],[minDomain + boundary,-minDomain - boundary],[minDomain + boundary,minDomain + boundary]])
-    centerBoundary = np.array([[-c,-c],[c,-c],[c,c],[-c,c],[-c,-c]])
+    domainBoundary = np.array([[minDomain[0] + boundary,minDomain[1] + boundary],[-minDomain[0] - boundary,minDomain[1] + boundary], [-minDomain[0] - boundary,-minDomain[1] - boundary],[minDomain[0] + boundary,-minDomain[1] - boundary],[minDomain[0] + boundary,minDomain[1] + boundary]])
+    centerBoundary = np.array([[-c[0],-c[1]],[c[0],-c[1]],[c[0],c[1]],[-c[0],c[1]],[-c[0],-c[1]]])
 
     _, _, polySDF, polySDFGrad = buildSDF(centerBoundary, n = n, dh = dh)
     _, _, domainSDF, domainSDFGrad = buildSDF(domainBoundary, n = n, dh = dh)
     s = (- domainSDF + boundary).numpy()
     s = s.reshape(polySDF.shape)
+#     s = s.transpose()
     
     # xx, yy, noise = createPotentialField(n = n, res = res, octaves = octaves, lacunarity = lacunarity, persistance = persistance, seed = seed)
     # filtered = noise
     
-    filtered = filterPotential(torch.tensor(filtered).flatten(), torch.tensor(s).flatten(), d0 = boundary ).numpy().reshape(filtered.shape)
-    if nd > 0:
-        filtered = filterPotential(torch.tensor(filtered).flatten(), torch.tensor(polySDF).flatten(), d0 = boundary).numpy().reshape(filtered.shape)
+    filtered = filterPotential((filtered).flatten(), torch.tensor(s).flatten(), d0 = boundary ).numpy().reshape(filtered.shape)
+    if np.any(nd > 0):
+        filtered = filterPotential((filtered).flatten(), (polySDF).flatten(), d0 = boundary).numpy().reshape(filtered.shape)
         filtered[polySDF.reshape(filtered.shape) < 0] = 0
-    return filtered 
+    return filtered
