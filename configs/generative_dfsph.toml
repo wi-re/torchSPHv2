@@ -19,7 +19,7 @@ backgroundPressure = false
 relaxedJacobiOmega = 0.5
 
 [compute]
-device='cpu'
+device='cuda'
 
 [particle]
 radius = 0.025
@@ -54,13 +54,13 @@ delta = 0.1
 kinematic = 0.01
 
 [integration]
-scheme = 'RK4'
+scheme = 'semiImplicitEuler'
 dt = 0.001
 
 [export]
-active = false
+active = true
 prefix = 'generative'
-staticBoundary = false
+staticBoundary = true
 interval = 1
 
 [generative]

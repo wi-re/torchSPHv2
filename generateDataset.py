@@ -107,7 +107,7 @@ def loadConfig(config, seed):
         return parsedConfig, dfsphSimulation
 
 # config = 'configs/collision_dfsph.toml'
-config = 'configs/generative.toml'
+config = 'configs/generative_dfsph.toml'
 
 # for i in tqdm(range(n)):
 #     for j in tqdm(range(n)):
