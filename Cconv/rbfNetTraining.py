@@ -114,6 +114,11 @@ parser.add_argument('-a','--activation', type=str, default='relu')
 parser.add_argument('--arch', type=str, default='32 64 64 3')
 parser.add_argument('--limitData', type=int, default=-1)
 parser.add_argument('--iterations', type=int, default=1000)
+parser.add_argument('-u', '--maxUnroll', type=int, default=2)
+parser.add_argument('--minUnroll', type=int, default=2)
+parser.add_argument('-augj', '--augmentJitter', type=bool, default=False)
+parser.add_argument('-j', '--jitterAmount', type=float, default=0.01)
+parser.add_argument('-augr', '--augmentAngle', type=bool, default=False)
 
 args = parser.parse_args()
 
@@ -197,7 +202,7 @@ validation = []
 testing = []
 
 for s in trainingFiles:
-    f, s, u = splitFile(s, split = False, cutoff = -4, skip = 0)
+    f, s, u = splitFile(s, split = False, cutoff = -args.frameDistance * args.maxUnroll, skip = 0)
     training.append((f, (s,u)))
 # for s in tqdm(validationFiles):
 #     f, s, u = splitFile(s, split = False, cutoff = -4, skip = 0)
@@ -322,7 +327,7 @@ with portalocker.Lock('README.md', flags = 0x2, timeout = None):
 # print(torch.cuda.current_device())
 
 
-def processDataLoaderIter(iterations, e, rollout, ds, dataLoader, dataIter, model, optimizer, train = True, prefix = ''):
+def processDataLoaderIter(iterations, e, rollout, ds, dataLoader, dataIter, model, optimizer, train = True, prefix = '', augmentAngle = False, augmentJitter = False, jitterAmount = 0.01):
     with record_function("prcess data loader"): 
         pbl = gtqdms[args.gpu + args.gpus]
         losses = []
@@ -346,7 +351,7 @@ def processDataLoaderIter(iterations, e, rollout, ds, dataLoader, dataIter, mode
             with record_function("prcess data loader[batch]"): 
                 if train:
                     optimizer.zero_grad()
-                batchLosses, meanLosses, minLosses, maxLosses, stdLosses = processBatch(model, device, True, e, rollout, ds, bdata, frameDistance)
+                batchLosses, meanLosses, minLosses, maxLosses, stdLosses = processBatch(model, device, True, e, rollout, ds, bdata, frameDistance, augmentAngle, augmentJitter, jitterAmount)
                 # print(torch.max(model.ni))
                 
                 batchIndices.append(np.array(bdata))
@@ -357,11 +362,11 @@ def processDataLoaderIter(iterations, e, rollout, ds, dataLoader, dataIter, mode
                     if train:
                         sumLosses.backward()
                         optimizer.step()
-                lossString = np.array2string(torch.mean(batchLosses[:,:,0],dim=0).detach().cpu().numpy(), formatter={'float_kind':lambda x: "%.4e" % x})
+                lossString = np.array2string(torch.mean(batchLosses[:,:,0],dim=0).detach().cpu().numpy(), formatter={'float_kind':lambda x: "%.2e" % x})
                 batchString = str(np.array2string(np.array(bdata), formatter={'float_kind':lambda x: "%.2f" % x, 'int':lambda x:'%04d' % x}))
 
                 with portalocker.Lock('README.md', flags = 0x2, timeout = None):
-                    pbl.set_description('%24s[gpu %d]: %3d [%1d] @ %1.5e: :  %s -> %.4e' %(prefix, 0, e, rollout, lr, batchString, sumLosses.detach().cpu().numpy()))
+                    pbl.set_description('%8s[gpu %d]: %3d [%1d] @ %1.1e: :  %s -> %.2e' %(prefix, 0, e, rollout, lr, lossString, sumLosses.detach().cpu().numpy()))
                     pbl.update()
                     if prefix == 'training':
                         pb.set_description('[gpu %d] Learning: %1.4e Validation: %1.4e' %(0, np.mean(np.mean(np.vstack(losses)[:,:,0], axis = 1)), 0))
@@ -381,50 +386,6 @@ def processDataLoaderIter(iterations, e, rollout, ds, dataLoader, dataIter, mode
         epochLoss = losses
         return epochLoss
 
-def processDataLoader(e, rollout, ds, dataLoader, model, optimizer, train = True, prefix = ''):
-    pbl = gtqdms[args.gpu + args.gpus]
-    losses = []
-    batchIndices = []
-    
-    if train:
-        model.train(True)
-    else:
-        model.train(False)
-
-    with portalocker.Lock('README.md', flags = 0x2, timeout = None):
-        pbl.reset(total=len(dataLoader))
-    
-    for bdata in dataLoader:
-        if train:
-            optimizer.zero_grad()
-        batchLosses, meanLosses, minLosses, maxLosses, stdLosses = processBatch(model, device, args.li, attributes, e, rollout, ds, bdata, frameDistance)
-        batchIndices.append(np.array(bdata))
-        losses.append(batchLosses.detach().cpu().numpy())
-        
-        sumLosses = torch.mean(batchLosses[:,:,0]) #+ torch.mean(batchLosses[:,:,1])
-        sumLosses.backward()
-        if train:
-            optimizer.step()
-        lossString = np.array2string(torch.mean(batchLosses[:,:,0],dim=0).detach().cpu().numpy(), formatter={'float_kind':lambda x: "%.4e" % x})
-        batchString = str(np.array2string(np.array(bdata), formatter={'float_kind':lambda x: "%.2f" % x, 'int':lambda x:'%04d' % x}))
-        
-        with portalocker.Lock('README.md', flags = 0x2, timeout = None):
-            pbl.set_description('%24s[gpu %d]: %3d [%1d] @ %1.5e: :  %s -> %.4e' %(prefix, args.gpu, e, rollout, lr, lossString, sumLosses.detach().cpu().numpy()))
-            pbl.update()
-            if prefix == 'training':
-                pb.set_description('[gpu %d] Learning: %1.4e Validation: %1.4e' %(args.gpu, np.mean(np.mean(np.vstack(losses)[:,:,0], axis = 1)), validationLoss))
-            if prefix == 'validation':
-                pb.set_description('[gpu %d] Learning: %1.4e Validation: %1.4e' %(args.gpu, trainLoss, np.mean(np.mean(np.vstack(losses)[:,:,0], axis = 1))))
-            pb.update()
-    bIndices  = np.hstack(batchIndices)
-    losses = np.vstack(losses)
-
-    idx = np.argsort(bIndices)
-    bIndices = bIndices[idx]
-    losses = losses[idx]
-
-    epochLoss = losses
-    return epochLoss
 
 training = {}
 # training_fwd = {}
@@ -452,11 +413,15 @@ unroll = 2
 for epoch in range(epochs):
     pb.reset(total=len(train_dataloader))
     losses = []
-    trainingEpochLoss = processDataLoaderIter(args.iterations, epoch, unroll, train_ds, train_dataloader, train_iter, model, optimizer, True, prefix = 'training')
+
+    unroll = max(args.minUnroll, min(epoch // 2 + 1, args.maxUnroll))
+    # trainingEpochLoss = processDataLoaderIter(args.iterations, epoch, epoch // 2 + 1, train_ds, train_dataloader, train_iter, model, optimizer, True, prefix = 'training', augmentAngle=args.argumentAngle, augmentJitter=args.augmentJitter, jitterAmount=args.jitterAmount)
+    trainingEpochLoss = processDataLoaderIter(args.iterations, epoch, args.maxUnroll, train_ds, train_dataloader, train_iter, model, optimizer, True, prefix = 'training', augmentAngle=args.augmentAngle, augmentJitter=args.augmentJitter, jitterAmount=args.jitterAmount)
+
 #     trainingEpochLoss = processDataLoader(epoch,unroll, train_ds, train_dataloader, model, optimizer, True, prefix = 'training')
     trainingEpochLosses.append(trainingEpochLoss)
     # torch.save(model.state_dict(), './trainingData/%s/model_%03d.torch' % (exportString, epoch))
-    if (epoch + 1) % 2 == 0:
+    if epoch % 5 == 0 and epoch > 0:
         lr = lr * 0.5
         for param_group in optimizer.param_groups:
             param_group['lr'] = 0.5 * param_group['lr']

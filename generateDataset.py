@@ -47,7 +47,7 @@ from torch.profiler import profile, record_function, ProfilerActivity
 velocities = []
 
 # r = 2
-n = 4
+n = 6
 
 # for i in range(n):
 # #     for j in range(8):
@@ -107,7 +107,7 @@ def loadConfig(config, seed):
         return parsedConfig, dfsphSimulation
 
 # config = 'configs/collision_dfsph.toml'
-config = 'configs/generative_dfsph.toml'
+config = 'configs/generative.toml'
 
 # for i in tqdm(range(n)):
 #     for j in tqdm(range(n)):

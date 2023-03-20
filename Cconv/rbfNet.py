@@ -287,10 +287,10 @@ def constructFluidFeatures(attributes, inputData):
     
     return inputData['fluidPosition'].type(torch.float32), inputData['boundaryPosition'].type(torch.float32), fluidFeatures, boundaryFeatures
 
-def processBatch(model, device, li, e, unroll, train_ds, bdata, frameDistance):
+def processBatch(model, device, li, e, unroll, train_ds, bdata, frameDistance, augmentAngle = False, augmentJitter = False, jitterAmount = 0.01):
     with record_function("process batch"): 
         fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, fluidGravity, fluidBatches, boundaryBatches, groundTruths, attributes = \
-            loadBatch(train_ds, bdata, constructFluidFeatures, unroll, frameDistance)    
+            loadBatch(train_ds, bdata, constructFluidFeatures, unroll, frameDistance, augmentAngle = augmentAngle, augmentJitter = augmentJitter, jitterAmount = jitterAmount)    
 
 
         predictedPositions = fluidPositions.to(device)

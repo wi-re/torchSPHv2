@@ -19,7 +19,7 @@ backgroundPressure = false
 relaxedJacobiOmega = 0.5
 
 [compute]
-device='cpu'
+device='cuda'
 
 [particle]
 radius = 0.025
@@ -47,20 +47,20 @@ gamma = 7.0
 [diffusion]
 velocityScheme = 'deltaSPH'
 densityScheme = 'MOG'
-boundaryDiffusion = 0.01
-fluidDiffusion = 0.01
+boundaryDiffusion = 0.001
+fluidDiffusion = 0.001
 alpha = 0.01
 delta = 0.1
-kinematic = 0.00
+kinematic = 0.001
 
 [integration]
 scheme = 'RK4'
 dt = 0.001
 
 [export]
-active = false
+active = true
 prefix = 'generative'
-staticBoundary = false
+staticBoundary = true
 interval = 1
 
 [generative]
@@ -73,4 +73,4 @@ octaves = 4
 lacunarity = 2
 persistance = 0.25
 seed = 1337
-boundaryWidth = 0.5
+boundaryWidth = 0.25
