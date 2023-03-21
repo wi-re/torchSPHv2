@@ -410,8 +410,8 @@ unroll = 2
     # print('Start of training')
 
 
+pb.reset(total=len(train_dataloader))
 for epoch in range(epochs):
-    pb.reset(total=len(train_dataloader))
     losses = []
 
     unroll = max(args.minUnroll, min(epoch // 2 + 1, args.maxUnroll))
@@ -477,7 +477,7 @@ dataSetDict = {'training' : trainDict}
 if args.verbose:
     print('Preparing training and validation loss dicts')
 dataDict = {}
-for e in range(len(validationLosses)):
+for e in range(len(trainingEpochLosses)):
     # if args.forwardLoss:
         # dataDict['%03d' % (e+1)] = {"validation": validationLosses[e], "training": trainingEpochLosses[e], "forward": trainingEpochLosses2[e]}
     # else:
