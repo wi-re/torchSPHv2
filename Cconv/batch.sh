@@ -1,64 +1,16 @@
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'rbf square'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'rbf linear'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'rbf bump'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'rbf spiky'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'rbf cubic_spline'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'rbf gaussian'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'fourier'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf square' -y 'chebyshev'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'rbf square'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'rbf linear'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'rbf bump'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'rbf spiky'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'rbf cubic_spline'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'rbf gaussian'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'fourier'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf linear' -y 'chebyshev'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'rbf square'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'rbf linear'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'rbf bump'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'rbf spiky'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'rbf cubic_spline'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'rbf gaussian'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'fourier'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf bump' -y 'chebyshev'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'rbf square'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'rbf linear'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'rbf bump'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'rbf spiky'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'rbf cubic_spline'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'rbf gaussian'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'fourier'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf spiky' -y 'chebyshev'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'rbf square'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'rbf linear'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'rbf bump'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'rbf spiky'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'rbf cubic_spline'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'rbf gaussian'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'fourier'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf cubic_spline' -y 'chebyshev'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'rbf square'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'rbf linear'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'rbf bump'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'rbf spiky'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'rbf cubic_spline'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'rbf gaussian'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'fourier'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'rbf gaussian' -y 'chebyshev'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'rbf square'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'rbf linear'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'rbf bump'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'rbf spiky'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'rbf cubic_spline'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'rbf gaussian'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'fourier'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'fourier' -y 'chebyshev'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'rbf square'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'rbf linear'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'rbf bump'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'rbf spiky'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'rbf cubic_spline'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'rbf gaussian'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'fourier'
-clear && python densityNetTraining.py --epochs=25 -n 9 -m 9 -w 'none' -x 'chebyshev' -y 'chebyshev'
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 1
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 11
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 111
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 1111
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 11111
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 111111
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 1111111
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 11111111
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 2
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 22
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 222
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 2222
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 22222
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 222222
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 2222222
+clear && python ./rbfNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'linear' -y 'linear' -cmap preserving --epochs 25 -u 10 --seed 22222222

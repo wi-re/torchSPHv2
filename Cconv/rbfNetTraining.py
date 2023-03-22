@@ -88,12 +88,12 @@ from tqdm.notebook import trange, tqdm
 # from tqdm.notebook import trange, tqdm
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-e','--epochs', type=int, default=10)
+parser.add_argument('-e','--epochs', type=int, default=25)
 parser.add_argument('-cmap','--coordinateMapping', type=str, default='preserving')
 parser.add_argument('-w','--windowFunction', type=str, default='poly6')
 parser.add_argument('-c','--cutoff', type=int, default=1800)
 parser.add_argument('-b','--batch_size', type=int, default=2)
-parser.add_argument('--cutlassBatchSize', type=int, default=32)
+parser.add_argument('--cutlassBatchSize', type=int, default=128)
 parser.add_argument('-r','--lr', type=float, default=0.01)
 parser.add_argument('--lr_decay_factor', type=float, default=0.9)
 parser.add_argument('--lr_decay_step_size', type=int, default=1)
@@ -114,11 +114,11 @@ parser.add_argument('-a','--activation', type=str, default='relu')
 parser.add_argument('--arch', type=str, default='32 64 64 3')
 parser.add_argument('--limitData', type=int, default=-1)
 parser.add_argument('--iterations', type=int, default=1000)
-parser.add_argument('-u', '--maxUnroll', type=int, default=2)
+parser.add_argument('-u', '--maxUnroll', type=int, default=10)
 parser.add_argument('--minUnroll', type=int, default=2)
-parser.add_argument('-augj', '--augmentJitter', type=bool, default=False)
+parser.add_argument('-augj', '--augmentJitter', type=bool, default=True)
 parser.add_argument('-j', '--jitterAmount', type=float, default=0.01)
-parser.add_argument('-augr', '--augmentAngle', type=bool, default=False)
+parser.add_argument('-augr', '--augmentAngle', type=bool, default=True)
 
 args = parser.parse_args()
 
@@ -261,6 +261,11 @@ layers = [int(s) for s in widths]
 # debugPrint(layers)
 if args.verbose:
     print('Building Network')
+
+random.seed(args.seed)
+torch.manual_seed(args.seed)
+torch.cuda.manual_seed(args.seed)
+np.random.seed(args.seed)
 model = RbfNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
 
 
@@ -295,6 +300,12 @@ hyperParameterDict['parameters'] =  count_parameters(model)
 hyperParameterDict['cutoff'] =  args.cutoff
 hyperParameterDict['dataLimit'] =  args.limitData 
 hyperParameterDict['arch'] =  args.arch
+hyperParameterDict['seed'] =  args.seed
+hyperParameterDict['minUnroll'] =  args.minUnroll
+hyperParameterDict['maxUnroll'] =  args.maxUnroll
+hyperParameterDict['augmentAngle'] =  args.augmentAngle
+hyperParameterDict['augmentJitter'] =  args.augmentJitter
+hyperParameterDict['jitterAmount'] =  args.jitterAmount
 lr = initialLR
 
 
@@ -366,12 +377,12 @@ def processDataLoaderIter(iterations, e, rollout, ds, dataLoader, dataIter, mode
                 batchString = str(np.array2string(np.array(bdata), formatter={'float_kind':lambda x: "%.2f" % x, 'int':lambda x:'%04d' % x}))
 
                 with portalocker.Lock('README.md', flags = 0x2, timeout = None):
-                    pbl.set_description('%8s[gpu %d]: %3d [%1d] @ %1.1e: :  %s -> %.2e' %(prefix, 0, e, rollout, lr, lossString, sumLosses.detach().cpu().numpy()))
+                    pbl.set_description('%8s[gpu %d]: %3d [%1d] @ %1.1e: :  %s -> %.2e' %(prefix, args.gpu, e, rollout, lr, batchString, sumLosses.detach().cpu().numpy()))
                     pbl.update()
                     if prefix == 'training':
-                        pb.set_description('[gpu %d] Learning: %1.4e Validation: %1.4e' %(0, np.mean(np.mean(np.vstack(losses)[:,:,0], axis = 1)), 0))
+                        pb.set_description('[gpu %d] Learning: %1.4e Validation: %1.4e' %(args.gpu, np.mean(np.mean(np.vstack(losses)[:,:,0], axis = 1)), 0))
                     if prefix == 'validation':
-                        pb.set_description('[gpu %d] Learning: %1.4e Validation: %1.4e' %(0, trainLoss, np.mean(np.mean(np.vstack(losses)[:,:,0], axis = 1))))
+                        pb.set_description('[gpu %d] Learning: %1.4e Validation: %1.4e' %(args.gpu, trainLoss, np.mean(np.mean(np.vstack(losses)[:,:,0], axis = 1))))
                     pb.update()
 #                 i = i + 1
 #                 if i > 100:
@@ -406,17 +417,21 @@ validationLosses = []
 
 unroll = 2
 
+random.seed(args.seed)
+torch.manual_seed(args.seed)
+torch.cuda.manual_seed(args.seed)
+np.random.seed(args.seed)
 # if args.verbose:
     # print('Start of training')
 
 
-pb.reset(total=len(train_dataloader))
+# pb.reset(total=len(train_dataloader))
 for epoch in range(epochs):
     losses = []
 
     unroll = max(args.minUnroll, min(epoch // 2 + 1, args.maxUnroll))
     # trainingEpochLoss = processDataLoaderIter(args.iterations, epoch, epoch // 2 + 1, train_ds, train_dataloader, train_iter, model, optimizer, True, prefix = 'training', augmentAngle=args.argumentAngle, augmentJitter=args.augmentJitter, jitterAmount=args.jitterAmount)
-    trainingEpochLoss = processDataLoaderIter(args.iterations, epoch, args.maxUnroll, train_ds, train_dataloader, train_iter, model, optimizer, True, prefix = 'training', augmentAngle=args.augmentAngle, augmentJitter=args.augmentJitter, jitterAmount=args.jitterAmount)
+    trainingEpochLoss = processDataLoaderIter(args.iterations, epoch, unroll, train_ds, train_dataloader, train_iter, model, optimizer, True, prefix = 'training', augmentAngle=args.augmentAngle, augmentJitter=args.augmentJitter, jitterAmount=args.jitterAmount)
 
 #     trainingEpochLoss = processDataLoader(epoch,unroll, train_ds, train_dataloader, model, optimizer, True, prefix = 'training')
     trainingEpochLosses.append(trainingEpochLoss)
