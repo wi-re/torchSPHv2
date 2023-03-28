@@ -16,7 +16,7 @@ from torch_geometric.nn import SplineConv, fps, global_mean_pool, radius_graph, 
 from torch_scatter import scatter
 from torch.profiler import profile, record_function, ProfilerActivity
 
-
+# Wendland 2 Kernel function and its derivative
 @torch.jit.script
 def wendland(q, h):
     C = 7 / np.pi
@@ -27,11 +27,11 @@ def wendland(q, h):
 def wendlandGrad(q,r,h):
     C = 7 / np.pi    
     return - r * C / h**3 * (20. * q * (1. -q)**3)[:,None]
-    
+# Spiky kernel function used mainly in DFSPH to avoid particle clustering
 @torch.jit.script
 def spikyGrad(q,r,h):
     return -r * 30 / np.pi / h**3 * ((1 - q)**2)[:,None]
-
+# Cohesion kernel is used for the akinci surface tension module
 @torch.jit.script
 def cohesionKernel(q, h):
     res = q.new_zeros(q.shape)
@@ -43,7 +43,7 @@ def cohesionKernel(q, h):
     res[q > 0.5] = k2[q>0.5]
     
     return -res
-
+# Convenient alias functions for easier usage
 @torch.jit.script
 def kernel(q, h):
     return wendland(q,h)
@@ -51,10 +51,9 @@ def kernel(q, h):
 def kernelGradient(q,r,h):
     return wendlandGrad(q,r,h)
 
-
+# This function was inteded to be used to swap to different kernel functions
+# However, pytorch SPH makes this overly cumbersome so this is not implemented
+# TODO: Someday this should be possible in torch script.
 def getKernelFunctions(kernel):
-    if kernel == 'wendland2':
-        return wendland, wendlandGrad
-
     if kernel == 'wendland2':
         return wendland, wendlandGrad

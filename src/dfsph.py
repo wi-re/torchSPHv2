@@ -64,7 +64,9 @@ from src.modules.adaptiveDT import adaptiveTimeSteppingModule
 from src.modules.laminar import laminarViscosityModule
 from src.modules.diffusion import diffusionModule
 
+# Weakly compressible SPH simulation based on divergence free SPH
 class dfsphSimulation(SPHSimulation):    
+    # Initialization function that loads all necessary modules
     def __init__(self, config = tomli.loads('')):
         super().__init__(config)
         
@@ -72,37 +74,39 @@ class dfsphSimulation(SPHSimulation):
         self.moduleParameters = []
         
         if self.verbose: print('Processing modules')
+        # Default module imports that are always needed
         self.neighborSearch = neighborSearchModule()
         self.sphDensity = densityModule()
         self.periodicBC = periodicBCModule()
         self.DFSPH = dfsphModule()
         self.XSPH = xsphModule()
         self.velocityBC = velocityBCModule()
-#         self.shiftModule = implicitIterativeShiftModule()
         self.gravityModule = gravityModule()
         self.adaptiveDT = adaptiveTimeSteppingModule()
         self.surfaceTension = akinciTensionModule()
-        
+        # Add modules to the module list        
         self.modules.append(self.neighborSearch)
         self.modules.append(self.sphDensity)
         self.modules.append(self.periodicBC)
         self.modules.append(self.velocityBC)
         self.modules.append(self.DFSPH)
-        if self.config['diffusion']['velocityScheme'] == 'xsph':
-            self.velocityDiffusionModule = xsphModule()
-            self.modules.append(self.velocityDiffusionModule)
-            
-        if self.config['diffusion']['velocityScheme'] == 'deltaSPH':
-            self.velocityDiffusionModule = diffusionModule()
-            self.modules.append(self.velocityDiffusionModule)
-        self.laminarViscosityModule = laminarViscosityModule()
-        self.modules.append(self.laminarViscosityModule)
-
-
-#         self.modules.append(self.shiftModule)
         self.modules.append(self.gravityModule)
         self.modules.append(self.adaptiveDT)
         self.modules.append(self.surfaceTension)    
+
+        # Conditional modules for artificial viscosity diffusion
+        if self.config['diffusion']['velocityScheme'] == 'xsph':
+            self.velocityDiffusionModule = xsphModule()
+            self.modules.append(self.velocityDiffusionModule)            
+        if self.config['diffusion']['velocityScheme'] == 'deltaSPH':
+            self.velocityDiffusionModule = diffusionModule()
+            self.modules.append(self.velocityDiffusionModule)
+
+        # Laminar viscosity module for actual viscosity
+        self.laminarViscosityModule = laminarViscosityModule()
+        self.modules.append(self.laminarViscosityModule)
+
+        # Add boundary handling modules
         if self.config['simulation']['boundaryScheme'] == 'solid': 
             self.boundaryModule = solidBoundaryModule() 
             self.modules.append(self.boundaryModule)  
@@ -113,6 +117,7 @@ class dfsphSimulation(SPHSimulation):
             self.boundaryModule = akinciBoundaryModule() 
             self.modules.append(self.boundaryModule)  
         
+        # Process parameters for all modules in sequence
         if self.verbose: print('Processing module parameters')
         for module in self.modules:    
             moduleParams =  module.getParameters()
@@ -125,6 +130,7 @@ class dfsphSimulation(SPHSimulation):
         super().initializeSimulation()
         
         
+    # Evaluate updates for a single timestep, returns dudt, dxdt and drhodt
     def timestep(self):
         step = ' 1 - Enforcing periodic boundary conditions'
         if self.verbose: print(step)
@@ -147,15 +153,12 @@ class dfsphSimulation(SPHSimulation):
         with record_function(step):
             self.sphDensity.evaluate(self.simulationState, self)    
             self.sync(self.simulationState['fluidDensity'])
-            # self.periodicBC.syncQuantity(self.simulationState['fluidDensity'], self.simulationState, self)
         
         step = ' 5 - Fluid - Boundary density evaluation'
         if self.verbose: print(step)
         with record_function(step):
             self.boundaryModule.evalBoundaryDensity(self.simulationState, self) 
-            self.sync(self.simulationState['fluidDensity'])       
-            # self.periodicBC.syncQuantity(self.simulationState['fluidDensity'], self.simulationState, self)
-            
+            self.sync(self.simulationState['fluidDensity'])                   
             
         step = ' 6 - Initializing acceleration'
         if self.verbose: print(step)
@@ -167,43 +170,19 @@ class dfsphSimulation(SPHSimulation):
         with record_function(step):
             self.gravityModule.evaluate(self.simulationState, self)
             self.sync(self.simulationState['fluidAcceleration'])
-            # self.periodicBC.syncQuantity(self.simulationState['fluidAcceleration'], self.simulationState, self)
         
         step = ' 8 - Divergence free solver step'
         if self.verbose: print(step)
         with record_function(step):
             if self.config['dfsph']['divergenceSolver']:
                 self.simulationState['divergenceIterations'] = self.DFSPH.divergenceSolver(self.simulationState, self)
-                # self.sync(self.simulationState['fluidPredAccel'])
-                # self.periodicBC.syncQuantity(self.simulationState['fluidPredAccel'], self.simulationState, self)
                 self.simulationState['fluidAcceleration'] += self.simulationState['fluidPredAccel']
 
-        # step = ' 9 - Surface tension force evaluation'
-        # if self.verbose: print(step)
-        # with record_function(step):
-        #     self.surfaceTension.computeNormals(self.simulationState, self)
-        #     self.sync(self.surfaceTension.normals)
-        #     # self.periodicBC.syncQuantity(self.simulationState['fluidNormals'], self.simulationState, self)
-        #     self.surfaceTension.cohesionForce(self.simulationState, self)
-        #     self.surfaceTension.curvatureForce(self.simulationState, self)
-        #     self.sync(self.simulationState['fluidAcceleration'])
-        #     # self.periodicBC.syncQuantity(self.simulationState['fluidAcceleration'], self.simulationState, self)
-            
         step = '10 - Incompressible solver step'
         if self.verbose: print(step)
         with record_function(step):
             self.simulationState['densityIterations'] = self.DFSPH.incompressibleSolver(self.simulationState, self)
-            # self.sync(self.simulationState['fluidPredAccel'])
-            # self.periodicBC.syncQuantity(self.simulationState['fluidPredAccel'], self.simulationState, self)
             self.simulationState['fluidAcceleration'] += self.simulationState['fluidPredAccel']
-            # self.sync(self.simulationState['fluidAcceleration'])
-            # self.periodicBC.syncQuantity(self.simulationState['fluidAcceleration'], self.simulationState, self)
-        
-        # step = '11 - Velocity update step'
-        # if self.verbose: print(step)
-        # with record_function(step):
-            # self.simulationState['fluidVelocity'] += self.simulationState['dt'] * self.simulationState['fluidAcceleration']
-            # self.periodicBC.syncQuantity(self.simulationState['fluidVelocity'], self.simulationState, self)
            
         step = '11 - velocity diffusion'
         if self.verbose: print(step)
@@ -214,44 +193,10 @@ class dfsphSimulation(SPHSimulation):
         with record_function(step):       
             self.laminarViscosityModule.computeLaminarViscosity(self.simulationState, self)   
 
-        # step = '12 - XSPH diffusion evaluation'
-        # if self.verbose: print(step)
-        # with record_function(step):
-        #     xsphFluidCorrection = self.XSPH.fluidTerm(self.simulationState, self)
-        #     self.periodicBC.syncQuantity(xsphFluidCorrection, self.simulationState, self)
-        #     self.simulationState['fluidVelocity'] += xsphFluidCorrection
-        
-#         step = ' 1 - Boundary friction evaluation'
-#         if self.verbose: print(step)
-#         with record_function(step):
-#         self.boundaryModule.evalBoundaryFriction(self.simulationState, self)
-#         xsphBoundaryCorrection = self.XSPH.boundaryTerm(self.simulationState, self)
-#         self.periodicBC.syncQuantity(xsphBoundaryCorrection, self.simulationState, self)
-#         self.simulationState['fluidVelocity'] += xsphBoundaryCorrection
-        
         step = '13 - Velocity source contribution'
         if self.verbose: print(step)
         with record_function(step):
             self.velocityBC.enforce(self.simulationState, self)
             self.sync(self.simulationState['fluidVelocity'])
         
-        # step = '14 - Position update step'
-        # if self.verbose: print(step)
-        # with record_function(step):
-            # self.simulationState['fluidPosition'] += self.simulationState['fluidVelocity'] * self.simulationState['dt']
-            
-#         step = ' 1 - Shifting positions'
-#         if self.verbose: print(step)
-#         with record_function(step):
-#         self.shiftModule.applyShifting(sphSimulation.simulationState, sphSimulation)
-#         self.periodicBC.syncQuantity(self.simulationState['fluidUpdate'], self.simulationState, self)
-#         self.simulationState['fluidPosition'] += self.simulationState['fluidUpdate']
         return self.simulationState['fluidAcceleration'], self.simulationState['fluidVelocity'], self.simulationState['dpdt'] if self.config['simulation']['densityScheme'] == 'continuum' else None
-
-        step = '15 - Bookkeeping'
-        if self.verbose: print(step)
-        with record_function(step):
-            self.simulationState['time'] += self.simulationState['dt']
-            self.simulationState['timestep'] += 1
-
-            self.simulationState['dt'] = self.adaptiveDT.updateTimestep(self.simulationState, self)

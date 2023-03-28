@@ -70,7 +70,9 @@ from src.modules.momentum import momentumModule
 from src.modules.pressure import pressureModule
 from src.modules.laminar import laminarViscosityModule
 
+# Weakly compressible SPH simulation based on deltaSPH
 class deltaSPHSimulation(SPHSimulation):    
+    # Initialization function that loads all necessary modules
     def __init__(self, config = tomli.loads('')):
         super().__init__(config)
         
@@ -78,49 +80,47 @@ class deltaSPHSimulation(SPHSimulation):
         self.moduleParameters = []
         
         if self.verbose: print('Processing modules')
+        # Default module imports that are always needed
         self.neighborSearch = neighborSearchModule()
         self.sphDensity = densityModule()
         self.periodicBC = periodicBCModule()
         self.deltaSPH = deltaSPHModule()
         self.velocityBC = velocityBCModule()
-#         self.shiftModule = implicitIterativeShiftModule()
         self.gravityModule = gravityModule()
         self.adaptiveDT = adaptiveTimeSteppingModule()
         self.surfaceTension = akinciTensionModule()
-        
+        self.momentumModule = momentumModule()
+        self.pressureModule = pressureModule()
+        # Add modules to the module list
         self.modules.append(self.neighborSearch)
         self.modules.append(self.sphDensity)
         self.modules.append(self.periodicBC)
         self.modules.append(self.velocityBC)
         self.modules.append(self.deltaSPH)
-        
-        self.momentumModule = momentumModule()
         self.modules.append(self.momentumModule)
-        self.pressureModule = pressureModule()
         self.modules.append(self.pressureModule)
-        
-        if self.config['diffusion']['velocityScheme'] == 'xsph':
-            self.velocityDiffusionModule = xsphModule()
-            self.modules.append(self.velocityDiffusionModule)
-            
-        if self.config['diffusion']['velocityScheme'] == 'deltaSPH':
-            self.velocityDiffusionModule = diffusionModule()
-            self.modules.append(self.velocityDiffusionModule)
-            
-        self.densityDiffusionModule = densityDiffusionModule()
-        self.modules.append(self.densityDiffusionModule)
-        
-        self.laminarViscosityModule = laminarViscosityModule()
-        self.modules.append(self.laminarViscosityModule)
-        
-        if self.config['simulation']['scheme'] == 'deltaPlus' or (self.config['shifting']['scheme'] == 'deltaPlus' and self.config['shifting']['enabled'] == True):
-            self.shiftingModule = deltaPlusModule()
-            self.modules.append(self.shiftingModule)
-        
-#         self.modules.append(self.shiftModule)
         self.modules.append(self.gravityModule)
         self.modules.append(self.adaptiveDT)
         self.modules.append(self.surfaceTension)    
+        
+        # Conditional modules for artificial viscosity diffusion
+        if self.config['diffusion']['velocityScheme'] == 'xsph':
+            self.velocityDiffusionModule = xsphModule()
+            self.modules.append(self.velocityDiffusionModule)            
+        if self.config['diffusion']['velocityScheme'] == 'deltaSPH':
+            self.velocityDiffusionModule = diffusionModule()
+            self.modules.append(self.velocityDiffusionModule)
+        # Density diffusion module loaded after velocity diffusion
+        self.densityDiffusionModule = densityDiffusionModule()
+        self.modules.append(self.densityDiffusionModule)
+        # Laminar viscosity module for actual viscosity
+        self.laminarViscosityModule = laminarViscosityModule()
+        self.modules.append(self.laminarViscosityModule)
+        # Enable shifting for deltaPlus
+        if self.config['simulation']['scheme'] == 'deltaPlus' or (self.config['shifting']['scheme'] == 'deltaPlus' and self.config['shifting']['enabled'] == True):
+            self.shiftingModule = deltaPlusModule()
+            self.modules.append(self.shiftingModule)
+        # Add boundary handling modules
         if self.config['simulation']['boundaryScheme'] == 'solid': 
             self.boundaryModule = solidBoundaryModule() 
             self.modules.append(self.boundaryModule)  
@@ -130,7 +130,7 @@ class deltaSPHSimulation(SPHSimulation):
         if self.config['simulation']['boundaryScheme'] == 'Akinci': 
             self.boundaryModule = akinciBoundaryModule() 
             self.modules.append(self.boundaryModule)  
-        
+        # Process parameters for all modules in sequence
         if self.verbose: print('Processing module parameters')
         for module in self.modules:    
             moduleParams =  module.getParameters()
@@ -142,7 +142,7 @@ class deltaSPHSimulation(SPHSimulation):
     def initializeSimulation(self):
         super().initializeSimulation()
         
-        
+    # Evaluate updates for a single timestep, returns dudt, dxdt and drhodt
     def timestep(self):
         step = ' 1 - Enforcing periodic boundary conditions'
         if self.verbose: print(step)
