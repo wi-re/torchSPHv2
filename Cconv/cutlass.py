@@ -171,9 +171,9 @@ class cutlass(torch.autograd.Function):
                             u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
 
                         with record_function("cutlass forward einsum"): 
-                            conv = torch.einsum('nu, uio,ni -> no',u,weight, torch.index_select(features_j,0, edge_index[1,batch]) * edge_weights[batch])
+                            conv = torch.einsum('nu, uio,ni -> no',u,weight, x_j[batch])
                         del u
-                        out += aggr(conv, index = edge_index[1,batch], ptr = None, dim_size = ctx.dim_size, dim = ctx.dim)
+                        out += aggr(conv, index = edge_index[0,batch], ptr = None, dim_size = ctx.dim_size, dim = ctx.dim)
                         del conv
                 if ctx.dimensions == 2:
                     with record_function("cutlass forward batch"): 
@@ -247,7 +247,7 @@ class cutlass(torch.autograd.Function):
                 # debugPrint('if ctx.needs_input_grad[2] and not ctx.needs_input_grad[5]:')
                 with record_function("cutlass backward feature grad"):    
                     
-                    transposedWeights = torch.transpose(weight, 2, 3)        
+                    transposedWeights = torch.transpose(weight, -2, -1)        
                     aggr = aggr_resolver('sum')
 
                     convs = []
@@ -258,7 +258,10 @@ class cutlass(torch.autograd.Function):
                                     u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
                                 
                                 with record_function("cutlass backward feature grad einsum"):    
-                                    convs.append(torch.einsum('nu, nv, uvio,ni -> no',u, transposedWeights, gradFeatures[batch]))
+                                    if edge_weights is not None:
+                                        convs.append(torch.einsum('nu, n, uio,ni -> no',u, edge_weights[batch], transposedWeights, gradFeatures[batch]))
+                                    else:
+                                        convs.append(torch.einsum('nu, nv, uvio,ni -> no',u, transposedWeights, gradFeatures[batch]))
                                 del u
                         if ctx.dimensions == 2:
                             with record_function("cutlass backward feature grad batch"):    
@@ -297,7 +300,7 @@ class cutlass(torch.autograd.Function):
                                     u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
 
                                 with record_function("cutlass backward weight grad batch einsum"):   
-                                    localGrad = torch.einsum('nu, ni, no -> uvio', u, x_j[batch], gradFeatures[batch])
+                                    localGrad = torch.einsum('nu, ni, no -> uio', u, x_j[batch], gradFeatures[batch])
                                     weightGrad += localGrad
                                 del u
                         if ctx.dimensions == 2:
@@ -327,7 +330,7 @@ class cutlass(torch.autograd.Function):
                 with record_function("cutlass backward"):      
                     weightGrad = weight.new_zeros(weight.shape)
                     
-                    transposedWeights = torch.transpose(weight, 2, 3)        
+                    transposedWeights = torch.transpose(weight, -2, -1)        
                     aggr = aggr_resolver('sum')
 
                     convs = []
@@ -337,7 +340,10 @@ class cutlass(torch.autograd.Function):
                                 with record_function("cutlass backward basis"):   
                                     u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
                             with record_function("cutlass backward einsum features"):   
-                                convs.append(torch.einsum('nu, uio,ni -> no',u, transposedWeights, gradFeatures[batch]))
+                                if edge_weights is not None:
+                                    convs.append(torch.einsum('nu, n, uio,ni -> no',u, edge_weights[batch], transposedWeights, gradFeatures[batch]))
+                                else:
+                                    convs.append(torch.einsum('nu, uio,ni -> no',u, transposedWeights, gradFeatures[batch]))
                             with record_function("cutlass backward einsum grad"):   
                                 io = torch.einsum('ni, no -> nio', x_j[batch], gradFeatures[batch])
                                 localGrad = torch.einsum('nu, nio -> uio', u, io)
