@@ -47,7 +47,7 @@ velocity = [ 0.0, 0.0]
 adjust = true
 
 [compute]
-device='cuda'
+device='gpu'
 
 [particle]
 radius = 0.01
@@ -56,8 +56,7 @@ radius = 0.01
 magnitude = 0
 
 [fluid]
-c0 = 50
-restDensity = 998
+c0 = 100
 
 [simulation]
 boundaryScheme = 'solid'
@@ -72,12 +71,8 @@ gamma = 7.0
 
 [diffusion]
 velocityScheme = 'deltaSPH'
-densityScheme = 'MOG'
-boundaryDiffusion = 0.001
-fluidDiffusion = 0.001
+densityScheme = 'deltaSPH'
 alpha = 0.01
-delta = 0.1
-kinematic = 0.001
 
 [integration]
 scheme = 'RK4'
@@ -88,7 +83,7 @@ enabled = false
 scheme = 'deltaPlus'
 
 [kernel]
-targetNeighbors = 50
+targetNeighbors = 30
 
 [export]
 active = false

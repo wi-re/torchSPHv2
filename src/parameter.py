@@ -1,3 +1,5 @@
+# Wrapper class for parameters to allow for easier loading and storing of parameters in configs
+# Also generally useful to simplify creation of new parameters by having a shared interface
 class Parameter():
     def __init__(self, namespace, name, datatype, defaultValue, required = False, hint = '', export = True):
         self.namespace = namespace

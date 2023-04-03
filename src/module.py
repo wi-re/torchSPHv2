@@ -1,3 +1,6 @@
+# Basic parent class for modules
+# This class is used to build a set of functions that always exist to allow for some simple polymorphism
+# The default behavior is to not do anything
 class Module():
     def getParameters(self):
         return None
@@ -18,7 +21,9 @@ class Module():
         self.name = identifier
         return
 
-
+# Boundary modules ahve more features that are required either by a DFSPH Solver or by deltaSPH
+# So these functions serve as stubs that throw an exception if a function is not implemented
+# as the underlying solvers cannot function without an implementation of these functions
 class BoundaryModule(Module):
     def getParameters(self):
         return None
@@ -48,21 +53,4 @@ class BoundaryModule(Module):
     def boundaryNeighborhoodSearch(self, simulationState, simulation):
         raise Exception('Operation boundaryNeighborsearch not implemented for ', self.identifier)
     def boundaryFilterNeighborhoods(self, simulationState, simulation):
-        return # Default behavior here is do nothing so no exception needs to be thrown
-        # raise Exception('Operation dfsphBoundaryAccelTerm not implemented for ', self.identifier)
-
-
-class DiffusionModule(Module):
-    def getParameters(self):
-        return None
-    def initialize(self, config, state):
-        return
-    def finalize(self):
-        return
-    def __init__(self, identifier, moduleDescription):
-        super().__init__(identifier, moduleDescription)
-        return
-
-    
-    def evaluate(self, simulationState, simulation):
-        raise Exception('Operation evaluate not implemented for ', self.identifier)
+        return # Default behavior here is do nothing so no exception needs to be thrown as this function is optional
