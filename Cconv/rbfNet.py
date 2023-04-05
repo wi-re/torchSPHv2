@@ -109,7 +109,7 @@ class RbfNet(torch.nn.Module):
                 fluidPositions, boundaryPositions, \
                 fluidFeatures, boundaryFeatures,\
                 attributes, fluidBatches = None, boundaryBatches = None):
-        fi, fj = radius(fluidPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = fluidBatches, batch_y = fluidBatches)
+        fj, fi = radius(fluidPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = fluidBatches, batch_y = fluidBatches)
         bf, bb = radius(boundaryPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = boundaryBatches, batch_y = fluidBatches)
         if self.centerIgnore:
             nequals = fi != fj
