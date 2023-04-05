@@ -214,10 +214,10 @@ class RbfConv(MessagePassing):
         self,
         in_channels: int,
         out_channels: int,
-        dim: int,
-        size: Union[int, List[int]] = 3,
+        dim: int = 2,
+        size: Union[int, List[int]] = [4, 4],
         coordinateMapping : str = 'cartesian',
-        rbf : Union[int, List[int]] = 'chebyshev',
+        rbf : Union[int, List[int]] = 'linear',
         aggr: str = 'sum',
 
         linearLayer: bool = False,
@@ -236,7 +236,7 @@ class RbfConv(MessagePassing):
         
         batch_size = [16,16],
         windowFn = None,
-        normalizeWeights = True,
+        normalizeWeights = False,
         normalizationFactor = None,
         **kwargs
     ):
