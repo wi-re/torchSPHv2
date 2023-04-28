@@ -346,7 +346,8 @@ def loadFrame(filename, frame, frameOffsets = [1], frameDistance = 1):
         'boundaryPosition': torch.from_numpy(inFile['boundaryInformation']['boundaryPosition'][:]).type(torch.float32),
         'boundaryNormal': torch.from_numpy(inFile['boundaryInformation']['boundaryNormals'][:]).type(torch.float32),
         'boundaryArea': torch.from_numpy(inFile['boundaryInformation']['boundaryArea'][:]).type(torch.float32),
-        'boundaryVelocity': torch.from_numpy(inFile['boundaryInformation']['boundaryVelocity'][:]).type(torch.float32)
+        'boundaryVelocity': torch.from_numpy(inFile['boundaryInformation']['boundaryVelocity'][:]).type(torch.float32),
+        'boundaryDensity': torch.from_numpy(inGrp['boundaryDensity'][:]).type(torch.float32)
     }
     
     groundTruthData = []
@@ -369,6 +370,76 @@ def loadFrame(filename, frame, frameOffsets = [1], frameDistance = 1):
     inFile.close()
     
     return attributes, inputData, groundTruthData
+
+
+
+def constructFeatures(attributes, inputData, fluidFeatures = 'one velocity zero', boundaryFeatures = 'normal zero'):
+#     print(inputData.keys())
+    
+    fFeatures = [x for x in fluidFeatures.split(' ') if x ]
+#     print(fFeatures)
+    
+    features = []
+    for f in fFeatures:
+        if f == 'one':
+            features.append(torch.ones(inputData['fluidArea'].shape[0]).type(torch.float32).unsqueeze(dim=1))
+        if f == 'zero':
+            features.append(torch.zeros(inputData['fluidArea'].shape[0]).type(torch.float32).unsqueeze(dim=1))
+        if f == 'position':
+            features.append(inputData['fluidPosition'].type(torch.float32))
+        if f == 'velocity':
+            features.append(inputData['fluidVelocity'].type(torch.float32))
+        if f == 'area':
+            features.append(inputData['fluidArea'].type(torch.float32).unsqueeze(dim=1))
+        if f == 'density':
+            features.append(inputData['fluidDensity'].type(torch.float32).unsqueeze(dim=1))
+        if f == 'support':
+            features.append(inputData['fluidSupport'].type(torch.float32).unsqueeze(dim=1))
+        if f == 'gravity':
+            features.append(inputData['fluidGravity'].type(torch.float32))
+        if f == 'normal':
+            features.append((torch.zeros(inputData['fluidArea'].shape[0],2)).type(torch.float32))
+    fluidFeatures = torch.hstack(features)
+    
+    fFeatures = [x for x in boundaryFeatures.split(' ') if x ]
+    features = []
+    for f in fFeatures:
+        if f == 'one':
+            features.append(torch.ones(inputData['boundaryPosition'].shape[0]).type(torch.float32).unsqueeze(dim=1))
+        if f == 'zero':
+            features.append(torch.zeros(inputData['boundaryPosition'].shape[0]).type(torch.float32).unsqueeze(dim=1))
+        if f == 'position':
+            features.append(inputData['boundaryPosition'].type(torch.float32))
+        if f == 'velocity':
+            features.append(inputData['boundaryVelocity'].type(torch.float32))
+        if f == 'area':
+            features.append(inputData['boundaryArea'].type(torch.float32).unsqueeze(dim=1))
+        if f == 'density':
+            features.append(inputData['boundaryDensity'].type(torch.float32).unsqueeze(dim=1))
+        if f == 'support':
+            features.append(torch.ones(inputData['boundaryArea'].shape[0]).type(torch.float32).unsqueeze(dim=1) * attributes['support'])
+        if f == 'gravity':
+            features.append((torch.zeros(inputData['boundaryArea'].shape[0],2)).type(torch.float32))
+        if f == 'normal':
+            features.append(inputData['boundaryNormal'].type(torch.float32))
+    boundaryFeatures = torch.hstack(features)
+    
+#     fluidFeatures = torch.hstack(\
+#                 (torch.ones(inputData['fluidArea'].shape[0]).type(torch.float32).unsqueeze(dim=1), \
+#                  inputData['fluidVelocity'].type(torch.float32), 
+#                  torch.zeros(inputData['fluidArea'].shape[0]).type(torch.float32).unsqueeze(dim=1)))
+                #  inputData['fluidGravity'].type(torch.float32)))
+
+                #  torch.ones(inputData['fluidArea'].shape[0]).type(torch.float32).unsqueeze(dim=1)))
+
+    # fluidFeatures = torch.ones(inputData['fluidArea'].shape[0]).type(torch.float32).unsqueeze(dim=1)
+    # fluidFeatures[:,0] *= 7 / np.pi * inputData['fluidArea']  / attributes['support']**2
+    
+#     boundaryFeatures = torch.hstack((inputData['boundaryNormal'].type(torch.float32), torch.zeros(inputData['boundaryNormal'].shape[0]).type(torch.float32).unsqueeze(dim=1)))
+    # boundaryFeatures = torch.ones(inputData['boundaryNormal'].shape[0]).type(torch.float32).unsqueeze(dim=1)
+    # boundaryFeatures[:,0] *=  7 / np.pi * inputData['boundaryArea']  / attributes['support']**2
+    
+    return inputData['fluidPosition'].type(torch.float32), inputData['boundaryPosition'].type(torch.float32), fluidFeatures, boundaryFeatures
 
 import zstandard as zstd
 import msgpack
