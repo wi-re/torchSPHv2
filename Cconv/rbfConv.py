@@ -238,6 +238,7 @@ class RbfConv(MessagePassing):
         windowFn = None,
         normalizeWeights = False,
         normalizationFactor = None,
+        normalizeInterpolation = False,
         **kwargs
     ):
         super().__init__(aggr=aggr, **kwargs)        
@@ -257,6 +258,7 @@ class RbfConv(MessagePassing):
         self.postActivation = None if postActivation is None else getattr(nn.functional, postActivation)
         self.windowFn = windowFn
         self.use_bias = bias
+        self.normalizeInterpolation = normalizeInterpolation
         # print('Creating layer %d -> %d features'%( in_channels, out_channels))
         # print('For dimensionality: %d'% dim)
         # print('Parameters:')
@@ -449,7 +451,7 @@ class RbfConv(MessagePassing):
             out = convolution(edge_index, kwargs['x'][0], kwargs['x'][1], mapped, edge_weights, self.weight, 
                                             size[0], self.node_dim,
                                         self.size , self.rbfs, self.periodic, 
-                                        self.batchSize[0],self.batchSize[1])
+                                        self.batchSize[0],self.batchSize[1], self.normalizeInterpolation)
 
             for hook in self._aggregate_forward_hooks.values():
                 res = hook(self, (aggr_kwargs, ), out)
