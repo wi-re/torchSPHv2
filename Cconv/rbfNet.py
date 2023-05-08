@@ -35,18 +35,14 @@ import os
 
 class RbfNet(torch.nn.Module):
     def __init__(self, fluidFeatures, boundaryFeatures, layers = [32,64,64,2], denseLayer = True, activation = 'relu',
-                coordinateMapping = 'polar', n = 8, m = 8, windowFn = None, rbf_x = 'linear', rbf_y = 'linear', batchSize = 32, ignoreCenter = True):
+                coordinateMapping = 'polar', n = 8, m = 8, windowFn = None, rbf_x = 'linear', rbf_y = 'linear', batchSize = 32, ignoreCenter = True, normalized = False):
         super().__init__()
         self.centerIgnore = ignoreCenter
-#         debugPrint(layers)
-        
         self.features = copy.copy(layers)
-#         debugPrint(fluidFeatures)
-#         debugPrint(boundaryFeatures)
         self.convs = torch.nn.ModuleList()
         self.fcs = torch.nn.ModuleList()
         self.relu = getattr(nn.functional, 'relu')
-#         debugPrint(fluidFeatures)
+        self.normalized = normalized
 
         self.convs.append(RbfConv(
             in_channels = fluidFeatures, out_channels = self.features[0],
@@ -56,7 +52,7 @@ class RbfNet(torch.nn.Module):
             linearLayer = False, biasOffset = False, feedThrough = False,
             preActivation = None, postActivation = None,
             coordinateMapping = coordinateMapping,
-            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False, normalizeInterpolation = normalized))
         
         self.convs.append(RbfConv(
             in_channels = boundaryFeatures, out_channels = self.features[0],
@@ -66,18 +62,14 @@ class RbfNet(torch.nn.Module):
             linearLayer = False, biasOffset = False, feedThrough = False,
             preActivation = None, postActivation = None,
             coordinateMapping = coordinateMapping,
-            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False, normalizeInterpolation = normalized))
         
         self.fcs.append(nn.Linear(in_features=fluidFeatures,out_features= layers[0],bias=True))
         torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
         torch.nn.init.zeros_(self.fcs[-1].bias)
 
         self.features[0] = self.features[0]
-#         self.fcs.append(nn.Linear(in_features=96,out_features= 2,bias=False))
-        
         for i, l in enumerate(layers[1:-1]):
-#             debugPrint(layers[i])
-#             debugPrint(layers[i+1])
             self.convs.append(RbfConv(
                 in_channels = (3 * self.features[0]) if i == 0 else self.features[i], out_channels = layers[i+1],
                 dim = 2, size = [n,m],
@@ -86,7 +78,7 @@ class RbfNet(torch.nn.Module):
                 linearLayer = False, biasOffset = False, feedThrough = False,
                 preActivation = None, postActivation = None,
                 coordinateMapping = coordinateMapping,
-                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False, normalizeInterpolation = normalized))
             self.fcs.append(nn.Linear(in_features=3 * layers[0] if i == 0 else layers[i],out_features=layers[i+1],bias=True))
             torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
             torch.nn.init.zeros_(self.fcs[-1].bias)
@@ -99,7 +91,7 @@ class RbfNet(torch.nn.Module):
                 linearLayer = False, biasOffset = False, feedThrough = False,
                 preActivation = None, postActivation = None,
                 coordinateMapping = coordinateMapping,
-                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False, normalizeInterpolation = normalized))
         self.fcs.append(nn.Linear(in_features=layers[-2],out_features=self.features[-1],bias=True))
         torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
         torch.nn.init.zeros_(self.fcs[-1].bias)
@@ -109,7 +101,7 @@ class RbfNet(torch.nn.Module):
                 fluidPositions, boundaryPositions, \
                 fluidFeatures, boundaryFeatures,\
                 attributes, fluidBatches = None, boundaryBatches = None):
-        fj, fi = radius(fluidPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = fluidBatches, batch_y = fluidBatches)
+        fi, fj = radius(fluidPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = fluidBatches, batch_y = fluidBatches)
         bf, bb = radius(boundaryPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = boundaryBatches, batch_y = fluidBatches)
         if self.centerIgnore:
             nequals = fi != fj
@@ -119,9 +111,7 @@ class RbfNet(torch.nn.Module):
         
         self.ni = ni
         self.nb = nb
-#         print('ni:', torch.min(ni).detach().cpu().numpy(), torch.median(ni).detach().cpu().numpy(), torch.max(ni).detach().cpu().numpy())
-#         print('nb:', torch.min(nb).detach().cpu().numpy(), torch.median(nb).detach().cpu().numpy(), torch.max(nb).detach().cpu().numpy())
-        
+
         ni[i[b]] += nb
         self.li = torch.exp(-1 / 16 * ni)
         
@@ -134,28 +124,12 @@ class RbfNet(torch.nn.Module):
             fluidEdgeIndex = torch.stack([fi, fj], dim = 0)
         fluidEdgeLengths = -(fluidPositions[fluidEdgeIndex[1]] - fluidPositions[fluidEdgeIndex[0]])/attributes['support']
         fluidEdgeLengths = fluidEdgeLengths.clamp(-1,1)
-#         if verbose:
-#             print('prepared network with inputs:')
-#             print('fluidPositions', fluidPositions[:4])
-#             print('fluidFeatures', fluidFeatures[:4])
-#             print('boundaryPositions', boundaryPositions[:4])
-#             print('boundaryFeatures', boundaryFeatures[:4])
-#             print('fluid neighbors:', fluidEdgeIndex.shape)
-#             print('fluid neighbor distances', fluidEdgeLengths[:4])
-#             print('boundary neighbors:', boundaryEdgeIndex.shape)
-#             print('boundary neighbor distances', boundaryEdgeLengths[:4])
-#             print('num neighbors', ni[:4])
-#             print('li', self.li[:4])
-            
             
         linearOutput = (self.fcs[0](fluidFeatures))
         boundaryConvolution = (self.convs[1]((fluidFeatures, boundaryFeatures), boundaryEdgeIndex, boundaryEdgeLengths))
         fluidConvolution = (self.convs[0]((fluidFeatures, fluidFeatures), fluidEdgeIndex, fluidEdgeLengths))
         ans = torch.hstack((linearOutput, fluidConvolution, boundaryConvolution))
         if verbose:
-#             print('linear output', linearOutput[:4])
-#             print('boundary convolution output', boundaryConvolution[:4])
-#             print('fluid convolution output', fluidConvolution[:4])
             print('first layer output', ans[:4])
         
         layers = len(self.convs)
@@ -171,18 +145,509 @@ class RbfNet(torch.nn.Module):
                 ans = ansConv + ansDense + ans
             else:
                 ans = ansConv + ansDense
-#             if verbose:
-#                 print('\tlayer', i)
-#                 print('\tlinear output', ansDense[:4])
-#                 print('\tfluid convolution output', ansConv[:4])
-#                 print('\tlayer output', ans[:4])
-                
-#             if i != layers - 1:
-#                 ans = self.relu(ans)
             if verbose:
                 print('\tlayer output after activation', ans[:4])
         return ans / 128
             
+
+class RbfInputNet(torch.nn.Module):
+    def __init__(self, fluidFeatures, boundaryFeatures, layers = [32,64,64,2], denseLayer = True, activation = 'relu',
+                coordinateMapping = 'polar', n = 8, m = 8, windowFn = None, rbf_x = 'linear', rbf_y = 'linear', batchSize = 32, ignoreCenter = True):
+        super().__init__()
+        self.centerIgnore = ignoreCenter
+        self.features = copy.copy(layers)
+        self.convs = torch.nn.ModuleList()
+        self.fcs = torch.nn.ModuleList()
+        self.relu = getattr(nn.functional, 'relu')
+
+        self.convs.append(RbfConv(
+            in_channels = fluidFeatures, out_channels = self.features[0],
+            dim = 2, size = [n,m],
+            rbf = [rbf_y, rbf_y],
+            bias = True,
+            linearLayer = False, biasOffset = False, feedThrough = False,
+            preActivation = None, postActivation = None,
+            coordinateMapping = coordinateMapping,
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        
+        self.convs.append(RbfConv(
+            in_channels = boundaryFeatures, out_channels = self.features[0],
+            dim = 2, size = [n,m],
+            rbf = [rbf_x, rbf_x],
+            bias = True,
+            linearLayer = False, biasOffset = False, feedThrough = False,
+            preActivation = None, postActivation = None,
+            coordinateMapping = coordinateMapping,
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        
+        self.fcs.append(nn.Linear(in_features=fluidFeatures,out_features= layers[0],bias=True))
+        torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+        torch.nn.init.zeros_(self.fcs[-1].bias)
+
+        self.features[0] = self.features[0]
+        for i, l in enumerate(layers[1:-1]):
+            self.convs.append(RbfConv(
+                in_channels = (3 * self.features[0]) if i == 0 else self.features[i], out_channels = layers[i+1],
+                dim = 2, size = [n,m],
+                rbf = [rbf_x, rbf_x],
+                bias = True,
+                linearLayer = False, biasOffset = False, feedThrough = False,
+                preActivation = None, postActivation = None,
+                coordinateMapping = coordinateMapping,
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+            self.fcs.append(nn.Linear(in_features=3 * layers[0] if i == 0 else layers[i],out_features=layers[i+1],bias=True))
+            torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+            torch.nn.init.zeros_(self.fcs[-1].bias)
+            
+        self.convs.append(RbfConv(
+            in_channels = self.features[-2], out_channels = self.features[-1],
+                dim = 2, size = [n,m],
+                rbf = [rbf_x, rbf_x],
+                bias = True,
+                linearLayer = False, biasOffset = False, feedThrough = False,
+                preActivation = None, postActivation = None,
+                coordinateMapping = coordinateMapping,
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        self.fcs.append(nn.Linear(in_features=layers[-2],out_features=self.features[-1],bias=True))
+        torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+        torch.nn.init.zeros_(self.fcs[-1].bias)
+
+
+    def forward(self, \
+                fluidPositions, boundaryPositions, \
+                fluidFeatures, boundaryFeatures,\
+                attributes, fluidBatches = None, boundaryBatches = None):
+        fi, fj = radius(fluidPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = fluidBatches, batch_y = fluidBatches)
+        bf, bb = radius(boundaryPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = boundaryBatches, batch_y = fluidBatches)
+        if self.centerIgnore:
+            nequals = fi != fj
+
+        i, ni = torch.unique(fi, return_counts = True)
+        b, nb = torch.unique(bf, return_counts = True)
+        
+        self.ni = ni
+        self.nb = nb
+
+        ni[i[b]] += nb
+        self.li = torch.exp(-1 / 16 * ni)
+        
+        boundaryEdgeIndex = torch.stack([bf, bb], dim = 0)
+        boundaryEdgeLengths = (boundaryPositions[boundaryEdgeIndex[1]] - fluidPositions[boundaryEdgeIndex[0]])/attributes['support']
+        boundaryEdgeLengths = boundaryEdgeLengths.clamp(-1,1)
+        if self.centerIgnore:
+            fluidEdgeIndex = torch.stack([fi[nequals], fj[nequals]], dim = 0)
+        else:
+            fluidEdgeIndex = torch.stack([fi, fj], dim = 0)
+        fluidEdgeLengths = -(fluidPositions[fluidEdgeIndex[1]] - fluidPositions[fluidEdgeIndex[0]])/attributes['support']
+        fluidEdgeLengths = fluidEdgeLengths.clamp(-1,1)
+            
+        linearOutput = (self.fcs[0](fluidFeatures))
+        boundaryConvolution = (self.convs[1]((fluidFeatures, boundaryFeatures), boundaryEdgeIndex, boundaryEdgeLengths))
+        fluidConvolution = (self.convs[0]((fluidFeatures, fluidFeatures), fluidEdgeIndex, fluidEdgeLengths))
+        ans = torch.hstack((linearOutput, fluidConvolution, boundaryConvolution))
+        if verbose:
+            print('first layer output', ans[:4])
+        
+        layers = len(self.convs)
+        for i in range(2,layers):
+            
+            ansc = self.relu(ans)
+            
+            ansConv = self.convs[i]((ansc, ansc), fluidEdgeIndex, fluidEdgeLengths)
+            ansDense = self.fcs[i - 1](ansc)
+            
+            
+            if self.features[i-2] == self.features[i-1] and ans.shape == ansConv.shape:
+                ans = ansConv + ansDense + ans
+            else:
+                ans = ansConv + ansDense
+            if verbose:
+                print('\tlayer output after activation', ans[:4])
+        return ans / 128
+            
+class RbfOutputNet(torch.nn.Module):
+    def __init__(self, fluidFeatures, boundaryFeatures, layers = [32,64,64,2], denseLayer = True, activation = 'relu',
+                coordinateMapping = 'polar', n = 8, m = 8, windowFn = None, rbf_x = 'linear', rbf_y = 'linear', batchSize = 32, ignoreCenter = True):
+        super().__init__()
+        self.centerIgnore = ignoreCenter
+        self.features = copy.copy(layers)
+        self.convs = torch.nn.ModuleList()
+        self.fcs = torch.nn.ModuleList()
+        self.relu = getattr(nn.functional, 'relu')
+
+        self.convs.append(RbfConv(
+            in_channels = fluidFeatures, out_channels = self.features[0],
+            dim = 2, size = [n,m],
+            rbf = [rbf_x, rbf_x],
+            bias = True,
+            linearLayer = False, biasOffset = False, feedThrough = False,
+            preActivation = None, postActivation = None,
+            coordinateMapping = coordinateMapping,
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        
+        self.convs.append(RbfConv(
+            in_channels = boundaryFeatures, out_channels = self.features[0],
+            dim = 2, size = [n,m],
+            rbf = [rbf_x, rbf_x],
+            bias = True,
+            linearLayer = False, biasOffset = False, feedThrough = False,
+            preActivation = None, postActivation = None,
+            coordinateMapping = coordinateMapping,
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        
+        self.fcs.append(nn.Linear(in_features=fluidFeatures,out_features= layers[0],bias=True))
+        torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+        torch.nn.init.zeros_(self.fcs[-1].bias)
+
+        self.features[0] = self.features[0]
+        for i, l in enumerate(layers[1:-1]):
+            self.convs.append(RbfConv(
+                in_channels = (3 * self.features[0]) if i == 0 else self.features[i], out_channels = layers[i+1],
+                dim = 2, size = [n,m],
+                rbf = [rbf_x, rbf_x],
+                bias = True,
+                linearLayer = False, biasOffset = False, feedThrough = False,
+                preActivation = None, postActivation = None,
+                coordinateMapping = coordinateMapping,
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+            self.fcs.append(nn.Linear(in_features=3 * layers[0] if i == 0 else layers[i],out_features=layers[i+1],bias=True))
+            torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+            torch.nn.init.zeros_(self.fcs[-1].bias)
+            
+        self.convs.append(RbfConv(
+            in_channels = self.features[-2], out_channels = self.features[-1],
+                dim = 2, size = [n,m],
+                rbf = [rbf_y, rbf_y],
+                bias = True,
+                linearLayer = False, biasOffset = False, feedThrough = False,
+                preActivation = None, postActivation = None,
+                coordinateMapping = coordinateMapping,
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        self.fcs.append(nn.Linear(in_features=layers[-2],out_features=self.features[-1],bias=True))
+        torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+        torch.nn.init.zeros_(self.fcs[-1].bias)
+
+
+    def forward(self, \
+                fluidPositions, boundaryPositions, \
+                fluidFeatures, boundaryFeatures,\
+                attributes, fluidBatches = None, boundaryBatches = None):
+        fi, fj = radius(fluidPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = fluidBatches, batch_y = fluidBatches)
+        bf, bb = radius(boundaryPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = boundaryBatches, batch_y = fluidBatches)
+        if self.centerIgnore:
+            nequals = fi != fj
+
+        i, ni = torch.unique(fi, return_counts = True)
+        b, nb = torch.unique(bf, return_counts = True)
+        
+        self.ni = ni
+        self.nb = nb
+
+        ni[i[b]] += nb
+        self.li = torch.exp(-1 / 16 * ni)
+        
+        boundaryEdgeIndex = torch.stack([bf, bb], dim = 0)
+        boundaryEdgeLengths = (boundaryPositions[boundaryEdgeIndex[1]] - fluidPositions[boundaryEdgeIndex[0]])/attributes['support']
+        boundaryEdgeLengths = boundaryEdgeLengths.clamp(-1,1)
+        if self.centerIgnore:
+            fluidEdgeIndex = torch.stack([fi[nequals], fj[nequals]], dim = 0)
+        else:
+            fluidEdgeIndex = torch.stack([fi, fj], dim = 0)
+        fluidEdgeLengths = -(fluidPositions[fluidEdgeIndex[1]] - fluidPositions[fluidEdgeIndex[0]])/attributes['support']
+        fluidEdgeLengths = fluidEdgeLengths.clamp(-1,1)
+            
+        linearOutput = (self.fcs[0](fluidFeatures))
+        boundaryConvolution = (self.convs[1]((fluidFeatures, boundaryFeatures), boundaryEdgeIndex, boundaryEdgeLengths))
+        fluidConvolution = (self.convs[0]((fluidFeatures, fluidFeatures), fluidEdgeIndex, fluidEdgeLengths))
+        ans = torch.hstack((linearOutput, fluidConvolution, boundaryConvolution))
+        if verbose:
+            print('first layer output', ans[:4])
+        
+        layers = len(self.convs)
+        for i in range(2,layers):
+            
+            ansc = self.relu(ans)
+            
+            ansConv = self.convs[i]((ansc, ansc), fluidEdgeIndex, fluidEdgeLengths)
+            ansDense = self.fcs[i - 1](ansc)
+            
+            
+            if self.features[i-2] == self.features[i-1] and ans.shape == ansConv.shape:
+                ans = ansConv + ansDense + ans
+            else:
+                ans = ansConv + ansDense
+            if verbose:
+                print('\tlayer output after activation', ans[:4])
+        return ans / 128
+            
+
+           
+class RbfInterleaveNet(torch.nn.Module):
+    def __init__(self, fluidFeatures, boundaryFeatures, layers = [32,64,64,2], denseLayer = True, activation = 'relu',
+                coordinateMapping = 'polar', n = 8, m = 8, windowFn = None, rbf_x = 'linear', rbf_y = 'linear', batchSize = 32, ignoreCenter = True):
+        super().__init__()
+        self.centerIgnore = ignoreCenter
+        self.features = copy.copy(layers)
+        self.convs = torch.nn.ModuleList()
+        self.fcs = torch.nn.ModuleList()
+        self.relu = getattr(nn.functional, 'relu')
+
+        self.convs.append(RbfConv(
+            in_channels = fluidFeatures, out_channels = self.features[0],
+            dim = 2, size = [n,m],
+            rbf = [rbf_x, rbf_x],
+            bias = True,
+            linearLayer = False, biasOffset = False, feedThrough = False,
+            preActivation = None, postActivation = None,
+            coordinateMapping = coordinateMapping,
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        
+        self.convs.append(RbfConv(
+            in_channels = boundaryFeatures, out_channels = self.features[0],
+            dim = 2, size = [n,m],
+            rbf = [rbf_x, rbf_x],
+            bias = True,
+            linearLayer = False, biasOffset = False, feedThrough = False,
+            preActivation = None, postActivation = None,
+            coordinateMapping = coordinateMapping,
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        
+        self.fcs.append(nn.Linear(in_features=fluidFeatures,out_features= layers[0],bias=True))
+        torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+        torch.nn.init.zeros_(self.fcs[-1].bias)
+
+        self.features[0] = self.features[0]
+        for i, l in enumerate(layers[1:-1]):
+            self.convs.append(RbfConv(
+                in_channels = (3 * self.features[0]) if i == 0 else self.features[i], out_channels = layers[i+1],
+                dim = 2, size = [n,m],
+                rbf = [rbf_y, rbf_y] if i % 2 == 0 else [rbf_x, rbf_x],
+                bias = True,
+                linearLayer = False, biasOffset = False, feedThrough = False,
+                preActivation = None, postActivation = None,
+                coordinateMapping = coordinateMapping,
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+            self.fcs.append(nn.Linear(in_features=3 * layers[0] if i == 0 else layers[i],out_features=layers[i+1],bias=True))
+            torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+            torch.nn.init.zeros_(self.fcs[-1].bias)
+            
+        self.convs.append(RbfConv(
+            in_channels = self.features[-2], out_channels = self.features[-1],
+                dim = 2, size = [n,m],
+                rbf = [rbf_y, rbf_y] if len(layers)%2 == 1 else [rbf_x, rbf_x],
+                bias = True,
+                linearLayer = False, biasOffset = False, feedThrough = False,
+                preActivation = None, postActivation = None,
+                coordinateMapping = coordinateMapping,
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        self.fcs.append(nn.Linear(in_features=layers[-2],out_features=self.features[-1],bias=True))
+        torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+        torch.nn.init.zeros_(self.fcs[-1].bias)
+
+
+    def forward(self, \
+                fluidPositions, boundaryPositions, \
+                fluidFeatures, boundaryFeatures,\
+                attributes, fluidBatches = None, boundaryBatches = None):
+        fi, fj = radius(fluidPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = fluidBatches, batch_y = fluidBatches)
+        bf, bb = radius(boundaryPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = boundaryBatches, batch_y = fluidBatches)
+        if self.centerIgnore:
+            nequals = fi != fj
+
+        i, ni = torch.unique(fi, return_counts = True)
+        b, nb = torch.unique(bf, return_counts = True)
+        
+        self.ni = ni
+        self.nb = nb
+
+        ni[i[b]] += nb
+        self.li = torch.exp(-1 / 16 * ni)
+        
+        boundaryEdgeIndex = torch.stack([bf, bb], dim = 0)
+        boundaryEdgeLengths = (boundaryPositions[boundaryEdgeIndex[1]] - fluidPositions[boundaryEdgeIndex[0]])/attributes['support']
+        boundaryEdgeLengths = boundaryEdgeLengths.clamp(-1,1)
+        if self.centerIgnore:
+            fluidEdgeIndex = torch.stack([fi[nequals], fj[nequals]], dim = 0)
+        else:
+            fluidEdgeIndex = torch.stack([fi, fj], dim = 0)
+        fluidEdgeLengths = -(fluidPositions[fluidEdgeIndex[1]] - fluidPositions[fluidEdgeIndex[0]])/attributes['support']
+        fluidEdgeLengths = fluidEdgeLengths.clamp(-1,1)
+            
+        linearOutput = (self.fcs[0](fluidFeatures))
+        boundaryConvolution = (self.convs[1]((fluidFeatures, boundaryFeatures), boundaryEdgeIndex, boundaryEdgeLengths))
+        fluidConvolution = (self.convs[0]((fluidFeatures, fluidFeatures), fluidEdgeIndex, fluidEdgeLengths))
+        ans = torch.hstack((linearOutput, fluidConvolution, boundaryConvolution))
+        if verbose:
+            print('first layer output', ans[:4])
+        
+        layers = len(self.convs)
+        for i in range(2,layers):
+            
+            ansc = self.relu(ans)
+            
+            ansConv = self.convs[i]((ansc, ansc), fluidEdgeIndex, fluidEdgeLengths)
+            ansDense = self.fcs[i - 1](ansc)
+            
+            
+            if self.features[i-2] == self.features[i-1] and ans.shape == ansConv.shape:
+                ans = ansConv + ansDense + ans
+            else:
+                ans = ansConv + ansDense
+            if verbose:
+                print('\tlayer output after activation', ans[:4])
+        return ans / 128
+              
+class RbfSplitNet(torch.nn.Module):
+    def __init__(self, fluidFeatures, boundaryFeatures, layers = [32,64,64,2], denseLayer = True, activation = 'relu',
+                coordinateMapping = 'polar', n = 8, m = 8, windowFn = None, rbf_x = 'linear', rbf_y = 'linear', batchSize = 32, ignoreCenter = True):
+        super().__init__()
+        self.centerIgnore = ignoreCenter
+        self.features = copy.copy(layers)
+        self.convs = torch.nn.ModuleList()
+        self.fcs = torch.nn.ModuleList()
+        self.relu = getattr(nn.functional, 'relu')
+
+        self.convs.append(RbfConv(
+            in_channels = fluidFeatures, out_channels = self.features[0]//2,
+            dim = 2, size = [n,m],
+            rbf = [rbf_x, rbf_x],
+            bias = True,
+            linearLayer = False, biasOffset = False, feedThrough = False,
+            preActivation = None, postActivation = None,
+            coordinateMapping = coordinateMapping,
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        
+        self.convs.append(RbfConv(
+            in_channels = fluidFeatures, out_channels = self.features[0]//2,
+            dim = 2, size = [n,m],
+            rbf = [rbf_y, rbf_y],
+            bias = True,
+            linearLayer = False, biasOffset = False, feedThrough = False,
+            preActivation = None, postActivation = None,
+            coordinateMapping = coordinateMapping,
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        
+        self.convs.append(RbfConv(
+            in_channels = boundaryFeatures, out_channels = self.features[0]//2,
+            dim = 2, size = [n,m],
+            rbf = [rbf_x, rbf_x],
+            bias = True,
+            linearLayer = False, biasOffset = False, feedThrough = False,
+            preActivation = None, postActivation = None,
+            coordinateMapping = coordinateMapping,
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        
+        self.convs.append(RbfConv(
+            in_channels = boundaryFeatures, out_channels = self.features[0]//2,
+            dim = 2, size = [n,m],
+            rbf = [rbf_y, rbf_y],
+            bias = True,
+            linearLayer = False, biasOffset = False, feedThrough = False,
+            preActivation = None, postActivation = None,
+            coordinateMapping = coordinateMapping,
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        
+        self.fcs.append(nn.Linear(in_features=fluidFeatures,out_features= layers[0],bias=True))
+        torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+        torch.nn.init.zeros_(self.fcs[-1].bias)
+
+        self.features[0] = self.features[0]
+        for i, l in enumerate(layers[1:-1]):
+            self.convs.append(RbfConv(
+                in_channels = (3 * self.features[0]) if i == 0 else self.features[i], out_channels = layers[i+1] // 2,
+                dim = 2, size = [n,m],
+                rbf = [rbf_x, rbf_x] if i % 2 == 0 else [rbf_x, rbf_x],
+                bias = True,
+                linearLayer = False, biasOffset = False, feedThrough = False,
+                preActivation = None, postActivation = None,
+                coordinateMapping = coordinateMapping,
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+            self.convs.append(RbfConv(
+                in_channels = (3 * self.features[0]) if i == 0 else self.features[i], out_channels = layers[i+1] // 2,
+                dim = 2, size = [n,m],
+                rbf = [rbf_y, rbf_y] if i % 2 == 0 else [rbf_x, rbf_x],
+                bias = True,
+                linearLayer = False, biasOffset = False, feedThrough = False,
+                preActivation = None, postActivation = None,
+                coordinateMapping = coordinateMapping,
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+            self.fcs.append(nn.Linear(in_features=3 * layers[0] if i == 0 else layers[i],out_features=layers[i+1],bias=True))
+            torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+            torch.nn.init.zeros_(self.fcs[-1].bias)
+            
+        self.convs.append(RbfConv(
+            in_channels = self.features[-2], out_channels = self.features[-1],
+                dim = 2, size = [n,m],
+                rbf = [rbf_y, rbf_y] if len(layers)%2 == 1 else [rbf_x, rbf_x],
+                bias = True,
+                linearLayer = False, biasOffset = False, feedThrough = False,
+                preActivation = None, postActivation = None,
+                coordinateMapping = coordinateMapping,
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+        self.fcs.append(nn.Linear(in_features=layers[-2],out_features=self.features[-1],bias=True))
+        torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+        torch.nn.init.zeros_(self.fcs[-1].bias)
+
+
+    def forward(self, \
+                fluidPositions, boundaryPositions, \
+                fluidFeatures, boundaryFeatures,\
+                attributes, fluidBatches = None, boundaryBatches = None):
+        fi, fj = radius(fluidPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = fluidBatches, batch_y = fluidBatches)
+        bf, bb = radius(boundaryPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = boundaryBatches, batch_y = fluidBatches)
+        if self.centerIgnore:
+            nequals = fi != fj
+
+        i, ni = torch.unique(fi, return_counts = True)
+        b, nb = torch.unique(bf, return_counts = True)
+        
+        self.ni = ni
+        self.nb = nb
+
+        ni[i[b]] += nb
+        self.li = torch.exp(-1 / 16 * ni)
+        
+        boundaryEdgeIndex = torch.stack([bf, bb], dim = 0)
+        boundaryEdgeLengths = (boundaryPositions[boundaryEdgeIndex[1]] - fluidPositions[boundaryEdgeIndex[0]])/attributes['support']
+        boundaryEdgeLengths = boundaryEdgeLengths.clamp(-1,1)
+        if self.centerIgnore:
+            fluidEdgeIndex = torch.stack([fi[nequals], fj[nequals]], dim = 0)
+        else:
+            fluidEdgeIndex = torch.stack([fi, fj], dim = 0)
+        fluidEdgeLengths = -(fluidPositions[fluidEdgeIndex[1]] - fluidPositions[fluidEdgeIndex[0]])/attributes['support']
+        fluidEdgeLengths = fluidEdgeLengths.clamp(-1,1)
+            
+        linearOutput = (self.fcs[0](fluidFeatures))
+        boundaryConvolutionA = (self.convs[2]((fluidFeatures, boundaryFeatures), boundaryEdgeIndex, boundaryEdgeLengths))
+        boundaryConvolutionB = (self.convs[3]((fluidFeatures, boundaryFeatures), boundaryEdgeIndex, boundaryEdgeLengths))
+        fluidConvolutionA = (self.convs[0]((fluidFeatures, fluidFeatures), fluidEdgeIndex, fluidEdgeLengths))
+        fluidConvolutionB = (self.convs[1]((fluidFeatures, fluidFeatures), fluidEdgeIndex, fluidEdgeLengths))
+        ans = torch.hstack((linearOutput, fluidConvolutionA, fluidConvolutionB, boundaryConvolutionA, boundaryConvolutionB))
+        if verbose:
+            print('first layer output', ans[:4])
+        
+        layers = len(self.convs)
+        for i in range(2,layers//2):
+            
+            ansc = self.relu(ans)
+            # print(i, layers)
+            if i != layers - 1:
+                ansConvA = self.convs[i * 2]((ansc, ansc), fluidEdgeIndex, fluidEdgeLengths)
+                ansConvB = self.convs[i * 2 + 1]((ansc, ansc), fluidEdgeIndex, fluidEdgeLengths)
+                ansConv = torch.hstack((ansConvA, ansConvB))
+            else:
+                ansConv = self.convs[i * 2]((ansc, ansc), fluidEdgeIndex, fluidEdgeLengths)
+            ansDense = self.fcs[i - 1](ansc)
+            
+            
+            if self.features[i-2] == self.features[i-1] and ans.shape == ansConv.shape:
+                ans = ansConv + ansDense + ans
+            else:
+                ans = ansConv + ansDense
+            if verbose:
+                print('\tlayer output after activation', ans[:4])
+        return ans / 128
+     
 
 
 #  semi implicit euler, network predicts velocity update
