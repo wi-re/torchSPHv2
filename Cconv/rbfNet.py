@@ -35,13 +35,14 @@ import os
 
 class RbfNet(torch.nn.Module):
     def __init__(self, fluidFeatures, boundaryFeatures, layers = [32,64,64,2], denseLayer = True, activation = 'relu',
-                coordinateMapping = 'polar', n = 8, m = 8, windowFn = None, rbf_x = 'linear', rbf_y = 'linear', batchSize = 32, ignoreCenter = True):
+                coordinateMapping = 'polar', n = 8, m = 8, windowFn = None, rbf_x = 'linear', rbf_y = 'linear', batchSize = 32, ignoreCenter = True, normalized = False):
         super().__init__()
         self.centerIgnore = ignoreCenter
         self.features = copy.copy(layers)
         self.convs = torch.nn.ModuleList()
         self.fcs = torch.nn.ModuleList()
         self.relu = getattr(nn.functional, 'relu')
+        self.normalized = normalized
 
         self.convs.append(RbfConv(
             in_channels = fluidFeatures, out_channels = self.features[0],
@@ -51,7 +52,7 @@ class RbfNet(torch.nn.Module):
             linearLayer = False, biasOffset = False, feedThrough = False,
             preActivation = None, postActivation = None,
             coordinateMapping = coordinateMapping,
-            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False, normalizeInterpolation = normalized))
         
         self.convs.append(RbfConv(
             in_channels = boundaryFeatures, out_channels = self.features[0],
@@ -61,7 +62,7 @@ class RbfNet(torch.nn.Module):
             linearLayer = False, biasOffset = False, feedThrough = False,
             preActivation = None, postActivation = None,
             coordinateMapping = coordinateMapping,
-            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False, normalizeInterpolation = normalized))
         
         self.fcs.append(nn.Linear(in_features=fluidFeatures,out_features= layers[0],bias=True))
         torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
@@ -77,7 +78,7 @@ class RbfNet(torch.nn.Module):
                 linearLayer = False, biasOffset = False, feedThrough = False,
                 preActivation = None, postActivation = None,
                 coordinateMapping = coordinateMapping,
-                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False, normalizeInterpolation = normalized))
             self.fcs.append(nn.Linear(in_features=3 * layers[0] if i == 0 else layers[i],out_features=layers[i+1],bias=True))
             torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
             torch.nn.init.zeros_(self.fcs[-1].bias)
@@ -90,7 +91,7 @@ class RbfNet(torch.nn.Module):
                 linearLayer = False, biasOffset = False, feedThrough = False,
                 preActivation = None, postActivation = None,
                 coordinateMapping = coordinateMapping,
-                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False))
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False, normalizeInterpolation = normalized))
         self.fcs.append(nn.Linear(in_features=layers[-2],out_features=self.features[-1],bias=True))
         torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
         torch.nn.init.zeros_(self.fcs[-1].bias)

@@ -42,12 +42,12 @@ adjust = true
 [emitter.damBreak]
 fillDomain = false
 min = [-2,-2]
-max = [-1.0, -1.0]
+max = [-0.0, -1.0]
 velocity = [ 0.0, 0.0]
 adjust = true
 
 [compute]
-device='cpu'
+device='cuda'
 
 [particle]
 radius = 0.01
@@ -56,7 +56,8 @@ radius = 0.01
 magnitude = 0
 
 [fluid]
-c0 = 100
+c0 = 50
+restDensity = 998
 
 [simulation]
 boundaryScheme = 'solid'
@@ -71,12 +72,16 @@ gamma = 7.0
 
 [diffusion]
 velocityScheme = 'deltaSPH'
-densityScheme = 'deltaSPH'
+densityScheme = 'MOG'
+boundaryDiffusion = 0.001
+fluidDiffusion = 0.001
 alpha = 0.01
+delta = 0.1
+kinematic = 0.001
 
 [integration]
 scheme = 'RK4'
-dt = 0.00025
+dt = 0.001
 
 [shifting]
 enabled = false

@@ -320,16 +320,16 @@ hyperParameterDict['augmentAngle'] =  args.augmentAngle
 hyperParameterDict['augmentJitter'] =  args.augmentJitter
 hyperParameterDict['jitterAmount'] =  args.jitterAmount
 hyperParameterDict['networkSeed'] =  args.networkseed
-hyperParameterDict['network'] = 'denormalized'
+hyperParameterDict['network'] = args.network
 lr = initialLR
 
 
 timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-networkPrefix = 'denormalized'
+networkPrefix = args.network
 
 exportString = '%s - n=[%2d,%2d] rbf=[%s,%s] map = %s window = %s d = %2d e = %2d arch %s distance = %2d - %s seed %s' % (networkPrefix, hyperParameterDict['n'], hyperParameterDict['m'], hyperParameterDict['rbf_x'], hyperParameterDict['rbf_y'], hyperParameterDict['coordinateMapping'], args.windowFunction, hyperParameterDict['frameDistance'], hyperParameterDict['epochs'], args.arch, frameDistance, timestamp, args.networkseed)
 
-shortLabel = '%14s [%14s] - %s -> [%16s, %16s] x [%2d, %2d] @ %2s ' % (hyperParameterDict['windowFunction'], hyperParameterDict['arch'], hyperParameterDict['coordinateMapping'], hyperParameterDict['rbf_x'], hyperParameterDict['rbf_y'], hyperParameterDict['n'], hyperParameterDict['m'],hyperParameterDict['networkSeed'])
+shortLabel = '%14s [%14s] - %s -> [%16s, %16s] x [%2d, %2d] @ %2s ' % (networkPrefix, hyperParameterDict['arch'], hyperParameterDict['coordinateMapping'], hyperParameterDict['rbf_x'], hyperParameterDict['rbf_y'], hyperParameterDict['n'], hyperParameterDict['m'],hyperParameterDict['networkSeed'])
 # print(shortLabel)
 
 # exit()

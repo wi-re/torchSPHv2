@@ -4,7 +4,35 @@ from math import pi
 from math import pow
 from math import sqrt
 import numpy as np
-
+"""
+Python 2 and 3 code to generate 4 and 5 digit NACA profiles
+The NACA airfoils are airfoil shapes for aircraft wings developed
+by the National Advisory Committee for Aeronautics (NACA).
+The shape of the NACA airfoils is described using a series of
+digits following the word "NACA". The parameters in the numerical
+code can be entered into equations to precisely generate the
+cross-section of the airfoil and calculate its properties.
+    https://en.wikipedia.org/wiki/NACA_airfoil
+Ports of the Matlab code available here:
+    http://www.mathworks.com/matlabcentral/fileexchange/19915-naca-4-digit-airfoil-generator
+    http://www.mathworks.com/matlabcentral/fileexchange/23241-naca-5-digit-airfoil-generator
+Copyright (C) 2011 by Dirk Gorissen <dgorissen@gmail.com>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+"""
 def linspace(start,stop,np):
     """
     Emulate Matlab linspace
@@ -225,16 +253,16 @@ def naca(number, n, finite_TE = False, half_cosine_spacing = False):
     else:
         raise Exception
 
-
+# This function is not part of the code by Dirk Gorissen
+# This function is a simple wrapper around the naca functions that enables external modifications
+# The rotation is performed with respect to the center of the coordinate system, which works for the specific aerofoils genrated here
 def getAerofoil(number, n = 64, rotation = 0, scaling = 1., offset = [0,0]):
     vertices = np.array(naca(number, n, half_cosine_spacing=True)).T[:-1]
     theta = np.radians(rotation)
     c, s = np.cos(theta), np.sin(theta)
     R = np.array(((c, -s), (s, c)))
-    # print(vertices.shape)
     vertices = np.array([R.dot(vertex) for vertex in vertices])
     vertices *= scaling
-    # print(vertices.shape)
     vertices[:,0] += offset[0]
     vertices[:,1] += offset[1]
     return vertices
