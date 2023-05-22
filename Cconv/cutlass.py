@@ -64,10 +64,53 @@ def getDistances(n, x, periodic = False):
     return torch.abs(r)  / spacing
 
 
+def getDistancesRel(n, x, periodic = False):
+    if n in centroidCache[periodic][x.device.type]:
+        centroids = centroidCache[periodic][x.device.type][n]
+        if periodic:
+            spacing = getSpacing(n, True)
+            offset = -1 + spacing / 2.
+            ra = torch.unsqueeze(x,axis=0) - centroids
+            rb = torch.unsqueeze(x,axis=0) - centroids - 2.
+            rc = torch.unsqueeze(x,axis=0) - centroids + 2.
+            return torch.minimum(torch.minimum(torch.abs(ra)/spacing, torch.abs(rb)/spacing), torch.abs(rc)/spacing)
+        else:
+            spacing = getSpacing(n, False)
+            
+            # centroids = torch.linspace(-1.,1.,n, device = x.device) if n > 1 else torch.constant([0.], device = x.device)
+        #     tx = torch.constant(x, dtype='float32')
+            r = torch.unsqueeze(x,axis=0) - centroids
+            return r  / spacing
+
+
+    if periodic:
+        spacing = getSpacing(n, True)
+        offset = -1 + spacing / 2.
+        
+#         tx = torch.constant(x, dtype='float32')
+        centroids = torch.unsqueeze(torch.linspace(-1.,1.,n+1, device = x.device)[:n],axis=1)
+        centroidCache[periodic][x.device.type][n] = centroids
+
+        ra = torch.unsqueeze(x,axis=0) - centroids
+        rb = torch.unsqueeze(x,axis=0) - centroids - 2.
+        rc = torch.unsqueeze(x,axis=0) - centroids + 2.
+        return torch.minimum(torch.minimum(torch.abs(ra)/spacing, torch.abs(rb)/spacing), torch.abs(rc)/spacing)
+        
+    spacing = getSpacing(n, False)
+    
+    centroids = torch.linspace(-1.,1.,n, device = x.device) if n > 1 else torch.tensor([0.], device = x.device)
+    centroids = torch.unsqueeze(centroids, axis = 1)
+    centroidCache[periodic][x.device.type][n] = centroids
+#     tx = torch.constant(x, dtype='float32')
+    r = torch.unsqueeze(x,axis=0) - centroids
+    return r  / spacing
+
+
 def evalRBFSeries(n, x, which = 'linear', epsilon = 1., periodic = False):    
 
     k = int(epsilon)
-    r = getDistances(n, x, periodic)    
+    rRel = getDistancesRel(n, x, periodic)
+    r = torch.abs(rRel)
     if n == 1:
         return torch.ones_like(r)
     
@@ -79,17 +122,18 @@ def evalRBFSeries(n, x, which = 'linear', epsilon = 1., periodic = False):
         'multiquadric': lambda r: torch.sqrt(1. + (epsilon * r) **2),
         'inverse_quadric': lambda r: 1. / ( 1 + (epsilon * r) **2),
         'inverse_multiquadric': lambda r: 1. / torch.sqrt(1. + (epsilon * r) **2),
-        'polyharmonic': lambda r: torch.pow(r, k) if k % 2 == 1 else torch.pow(r,k-1) * torch.math.log(torch.pow(r,r)),
+        'polyharmonic': lambda r: torch.pow(r, k) if k % 2 == 1 else torch.pow(r,k-1) * torch.log(torch.pow(r,r)),
         'bump': lambda r: torch.where(r < 1./epsilon, torch.exp(-1./(1- (epsilon * r)**2)), torch.zeros_like(r)),
-        'cubic_spline': lambda r: cpow(1-r/epsilon,3) - 4. * cpow(1/2-r/epsilon,3),
-        'quartic_spline': lambda r: cpow(1-r/epsilon,4) - 5 * cpow(3/5-r/epsilon,4) + 10 * cpow(1/5-r/epsilon,4),
-        'quintic_spline': lambda r: cpow(1-r/epsilon,5) - 6 * cpow(2/3-r/epsilon,5) + 15 * cpow(1/3-r/epsilon,5),
-        'wendland2': lambda r: cpow(1 - r/epsilon, 4) * (1 + 4 * r/epsilon),
-        'wendland4': lambda r: cpow(1 - r/epsilon, 6) * (1 + 6 * r/epsilon + 35/3 * (r/epsilon)**2),
-        'wendland6': lambda r: cpow(1 - r/epsilon, 8) * (1 + 8 * r/epsilon + 25 * (r/epsilon) **2 + 32 * (r/epsilon)**3),
+        'cubic_spline': lambda r: cpow(1-r/(epsilon * 1.732051),3) - 4. * cpow(1/2-r/(epsilon * 1.732051),3),
+        'quartic_spline': lambda r: cpow(1-r/(epsilon * 1.936492),4) - 5 * cpow(3/5-r/(epsilon * 1.936492),4) + 10 * cpow(1/5-r/(epsilon * 1.732051),4),
+        'quintic_spline': lambda r: cpow(1-r/(epsilon * 2.121321),5) - 6 * cpow(2/3-r/(epsilon * 2.121321),5) + 15 * cpow(1/3-r/(epsilon * 2.121321),5),
+        'wendland2': lambda r: cpow(1 - r/(epsilon * 1.620185), 4) * (1 + 4 * r/(epsilon * 1.620185)),
+        'wendland4': lambda r: cpow(1 - r/(epsilon * 1.936492), 6) * (1 + 6 * r/(epsilon * 1.936492) + 35/3 * (r/(epsilon * 1.936492))**2),
+        'wendland6': lambda r: cpow(1 - r/(epsilon * 2.207940), 8) * (1 + 8 * r/(epsilon * 2.207940) + 25 * (r/(epsilon * 2.207940)) **2 + 32 * (r * (epsilon * 2.207940))**3),
         'poly6': lambda r: cpow(1 - (r/epsilon)**2, 3),
         'spiky': lambda r: cpow(1 - r/epsilon, 3),
-        'square': lambda r: torch.where(r <= epsilon, torch.ones_like(r), torch.zeros_like(r))
+        'square': lambda r: torch.where(torch.logical_and(rRel > -0.5 * epsilon, rRel <= 0.5 * epsilon), torch.ones_like(r), torch.zeros_like(r))
+
     }
     rbf = funLib[which]
     
@@ -110,6 +154,17 @@ def evalChebSeries(n,x):
     return torch.stack(cs)
 sqrt_pi_1 = 1. / np.sqrt(np.pi)
 
+def evalChebSeries2(n,x):
+    cs = []
+    for i in range(n):
+        if i == 0:
+            cs.append(torch.ones_like(x))
+        elif i == 1:
+            cs.append(2 * x)
+        else:
+            cs.append(2. * x * cs[i-1] - cs[i-2])
+    return torch.stack(cs)
+
 def fourier(n, x):
     if n == 0:
         return torch.ones_like(x) / np.sqrt(2. * np.pi)
@@ -128,6 +183,8 @@ def evalBasisFunction(n, x, which = 'chebyshev', periodic = False):
 #     print(s)
     if s[0] == 'chebyshev':
         return evalChebSeries(n, x)
+    if s[0] == 'chebyshev2':
+        return evalChebSeries2(n, x)
     if s[0] == 'fourier':
         return evalFourierSeries(n, x * np.pi)
     if s[0] == 'linear':
@@ -135,6 +192,7 @@ def evalBasisFunction(n, x, which = 'chebyshev', periodic = False):
     if s[0] == 'rbf':
         eps = 1. if len(s) < 3 else float(s[2])
         return evalRBFSeries(n, x, which = s[1], epsilon = eps, periodic = periodic)
+
 
 class cutlass(torch.autograd.Function):
     @staticmethod

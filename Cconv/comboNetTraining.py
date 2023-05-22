@@ -120,6 +120,7 @@ parser.add_argument('--minUnroll', type=int, default=2)
 parser.add_argument('-augj', '--augmentJitter', type=bool, default=True)
 parser.add_argument('-j', '--jitterAmount', type=float, default=0.01)
 parser.add_argument('-augr', '--augmentAngle', type=bool, default=True)
+parser.add_argument('-netArch', '--network', type=str, default='default')
 
 args = parser.parse_args()
 
@@ -267,8 +268,19 @@ random.seed(args.networkseed)
 torch.manual_seed(args.networkseed)
 torch.cuda.manual_seed(args.networkseed)
 np.random.seed(args.networkseed)
-model = RbfNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
 
+
+model = None
+if args.network == 'default':
+    model = RbfNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
+if args.network == 'split':
+    model = RbfSplitNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
+if args.network == 'interleaved':
+    model = RbfInterleaveNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
+if args.network == 'input':
+    model = RbfInputNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
+if args.network == 'output':
+    model = RbfOutputNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
 
 
 lr = initialLR
@@ -308,15 +320,21 @@ hyperParameterDict['augmentAngle'] =  args.augmentAngle
 hyperParameterDict['augmentJitter'] =  args.augmentJitter
 hyperParameterDict['jitterAmount'] =  args.jitterAmount
 hyperParameterDict['networkSeed'] =  args.networkseed
+hyperParameterDict['network'] = 'denormalized'
 lr = initialLR
 
 
 timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-networkPrefix = 'generative2D'
+networkPrefix = 'denormalized'
 
 exportString = '%s - n=[%2d,%2d] rbf=[%s,%s] map = %s window = %s d = %2d e = %2d arch %s distance = %2d - %s seed %s' % (networkPrefix, hyperParameterDict['n'], hyperParameterDict['m'], hyperParameterDict['rbf_x'], hyperParameterDict['rbf_y'], hyperParameterDict['coordinateMapping'], args.windowFunction, hyperParameterDict['frameDistance'], hyperParameterDict['epochs'], args.arch, frameDistance, timestamp, args.networkseed)
 
+shortLabel = '%14s [%14s] - %s -> [%16s, %16s] x [%2d, %2d] @ %2s ' % (hyperParameterDict['windowFunction'], hyperParameterDict['arch'], hyperParameterDict['coordinateMapping'], hyperParameterDict['rbf_x'], hyperParameterDict['rbf_y'], hyperParameterDict['n'], hyperParameterDict['m'],hyperParameterDict['networkSeed'])
+# print(shortLabel)
+
+# exit()
 # if args.gpus == 1:
+
 #     debugPrint(hyperParameterDict)
 # if args.gpus == 1:
 #     debugPrint(exportString)
@@ -382,7 +400,8 @@ def processDataLoaderIter(iterations, e, rollout, ds, dataLoader, dataIter, mode
                     pbl.set_description('%8s[gpu %d]: %3d [%1d] @ %1.1e: :  %s -> %.2e' %(prefix, args.gpu, e, rollout, lr, batchString, sumLosses.detach().cpu().numpy()))
                     pbl.update()
                     if prefix == 'training':
-                        pb.set_description('[gpu %d] Learning: %1.4e Validation: %1.4e' %(args.gpu, np.mean(np.mean(np.vstack(losses)[:,:,0], axis = 1)), 0))
+                        # pb.set_description('[gpu %d] Learning: %1.4e Validation: %1.4e' %(args.gpu, np.mean(np.mean(np.vstack(losses)[:,:,0], axis = 1)), 0))
+                        pb.set_description('[gpu %d] %90s - Learning: %1.4e' %(args.gpu, shortLabel, np.mean(np.mean(np.vstack(losses)[:,:,0], axis = 1))))
                     if prefix == 'validation':
                         pb.set_description('[gpu %d] Learning: %1.4e Validation: %1.4e' %(args.gpu, trainLoss, np.mean(np.mean(np.vstack(losses)[:,:,0], axis = 1))))
                     pb.update()
