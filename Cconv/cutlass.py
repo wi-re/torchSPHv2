@@ -117,6 +117,23 @@ def evalRBFSeries(n, x, which = 'linear', epsilon = 1., periodic = False):
     cpow = lambda x, p: torch.maximum(x, torch.zeros_like(r))**p
     
     funLib = {
+        # 'linear': lambda r:  torch.clamp(1. - r / epsilon,0,1),
+        # 'gaussian': lambda r:  torch.exp(-(epsilon * r)**2),
+        # 'multiquadric': lambda r: torch.sqrt(1. + (epsilon * r) **2),
+        # 'inverse_quadric': lambda r: 1. / ( 1 + (epsilon * r) **2),
+        # 'inverse_multiquadric': lambda r: 1. / torch.sqrt(1. + (epsilon * r) **2),
+        # 'polyharmonic': lambda r: torch.pow(r, k) if k % 2 == 1 else torch.pow(r,k-1) * torch.log(torch.pow(r,r)),
+        # 'bump': lambda r: torch.where(r < 1./epsilon, torch.exp(-1./(1- (epsilon * r)**2)), torch.zeros_like(r)),
+        # 'cubic_spline': lambda r: cpow(1-r/(epsilon * 1.732051),3) - 4. * cpow(1/2-r/(epsilon * 1.732051),3),
+        # 'quartic_spline': lambda r: cpow(1-r/(epsilon * 1.936492),4) - 5 * cpow(3/5-r/(epsilon * 1.936492),4) + 10 * cpow(1/5-r/(epsilon * 1.732051),4),
+        # 'quintic_spline': lambda r: cpow(1-r/(epsilon * 2.121321),5) - 6 * cpow(2/3-r/(epsilon * 2.121321),5) + 15 * cpow(1/3-r/(epsilon * 2.121321),5),
+        # 'wendland2': lambda r: cpow(1 - r/(epsilon * 1.620185), 4) * (1 + 4 * r/(epsilon * 1.620185)),
+        # 'wendland4': lambda r: cpow(1 - r/(epsilon * 1.936492), 6) * (1 + 6 * r/(epsilon * 1.936492) + 35/3 * (r/(epsilon * 1.936492))**2),
+        # 'wendland6': lambda r: cpow(1 - r/(epsilon * 2.207940), 8) * (1 + 8 * r/(epsilon * 2.207940) + 25 * (r/(epsilon * 2.207940)) **2 + 32 * (r * (epsilon * 2.207940))**3),
+        # 'poly6': lambda r: cpow(1 - (r/epsilon)**2, 3),
+        # 'spiky': lambda r: cpow(1 - r/epsilon, 3),
+        # 'square': lambda r: torch.where(torch.logical_and(rRel > -0.5 * epsilon, rRel <= 0.5 * epsilon), torch.ones_like(r), torch.zeros_like(r))
+
         'linear': lambda r:  torch.clamp(1. - r / epsilon,0,1),
         'gaussian': lambda r:  torch.exp(-(epsilon * r)**2),
         'multiquadric': lambda r: torch.sqrt(1. + (epsilon * r) **2),
@@ -124,15 +141,16 @@ def evalRBFSeries(n, x, which = 'linear', epsilon = 1., periodic = False):
         'inverse_multiquadric': lambda r: 1. / torch.sqrt(1. + (epsilon * r) **2),
         'polyharmonic': lambda r: torch.pow(r, k) if k % 2 == 1 else torch.pow(r,k-1) * torch.log(torch.pow(r,r)),
         'bump': lambda r: torch.where(r < 1./epsilon, torch.exp(-1./(1- (epsilon * r)**2)), torch.zeros_like(r)),
-        'cubic_spline': lambda r: cpow(1-r/(epsilon * 1.732051),3) - 4. * cpow(1/2-r/(epsilon * 1.732051),3),
-        'quartic_spline': lambda r: cpow(1-r/(epsilon * 1.936492),4) - 5 * cpow(3/5-r/(epsilon * 1.936492),4) + 10 * cpow(1/5-r/(epsilon * 1.732051),4),
-        'quintic_spline': lambda r: cpow(1-r/(epsilon * 2.121321),5) - 6 * cpow(2/3-r/(epsilon * 2.121321),5) + 15 * cpow(1/3-r/(epsilon * 2.121321),5),
-        'wendland2': lambda r: cpow(1 - r/(epsilon * 1.620185), 4) * (1 + 4 * r/(epsilon * 1.620185)),
-        'wendland4': lambda r: cpow(1 - r/(epsilon * 1.936492), 6) * (1 + 6 * r/(epsilon * 1.936492) + 35/3 * (r/(epsilon * 1.936492))**2),
-        'wendland6': lambda r: cpow(1 - r/(epsilon * 2.207940), 8) * (1 + 8 * r/(epsilon * 2.207940) + 25 * (r/(epsilon * 2.207940)) **2 + 32 * (r * (epsilon * 2.207940))**3),
+        'cubic_spline': lambda r: cpow(1-r/(epsilon * 1.),3) - 4. * cpow(1/2-r/(epsilon * 1.),3),
+        'quartic_spline': lambda r: cpow(1-r/(epsilon * 1.),4) - 5 * cpow(3/5-r/(epsilon * 1.),4) + 10 * cpow(1/5-r/(epsilon * 1.),4),
+        'quintic_spline': lambda r: cpow(1-r/(epsilon * 1.),5) - 6 * cpow(2/3-r/(epsilon * 1.),5) + 15 * cpow(1/3-r/(epsilon * 1.),5),
+        'wendland2': lambda r: cpow(1 - r/(epsilon * 1.), 4) * (1 + 4 * r/(epsilon * 1.)),
+        'wendland4': lambda r: cpow(1 - r/(epsilon * 1.), 6) * (1 + 6 * r/(epsilon * 1.) + 35/3 * (r/(epsilon * 1.))**2),
+        'wendland6': lambda r: cpow(1 - r/(epsilon * 1.), 8) * (1 + 8 * r/(epsilon * 1.) + 25 * (r/(epsilon * 1.)) **2 + 32 * (r * (epsilon * 1.))**3),
         'poly6': lambda r: cpow(1 - (r/epsilon)**2, 3),
         'spiky': lambda r: cpow(1 - r/epsilon, 3),
         'square': lambda r: torch.where(torch.logical_and(rRel > -0.5 * epsilon, rRel <= 0.5 * epsilon), torch.ones_like(r), torch.zeros_like(r))
+
 
     }
     rbf = funLib[which]
