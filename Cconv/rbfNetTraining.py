@@ -103,6 +103,7 @@ parser.add_argument('-y','--rbf_y', type=str, default='linear')
 parser.add_argument('-n','--n', type=int, default=4)
 parser.add_argument('-m','--m', type=int, default=4)
 parser.add_argument('--seed', type=int, default=42)
+parser.add_argument('--networkseed', type=int, default=42)
 parser.add_argument('-d','--frameDistance', type=int, default=1)
 parser.add_argument('--dataDistance', type=int, default=1)
 parser.add_argument('--gpu', type=int, default=0)
@@ -262,10 +263,10 @@ layers = [int(s) for s in widths]
 if args.verbose:
     print('Building Network')
 
-random.seed(args.seed)
-torch.manual_seed(args.seed)
-torch.cuda.manual_seed(args.seed)
-np.random.seed(args.seed)
+random.seed(args.networkseed)
+torch.manual_seed(args.networkseed)
+torch.cuda.manual_seed(args.networkseed)
+np.random.seed(args.networkseed)
 model = RbfNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
 
 
@@ -306,13 +307,14 @@ hyperParameterDict['maxUnroll'] =  args.maxUnroll
 hyperParameterDict['augmentAngle'] =  args.augmentAngle
 hyperParameterDict['augmentJitter'] =  args.augmentJitter
 hyperParameterDict['jitterAmount'] =  args.jitterAmount
+hyperParameterDict['networkSeed'] =  args.networkseed
 lr = initialLR
 
 
 timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 networkPrefix = 'generative2D'
 
-exportString = '%s - n=[%2d,%2d] rbf=[%s,%s] map = %s window = %s d = %2d e = %2d arch %s distance = %2d - %s' % (networkPrefix, hyperParameterDict['n'], hyperParameterDict['m'], hyperParameterDict['rbf_x'], hyperParameterDict['rbf_y'], hyperParameterDict['coordinateMapping'], args.windowFunction, hyperParameterDict['frameDistance'], hyperParameterDict['epochs'], args.arch, frameDistance, timestamp)
+exportString = '%s - n=[%2d,%2d] rbf=[%s,%s] map = %s window = %s d = %2d e = %2d arch %s distance = %2d - %s seed %s' % (networkPrefix, hyperParameterDict['n'], hyperParameterDict['m'], hyperParameterDict['rbf_x'], hyperParameterDict['rbf_y'], hyperParameterDict['coordinateMapping'], args.windowFunction, hyperParameterDict['frameDistance'], hyperParameterDict['epochs'], args.arch, frameDistance, timestamp, args.networkseed)
 
 # if args.gpus == 1:
 #     debugPrint(hyperParameterDict)
