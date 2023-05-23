@@ -384,7 +384,7 @@ def processDataLoaderIter(iterations, e, rollout, ds, dataLoader, dataIter, mode
             with record_function("prcess data loader[batch]"): 
                 if train:
                     optimizer.zero_grad()
-                batchLosses, meanLosses, minLosses, maxLosses, stdLosses = processBatch(model, device, True, e, rollout, ds, bdata, frameDistance, augmentAngle, augmentJitter, jitterAmountm, adjustForFrameDistance = args.adjustForFrameDistance)
+                batchLosses, meanLosses, minLosses, maxLosses, stdLosses = processBatch(model, device, True, e, rollout, ds, bdata, frameDistance, augmentAngle, augmentJitter, jitterAmount, adjustForFrameDistance = args.adjustForFrameDistance)
                 # print(torch.max(model.ni))
                 
                 batchIndices.append(np.array(bdata))
