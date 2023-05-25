@@ -259,10 +259,10 @@ class cutlass(torch.autograd.Function):
                             v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
 
                         with record_function("cutlass forward einsum"): 
-                            normalizationFactor = torch.einsum('nu,nv -> nuv',u, v).sum(-1).sum(-1)
 
                             # conv = torch.einsum('nu, nv, uvio,ni -> no',u,v,weight, torch.index_select(features,0, edge_index[1,batch]) * edge_weights[batch])
                             if ctx.normalized:
+                                normalizationFactor = torch.einsum('nu,nv -> nuv',u, v).sum(-1).sum(-1)
                                 conv = torch.einsum('nu, nv, uvio,ni -> no',u,v,weight, x_j[batch]) * normalizationFactor[:,None]
                             else:
                                 conv = torch.einsum('nu, nv, uvio,ni -> no',u,v,weight, x_j[batch])
@@ -496,4 +496,4 @@ class cutlass(torch.autograd.Function):
             # print('weight:      ', weight)
             # print('featureGrad: ', featureGrad)
             # print('weightGrad:  ', weightGrad)
-            return None, None, featureGrad, None, None, weightGrad, None, None, None, None, None, None, None
+            return None, None, featureGrad, None, None, weightGrad, None, None, None, None, None, None, None, None 
