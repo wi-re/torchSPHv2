@@ -120,6 +120,7 @@ parser.add_argument('--minUnroll', type=int, default=2)
 parser.add_argument('-augj', '--augmentJitter', type=bool, default=True)
 parser.add_argument('-j', '--jitterAmount', type=float, default=0.01)
 parser.add_argument('-augr', '--augmentAngle', type=bool, default=True)
+parser.add_argument('-adjust', '--adjustForFrameDistance', type = bool, default = True)
 parser.add_argument('-netArch', '--network', type=str, default='default')
 
 args = parser.parse_args()
@@ -204,7 +205,7 @@ validation = []
 testing = []
 
 for s in trainingFiles:
-    f, s, u = splitFile(s, split = False, cutoff = -args.frameDistance * args.maxUnroll, skip = 0)
+    f, s, u = splitFile(s, split = False, cutoff = -args.frameDistance * args.maxUnroll, skip = args.frameDistance if args.adjustForFrameDistance else 0)
     training.append((f, (s,u)))
 # for s in tqdm(validationFiles):
 #     f, s, u = splitFile(s, split = False, cutoff = -4, skip = 0)
@@ -321,6 +322,7 @@ hyperParameterDict['augmentJitter'] =  args.augmentJitter
 hyperParameterDict['jitterAmount'] =  args.jitterAmount
 hyperParameterDict['networkSeed'] =  args.networkseed
 hyperParameterDict['network'] = args.network
+hyperParameterDict['adjustForFrameDistance'] = args.adjustForFrameDistance
 lr = initialLR
 
 
@@ -382,7 +384,7 @@ def processDataLoaderIter(iterations, e, rollout, ds, dataLoader, dataIter, mode
             with record_function("prcess data loader[batch]"): 
                 if train:
                     optimizer.zero_grad()
-                batchLosses, meanLosses, minLosses, maxLosses, stdLosses = processBatch(model, device, True, e, rollout, ds, bdata, frameDistance, augmentAngle, augmentJitter, jitterAmount)
+                batchLosses, meanLosses, minLosses, maxLosses, stdLosses = processBatch(model, device, True, e, rollout, ds, bdata, frameDistance, augmentAngle, augmentJitter, jitterAmount, adjustForFrameDistance = args.adjustForFrameDistance)
                 # print(torch.max(model.ni))
                 
                 batchIndices.append(np.array(bdata))

@@ -314,7 +314,7 @@ class datasetLoader(Dataset):
 
 
 
-def loadFrame(filename, frame, frameOffsets = [1], frameDistance = 1):
+def loadFrame(filename, frame, frameOffsets = [1], frameDistance = 1, adjustForFrameDistance = True):
     if 'zst' in filename:
         return loadFrameZSTD(filename, frame, frameOffsets, frameDistance)
     inFile = h5py.File(filename)
@@ -349,6 +349,12 @@ def loadFrame(filename, frame, frameOffsets = [1], frameDistance = 1):
         'boundaryVelocity': torch.from_numpy(inFile['boundaryInformation']['boundaryVelocity'][:]).type(torch.float32),
         'boundaryDensity': torch.from_numpy(inGrp['boundaryDensity'][:]).type(torch.float32)
     }
+
+    if frame >= frameDistance:
+        priorGrp = inFile['simulationExport']['%05d' % (frame - frameDistance)]
+        priorPosition = torch.from_numpy(priorGrp['fluidPosition'][:]).type(torch.float32)
+        inputData['fluidVelocity'] = (inputData['fluidPosition'] - priorPosition) / (frameDistance * attributes['dt'])
+        # priorVelocity = torch.from_numpy(priorGrp['fluidVelocity'][:]).type(torch.float32)
     
     groundTruthData = []
     for i in frameOffsets:
@@ -605,11 +611,11 @@ def augment(attributes, inputData, groundTruthData, angle, jitter):
 #     print(rotatedData.keys())
     return attributes, rotatedData, rotatedGT
 
-def loadData(dataset, index, featureFun, unroll = 1, frameDistance = 1, augmentAngle = 0., augmentJitter = 0.):
+def loadData(dataset, index, featureFun, unroll = 1, frameDistance = 1, augmentAngle = 0., augmentJitter = 0., adjustForFrameDistance = True):
     with record_function("load data - hdf5"): 
         fileName, frameIndex, maxRollouts = dataset[index]
 
-        attributes, inputData, groundTruthData = loadFrame(fileName, frameIndex, 1 + np.arange(unroll), frameDistance = frameDistance)
+        attributes, inputData, groundTruthData = loadFrame(fileName, frameIndex, 1 + np.arange(unroll), frameDistance = frameDistance, adjustForFrameDistance = adjustForFrameDistance)
         # attributes['support'] = 4.5 * attributes['support']
         if augmentAngle != 0 or augmentJitter != 0:
             attributes, inputData, groundTruthData = augment(attributes, inputData, groundTruthData, augmentAngle, augmentJitter)
@@ -617,7 +623,7 @@ def loadData(dataset, index, featureFun, unroll = 1, frameDistance = 1, augmentA
 
         return attributes, fluidPositions, boundaryPositions, fluidFeatures, boundaryFeatures, inputData['fluidGravity'], groundTruthData
 
-def loadBatch(train_ds, bdata, featureFun, unroll = 1, frameDistance = 1, augmentAngle = False, augmentJitter = False, jitterAmount = 0.01):
+def loadBatch(train_ds, bdata, featureFun, unroll = 1, frameDistance = 1, augmentAngle = False, augmentJitter = False, jitterAmount = 0.01, adjustForFrameDistance = True):
     with record_function("load batch - hdf5"): 
         fluidPositions = []
         boundaryPositions = []
@@ -636,7 +642,7 @@ def loadBatch(train_ds, bdata, featureFun, unroll = 1, frameDistance = 1, augmen
         #         debugPrint(i)
         #         debugPrint(b)
                 attributes, fluidPosition, boundaryPosition, fluidFeature, boundaryFeature, fluidGravity, groundTruth = loadData(train_ds, b, featureFun, unroll = unroll, frameDistance = frameDistance,\
-                                augmentAngle = torch.rand(1)[0] if augmentAngle else 0., augmentJitter = jitterAmount if augmentJitter else 0.)     
+                                augmentAngle = torch.rand(1)[0] if augmentAngle else 0., augmentJitter = jitterAmount if augmentJitter else 0., adjustForFrameDistance = adjustForFrameDistance)     
         #         debugPrint(groundTruth)
                 fluidPositions.append(fluidPosition)
                 attributeArray.append(attributes)
