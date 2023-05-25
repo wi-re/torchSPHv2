@@ -93,7 +93,7 @@ parser.add_argument('-cmap','--coordinateMapping', type=str, default='preserving
 parser.add_argument('-w','--windowFunction', type=str, default='poly6')
 parser.add_argument('-c','--cutoff', type=int, default=1800)
 parser.add_argument('-b','--batch_size', type=int, default=2)
-parser.add_argument('--cutlassBatchSize', type=int, default=128)
+parser.add_argument('--cutlassBatchSize', type=int, default=512)
 parser.add_argument('-r','--lr', type=float, default=0.01)
 parser.add_argument('--lr_decay_factor', type=float, default=0.9)
 parser.add_argument('--lr_decay_step_size', type=int, default=1)
@@ -331,7 +331,7 @@ networkPrefix = args.network
 
 exportString = '%s - n=[%2d,%2d] rbf=[%s,%s] map = %s window = %s d = %2d e = %2d arch %s distance = %2d - %s seed %s' % (networkPrefix, hyperParameterDict['n'], hyperParameterDict['m'], hyperParameterDict['rbf_x'], hyperParameterDict['rbf_y'], hyperParameterDict['coordinateMapping'], args.windowFunction, hyperParameterDict['frameDistance'], hyperParameterDict['epochs'], args.arch, frameDistance, timestamp, args.networkseed)
 
-shortLabel = '%14s [%14s] - %s -> [%16s, %16s] x [%2d, %2d] @ %2s ' % (networkPrefix, hyperParameterDict['arch'], hyperParameterDict['coordinateMapping'], hyperParameterDict['rbf_x'], hyperParameterDict['rbf_y'], hyperParameterDict['n'], hyperParameterDict['m'],hyperParameterDict['networkSeed'])
+shortLabel = '%14s [%14s] - %s -> [%16s, %16s] x [%2d, %2d] @ %2s ' % (hyperParameterDict['windowFunction'], hyperParameterDict['arch'], hyperParameterDict['coordinateMapping'], hyperParameterDict['rbf_x'], hyperParameterDict['rbf_y'], hyperParameterDict['n'], hyperParameterDict['m'],hyperParameterDict['networkSeed'])
 # print(shortLabel)
 
 # exit()
