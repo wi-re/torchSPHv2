@@ -734,7 +734,7 @@ class NumpyArrayEncoder(JSONEncoder):
 
 
 def getWindowFunction(windowFunction):
-    windowFn = None
+    windowFn = lambda r: torch.ones_like(r)
     if windowFunction == 'cubicSpline':
         windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 3 - 4 * torch.clamp(1/2 - r, min = 0) ** 3
     if windowFunction == 'quarticSpline':

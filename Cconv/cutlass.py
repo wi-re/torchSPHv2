@@ -249,56 +249,56 @@ def evalBasisFunction(n, x, which = 'chebyshev', periodic = False):
         return evalRBFSeries(n, x, which = s[1], epsilon = eps, periodic = periodic, normalized = True)
 
     
-def evalChebSeries(n,x):
-    cs = []
-    for i in range(n):
-        if i == 0:
-            cs.append(torch.ones_like(x))
-        elif i == 1:
-            cs.append(x)
-        else:
-            cs.append(2. * x * cs[i-1] - cs[i-2])
-    return torch.stack(cs)
-sqrt_pi_1 = 1. / np.sqrt(np.pi)
+# def evalChebSeries(n,x):
+#     cs = []
+#     for i in range(n):
+#         if i == 0:
+#             cs.append(torch.ones_like(x))
+#         elif i == 1:
+#             cs.append(x)
+#         else:
+#             cs.append(2. * x * cs[i-1] - cs[i-2])
+#     return torch.stack(cs)
+# sqrt_pi_1 = 1. / np.sqrt(np.pi)
 
-def evalChebSeries2(n,x):
-    cs = []
-    for i in range(n):
-        if i == 0:
-            cs.append(torch.ones_like(x))
-        elif i == 1:
-            cs.append(2 * x)
-        else:
-            cs.append(2. * x * cs[i-1] - cs[i-2])
-    return torch.stack(cs)
+# def evalChebSeries2(n,x):
+#     cs = []
+#     for i in range(n):
+#         if i == 0:
+#             cs.append(torch.ones_like(x))
+#         elif i == 1:
+#             cs.append(2 * x)
+#         else:
+#             cs.append(2. * x * cs[i-1] - cs[i-2])
+#     return torch.stack(cs)
 
-def fourier(n, x):
-    if n == 0:
-        return torch.ones_like(x) / np.sqrt(2. * np.pi)
-    elif n % 2 == 0:
-        return torch.cos((n // 2 + 1) * x) * sqrt_pi_1
-    return torch.sin((n // 2 + 1) * x) * sqrt_pi_1
+# def fourier(n, x):
+#     if n == 0:
+#         return torch.ones_like(x) / np.sqrt(2. * np.pi)
+#     elif n % 2 == 0:
+#         return torch.cos((n // 2 + 1) * x) * sqrt_pi_1
+#     return torch.sin((n // 2 + 1) * x) * sqrt_pi_1
 
-def evalFourierSeries(n, x):
-    fs = []
-    for i in range(n):
-        fs.append(fourier(i, x))
-    return torch.stack(fs)
+# def evalFourierSeries(n, x):
+#     fs = []
+#     for i in range(n):
+#         fs.append(fourier(i, x))
+#     return torch.stack(fs)
 
-def evalBasisFunction(n, x, which = 'chebyshev', periodic = False):   
-    s = which.split()    
-#     print(s)
-    if s[0] == 'chebyshev':
-        return evalChebSeries(n, x)
-    if s[0] == 'chebyshev2':
-        return evalChebSeries2(n, x)
-    if s[0] == 'fourier':
-        return evalFourierSeries(n, x * np.pi)
-    if s[0] == 'linear':
-        return evalRBFSeries(n, x, which = 'linear', epsilon = float(s[1]) if len(s) > 1 else 1., periodic = periodic)        
-    if s[0] == 'rbf':
-        eps = 1. if len(s) < 3 else float(s[2])
-        return evalRBFSeries(n, x, which = s[1], epsilon = eps, periodic = periodic)
+# def evalBasisFunction(n, x, which = 'chebyshev', periodic = False):   
+#     s = which.split()    
+# #     print(s)
+#     if s[0] == 'chebyshev':
+#         return evalChebSeries(n, x)
+#     if s[0] == 'chebyshev2':
+#         return evalChebSeries2(n, x)
+#     if s[0] == 'fourier':
+#         return evalFourierSeries(n, x * np.pi)
+#     if s[0] == 'linear':
+#         return evalRBFSeries(n, x, which = 'linear', epsilon = float(s[1]) if len(s) > 1 else 1., periodic = periodic)        
+#     if s[0] == 'rbf':
+#         eps = 1. if len(s) < 3 else float(s[2])
+#         return evalRBFSeries(n, x, which = s[1], epsilon = eps, periodic = periodic)
 
 
 class cutlass(torch.autograd.Function):
@@ -348,10 +348,10 @@ class cutlass(torch.autograd.Function):
                             v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
 
                         with record_function("cutlass forward einsum"): 
-                            normalizationFactor = torch.einsum('nu,nv -> nuv',u, v).sum(-1).sum(-1)
 
                             # conv = torch.einsum('nu, nv, uvio,ni -> no',u,v,weight, torch.index_select(features,0, edge_index[1,batch]) * edge_weights[batch])
                             if ctx.normalized:
+                                normalizationFactor = torch.einsum('nu,nv -> nuv',u, v).sum(-1).sum(-1)
                                 conv = torch.einsum('nu, nv, uvio,ni -> no',u,v,weight, x_j[batch]) * normalizationFactor[:,None]
                             else:
                                 conv = torch.einsum('nu, nv, uvio,ni -> no',u,v,weight, x_j[batch])
@@ -585,4 +585,4 @@ class cutlass(torch.autograd.Function):
             # print('weight:      ', weight)
             # print('featureGrad: ', featureGrad)
             # print('weightGrad:  ', weightGrad)
-            return None, None, featureGrad, None, None, weightGrad, None, None, None, None, None, None, None, None
+            return None, None, featureGrad, None, None, weightGrad, None, None, None, None, None, None, None, None 
