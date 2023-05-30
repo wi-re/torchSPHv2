@@ -122,6 +122,7 @@ parser.add_argument('-j', '--jitterAmount', type=float, default=0.01)
 parser.add_argument('-augr', '--augmentAngle', type=bool, default=True)
 parser.add_argument('-adjust', '--adjustForFrameDistance', type = bool, default = True)
 parser.add_argument('-netArch', '--network', type=str, default='default')
+parser.add_argument('-norm', '--normalized', type=bool, default=False)
 
 args = parser.parse_args()
 
@@ -273,15 +274,15 @@ np.random.seed(args.networkseed)
 
 model = None
 if args.network == 'default':
-    model = RbfNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
+    model = RbfNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize, normalized = args.normalized)
 if args.network == 'split':
-    model = RbfSplitNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
+    model = RbfSplitNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize, normalized = args.normalized)
 if args.network == 'interleaved':
-    model = RbfInterleaveNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
+    model = RbfInterleaveNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize, normalized = args.normalized)
 if args.network == 'input':
-    model = RbfInputNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
+    model = RbfInputNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize, normalized = args.normalized)
 if args.network == 'output':
-    model = RbfOutputNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize)
+    model = RbfOutputNet(fluidFeatures.shape[1], boundaryFeatures.shape[1], layers = layers, coordinateMapping = coordinateMapping, n = n, m = m, windowFn = windowFn, rbf_x = rbf_x, rbf_y = rbf_y, batchSize = args.cutlassBatchSize, normalized = args.normalized)
 
 
 lr = initialLR
@@ -322,6 +323,7 @@ hyperParameterDict['augmentJitter'] =  args.augmentJitter
 hyperParameterDict['jitterAmount'] =  args.jitterAmount
 hyperParameterDict['networkSeed'] =  args.networkseed
 hyperParameterDict['network'] = args.network
+hyperParameterDict['normalized'] = args.normalized
 hyperParameterDict['adjustForFrameDistance'] = args.adjustForFrameDistance
 lr = initialLR
 
