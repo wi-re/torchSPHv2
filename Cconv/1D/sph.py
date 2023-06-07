@@ -399,7 +399,7 @@ def plotDensity(fluidPositions, fluidAreas, minDomain, maxDomain, particleSuppor
     axis[0,0].axhline(torch.max(fluidDensity), ls = '-', c = 'black', alpha = 0.5)
     axis[0,0].axhline(torch.min(fluidDensity), ls = '-', c = 'black', alpha = 0.5)
     
-def computeUpdate(fluidPositions, fluidVelocities, fluidAreas, minDomain, maxDomain, kappa, restDensity, diffusionCoefficient, particleSupport, dt):
+def computeUpdate(fluidPositions, fluidVelocities, fluidAreas, minDomain, maxDomain, kappa, restDensity, diffusionCoefficient, xsphCoefficient, particleSupport, dt):
     #  1. Create ghost particles for our boundary conditions
     ghostPositions = createGhostParticles(fluidPositions, minDomain, maxDomain)
     #  2. Find neighborhoods of all particles:
@@ -409,7 +409,7 @@ def computeUpdate(fluidPositions, fluidVelocities, fluidAreas, minDomain, maxDom
     #  4. Compute the pressure of each particle using an ideal gas EOS
     fluidPressure = (fluidDensity - 1.0) * kappa * restDensity
     #  5. Compute the XSPH term and apply it to the particle velocities:    
-    xsphUpdate = computeXSPH(fluidPositions, fluidVelocities, fluidDensity, fluidAreas, particleSupport, diffusionCoefficient, fluidNeighbors, fluidRadialDistances)
+    xsphUpdate = computeXSPH(fluidPositions, fluidVelocities, fluidDensity, fluidAreas, particleSupport, xsphCoefficient, fluidNeighbors, fluidRadialDistances)
 #     fluidVelocities += xsphUpdate
     #  6. Compute pressure forces and resulting acceleration
     fluidPressureForces = computePressureForces(fluidPositions, fluidDensity, fluidPressure, fluidAreas, particleSupport, restDensity, fluidNeighbors, fluidRadialDistances, fluidDistances)
@@ -417,7 +417,7 @@ def computeUpdate(fluidPositions, fluidVelocities, fluidAreas, minDomain, maxDom
     
     laminarViscosity = computeDiffusion(fluidPositions, fluidVelocities, fluidAreas, fluidDensity, particleSupport, restDensity, diffusionCoefficient, fluidNeighbors, fluidRadialDistances, fluidDistances)
     # fluidAccel += laminarViscosity
-    fluidAccel += xsphUpdate / dt
+    fluidAccel += xsphUpdate / dt + laminarViscosity
     return fluidAccel, fluidDensity, fluidPressure
 
 from scipy.interpolate import RegularGridInterpolator  
