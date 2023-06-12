@@ -289,7 +289,7 @@ class RbfConv(MessagePassing):
                         self.weight[i,:] *= np.exp(-i)
                     if len(self.rbfs) == 3:
                         self.weight[i,:,:] *= np.exp(-i)
-            if self.rbfs[1] in ['chebyshev', 'fourier', 'gabor']:
+            if len(self.rbfs) > 1 and self.rbfs[1] in ['chebyshev', 'fourier', 'gabor']:
                 for i in range(self.dim):
                     if len(self.rbfs) == 2:
                         self.weight[:,i] *= np.exp(-i)
