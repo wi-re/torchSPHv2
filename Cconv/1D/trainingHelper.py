@@ -235,7 +235,7 @@ def computeEvaluationLoss(model, weights, bdata, lossFunction, simulationStates,
 #     print(np.hstack(groundTruths))
 #     print(np.hstack(lossTerms))
 #     print(np.hstack(losses))
-    return torch.cat(predictions, axis = 0), torch.cat(groundTruths, axis = 0), torch.cat(lossTerms, axis = 0), torch.hstack(losses)
+    return torch.cat(predictions, axis = 0).cpu(), torch.cat(groundTruths, axis = 0).cpu(), torch.cat(lossTerms, axis = 0).cpu(), torch.hstack(losses).cpu()
 
 def plotAB(fig, axisA, axisB, dataA, dataB, batchesA, batchesB, numParticles, cmap = 'viridis'):
     vmin = min(torch.min(dataA), torch.min(dataB))
@@ -260,7 +260,7 @@ def plotABLog(fig, axisA, axisB, dataA, dataB, batchesA, batchesB, numParticles,
     cbarPredFFT = fig.colorbar(imB, cax=cax1,orientation='vertical')
     cbarPredFFT.ax.tick_params(labelsize=8) 
     
-def plotAll(model, weights, basis, normalized, iterations, epochs, numParticles, batchSize, lossArray, simulationStates, minDomain, maxDomain, particleSupport, timestamps, testBatch, lossFunction, getFeatures, getGroundTruth, stacked):
+def plotAll(model, device, weights, basis, normalized, iterations, epochs, numParticles, batchSize, lossArray, simulationStates, minDomain, maxDomain, particleSupport, timestamps, testBatch, lossFunction, getFeatures, getGroundTruth, stacked):
     trainingPrediction, trainingGroundTruth, trainingLossTerm, trainingLoss = computeEvaluationLoss(model, weights[-1][-1], timestamps, lossFunction, simulationStates, minDomain, maxDomain, particleSupport, getFeatures, getGroundTruth, stacked)
     testingPrediction, testingGroundTruth, testingLossTerm, testingLoss = computeEvaluationLoss(model, weights[-1][-1], testBatch, lossFunction, simulationStates, minDomain, maxDomain, particleSupport, getFeatures, getGroundTruth, stacked)
     fig, axis = plt.subplot_mosaic('''AABB
@@ -268,7 +268,7 @@ def plotAll(model, weights, basis, normalized, iterations, epochs, numParticles,
     CCCD
     EEEF
     GGGH''', figsize=(16,10), sharex = False, sharey = False)
-    fig.suptitle('Training results for basis %s%s %2d epochs %4d iterations batchSize %d' % (basis, '' if not normalized else ' (normalized)', epochs, iterations, batchSize))
+    fig.suptitle('Training results for basis %s%s %2d epochs %4d iterations batchSize %d: %2.6g' % (basis, '' if not normalized else ' (normalized)', epochs, iterations, batchSize, np.mean(lossArray[-1][-1])))
 
     batchedLosses = np.stack(lossArray, axis = 0).reshape(iterations * epochs, numParticles * batchSize)
     axis['A'].set_title('Learning progress')
@@ -297,10 +297,10 @@ def plotAll(model, weights, basis, normalized, iterations, epochs, numParticles,
     
     cm = mpl.colormaps['viridis']
 
-    x =  torch.linspace(-1,1,511)[:,None]
-    fx = torch.ones(511)[:,None]
+    x =  torch.linspace(-1,1,511)[:,None].to(device)
+    fx = torch.ones(511)[:,None].to(device)
     neighbors = torch.vstack((torch.zeros(511).type(torch.long), torch.arange(511).type(torch.long)))
-    neighbors = torch.vstack((torch.arange(511).type(torch.long), torch.zeros(511).type(torch.long)))
+    neighbors = torch.vstack((torch.arange(511).type(torch.long), torch.zeros(511).type(torch.long))).to(device)
     # internal function that is used for the rbf convolution
     #     n = weights[-1][-1]['weight'].shape[0]
     #     fx = evalBasisFunction(n, x , which = basis, periodic=False)
@@ -312,16 +312,18 @@ def plotAll(model, weights, basis, normalized, iterations, epochs, numParticles,
     ls = np.unique(ls).tolist()
 
     # print(x, fx, neighbors)
-    model((fx,fx), neighbors, x)
+#     model((fx,fx), neighbors, x)
 
     storedWeights = copy.deepcopy(model.state_dict())
     c = 0
     for i in tqdm(range(epochs), leave = False):
         for j in tqdm(range(iterations), leave = False):
             c = c + 1        
-            if c + 1 in ls:                
-                model.load_state_dict(weights[i][j])
-                axis['B'].plot(x[:,0], model((fx,fx), neighbors, x).detach(),ls='--',c= cm(ls.index(c+1) / (len(ls) - 1)), alpha = 0.95)
+            if c + 1 in ls:           
+                
+                model.load_state_dict({k: v.to(device) for k, v in weights[i][j].items()})
+#                 model = model.to(device)
+                axis['B'].plot(x[:,0].detach().cpu().numpy(), model((fx,fx), neighbors, x).detach().cpu().numpy(),ls='--',c= cm(ls.index(c+1) / (len(ls) - 1)), alpha = 0.95)
     #             break
 
     model.load_state_dict(storedWeights)
@@ -331,8 +333,10 @@ def plotAll(model, weights, basis, normalized, iterations, epochs, numParticles,
 
     
     fig.tight_layout()
+    model.load_state_dict({k: v.to(device) for k, v in weights[-1][-1].items()})
 
     return fig, axis
+
 
 def plotTrainingAndTesting1Layer(model, lossArray, weights, basis, normalized, iterations, epochs, numParticles, batchSize, testBatch,lossFunction, simulationStates, minDomain, maxDomain, particleSupport, getFeatures, getGroundTruth, stacked):
     # Plot the learned convolution (only works for single layer models (for now))

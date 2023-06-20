@@ -62,11 +62,14 @@ def kernelGradient(q, dist, support):
 def plot1DValues(x,counts, minDomain, maxDomain, scatter = False, xlabel = None, ylabel = None, title = None):
     if scatter:
         x = x
-        y = np.zeros_like(x)
+        y = np.zeros_like(x) if not torch.is_tensor(x) else torch.zeros_like(x)
         c = counts
 
         fig, axis = plt.subplots(1, 1, figsize=(9,6), sharex = False, sharey = False, squeeze = False)
-        sc = axis[0,0].scatter(x, y, c = c, s = 1)
+        if torch.is_tensor(x):
+            axis[0,0].plot(x[idx].detach().cpu().numpy(), y[idx].detach().cpu().numpy())
+        else:
+            sc = axis[0,0].scatter(x.detach().cpu().numpy(), y.detach().cpu().numpy(), c = c.detach().cpu().numpy(), s = 1)
         ax1_divider = make_axes_locatable(axis[0,0])
         cax1 = ax1_divider.append_axes("bottom", size="20%", pad="2%")
         cb1 = fig.colorbar(sc, cax=cax1,orientation='horizontal')
@@ -86,10 +89,13 @@ def plot1DValues(x,counts, minDomain, maxDomain, scatter = False, xlabel = None,
     else:
         x = x
         y = counts
-        idx = np.argsort(x)
+        idx = np.argsort(x) if not torch.is_tensor(x) else torch.argsort(x)
 
         fig, axis = plt.subplots(1, 1, figsize=(9,6), sharex = False, sharey = False, squeeze = False)
-        axis[0,0].plot(x[idx], y[idx])
+        if torch.is_tensor(x):
+            axis[0,0].plot(x[idx].detach().cpu().numpy(), y[idx].detach().cpu().numpy())
+        else:
+            axis[0,0].plot(x[idx], y[idx])
         axis[0,0].axvline(minDomain, color = 'black', ls = '--')
         axis[0,0].axvline(maxDomain, color = 'black', ls = '--')
         
@@ -290,7 +296,7 @@ def plotSimulationState(simulationStates, minDomain, maxDomain, dt, timepoints =
         x = simulationStates[i,0,:]
         y = simulationStates[i,c,:]
         idx = torch.argsort(x)
-        axis.plot(x[idx], y[idx], label = 't = %1.2g' % (i * dt))
+        axis.plot(x[idx].detach().cpu().numpy(), y[idx].detach().cpu().numpy(), label = 't = %1.2g' % (i * dt))
     if timepoints == []:
         plotTimePoint(0,1, simulationStates, axis[1,0])
         plotTimePoint(0,2, simulationStates, axis[0,0])
@@ -389,16 +395,39 @@ def samplePDF(pdf, n = 2048, numParticles = 1024, plot = False, randomSampling =
     # axis[0,0].scatter(sampled, sampled * 0, s = 1)
     return sampled
 
-def plotDensity(fluidPositions, fluidAreas, minDomain, maxDomain, particleSupport):
+def plotDensityField(fluidPositions, fluidAreas, minDomain, maxDomain, particleSupport):
+    ghostPositions = createGhostParticles(fluidPositions, minDomain, maxDomain)
+    fluidNeighbors, fluidRadialDistances, fluidDistances = findNeighborhoods(fluidPositions, ghostPositions, particleSupport)
+    fluidDensity = computeDensity(fluidPositions, fluidAreas, particleSupport, fluidRadialDistances, fluidNeighbors)
 
+    xs = fluidPositions.detach().cpu().numpy()
+    densityField = fluidDensity.detach().cpu().numpy()
+    fig, axis = plt.subplots(1, 3, figsize=(18,6), sharex = False, sharey = False, squeeze = False)
+    numSamples = densityField.shape[-1]
+    # xs = np.linspace(-1,1,numSamples)
+    fs = numSamples/2
+    fftfreq = np.fft.fftshift(np.fft.fftfreq(xs.shape[-1], 1/fs/1))    
+    x = densityField
+    y = np.abs(np.fft.fftshift(np.fft.fft(x) / len(x)))
+    axis[0,0].plot(xs, densityField)
+    axis[0,1].loglog(fftfreq[fftfreq.shape[0]//2:],y[fftfreq.shape[0]//2:], label = 'baseTarget')
+    f, Pxx_den = scipy.signal.welch(densityField, fs, nperseg=len(x)//32)
+    axis[0,2].loglog(f, Pxx_den, label = 'baseTarget')
+    axis[0,2].set_xlabel('frequency [Hz]')
+    axis[0,2].set_ylabel('PSD [V**2/Hz]')
+    fig.tight_layout()
+    return fluidDensity
+
+def plotDensity(fluidPositions, fluidAreas, minDomain, maxDomain, particleSupport):
     ghostPositions = createGhostParticles(fluidPositions, minDomain, maxDomain)
     fluidNeighbors, fluidRadialDistances, fluidDistances = findNeighborhoods(fluidPositions, ghostPositions, particleSupport)
     fluidDensity = computeDensity(fluidPositions, fluidAreas, particleSupport, fluidRadialDistances, fluidNeighbors)
     fig, axis = plot1DValues(fluidPositions, fluidDensity, minDomain, maxDomain, ylabel = 'Density')
-    axis[0,0].axhline(torch.mean(fluidDensity), ls = '--', c = 'black', alpha = 0.5)
-    axis[0,0].axhline(torch.max(fluidDensity), ls = '-', c = 'black', alpha = 0.5)
-    axis[0,0].axhline(torch.min(fluidDensity), ls = '-', c = 'black', alpha = 0.5)
-    
+    axis[0,0].axhline(torch.mean(fluidDensity).detach().item(), ls = '--', c = 'white', alpha = 0.5)
+    axis[0,0].axhline(torch.max(fluidDensity).detach().item(), ls = '--', c = 'white', alpha = 0.5)
+    axis[0,0].axhline(torch.min(fluidDensity).detach().item(), ls = '--', c = 'white', alpha = 0.5)
+    return fluidDensity
+
 def computeUpdate(fluidPositions, fluidVelocities, fluidAreas, minDomain, maxDomain, kappa, restDensity, diffusionCoefficient, xsphCoefficient, particleSupport, dt):
     #  1. Create ghost particles for our boundary conditions
     ghostPositions = createGhostParticles(fluidPositions, minDomain, maxDomain)
@@ -556,16 +585,16 @@ from scipy.interpolate import CloughTocher2DInterpolator, LinearNDInterpolator, 
 def regularPlot(simulationStates, minDomain, maxDomain, dt, nx = 512, ny = 2048):
     timeArray = torch.arange(simulationStates.shape[0])[:,None].repeat(1,simulationStates.shape[2]) * dt
     positionArray = simulationStates[:,0]
-    xys = torch.vstack((timeArray.flatten(), positionArray.flatten())).mT  
+    xys = torch.vstack((timeArray.flatten().to(positionArray.device).type(positionArray.dtype), positionArray.flatten())).mT.detach().cpu().numpy()
 
 
     # interpVelocity = LinearNDInterpolator(xys, simulationStates[:,1].flatten())
     # interpDensity = LinearNDInterpolator(xys, simulationStates[:,2].flatten())
-    interpVelocity = NearestNDInterpolator(xys, simulationStates[:,1].flatten())
-    interpDensity = NearestNDInterpolator(xys, simulationStates[:,2].flatten())
+    interpVelocity = NearestNDInterpolator(xys, simulationStates[:,1].flatten().detach().cpu().numpy())
+    interpDensity = NearestNDInterpolator(xys, simulationStates[:,2].flatten().detach().cpu().numpy())
 
-    X = torch.linspace(torch.min(timeArray), torch.max(timeArray), ny)
-    Y = torch.linspace(torch.min(positionArray), torch.max(positionArray), nx)
+    X = torch.linspace(torch.min(timeArray), torch.max(timeArray), ny).detach().cpu().numpy()
+    Y = torch.linspace(torch.min(positionArray), torch.max(positionArray), nx).detach().cpu().numpy()
     X, Y = np.meshgrid(X, Y)  # 2D grid for interpolation
     # Z = interp(X, Y)
 
@@ -600,3 +629,298 @@ def regularPlot(simulationStates, minDomain, maxDomain, dt, nx = 512, ny = 2048)
 
     fig.tight_layout()
 
+from rbfConv import *
+from trainingHelper import *
+def plotRandomWeights(samples, n = 8, basis = 'linear', windowFunction = 'Wendland2_1D', normalized = False):    
+    # n = 8
+    # basis = 'rbf square'
+    randomWeights = []
+    for i in range(samples):
+        randomWeights.append(torch.rand(n) - 0.5)
+    # randomWeights
+    fig, axis = plt.subplots(1, 2, figsize=(16,4), sharex = False, sharey = False, squeeze = False)
+    x =  torch.linspace(-1,1,511)
+    # n = dict['weight'].shape[0]
+    # internal function that is used for the rbf convolution
+    fx = evalBasisFunction(n, x , which = basis, periodic=False)
+    fx = fx / torch.sum(fx, axis = 0)[None,:] if normalized else fx # normalization step
+    windowFn = getWindowFunction(windowFunction) # window function that is applied after each network layer
+
+    integrals = []
+    for i in range(len(randomWeights)):
+        integral = torch.sum(torch.sum(randomWeights[i][:,None] * fx,axis=0)) * 2 / 511
+        integrals.append(integral)
+    integrals = torch.hstack(integrals)
+    norm = mpl.colors.Normalize(vmin=torch.min(integrals), vmax=torch.max(integrals))
+
+    for i in range(len(randomWeights)):
+        axis[0,0].plot(x,torch.sum(randomWeights[i][:,None] * fx,axis=0),ls='-',c=cmap(norm(integrals[i])), label = '$\Sigma_i w_i f_i(x)$', alpha = 0.75)
+        axis[0,1].plot(x,windowFn(torch.abs(x)) * torch.sum(randomWeights[i][:,None] * fx,axis=0),ls='-',c=cmap(norm(integrals[i])), label = '$\Sigma_i w_i f_i(x)$', alpha = 0.75)
+    # axis[0,0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.20), ncol=5, fancybox=True, shadow=False)
+    axis[0,0].set_title('Random initializations %s [%2d]'% (basis,n))
+    axis[0,1].set_title('Random initializations %s [%2d] /w window'% (basis,n))
+
+    fig.tight_layout()
+
+def getLoss(batch, lossFunction, model, optimizer, simulationStates, minDomain, maxDomain, particleSupport, getFeatures, getGroundTruth, stacked):
+    optimizer.zero_grad()
+    stackedPositions, features, groundTruth, stackedNeighbors, d = loadBatch(simulationStates, minDomain, maxDomain, particleSupport, batch, getFeatures, getGroundTruth, stacked)
+
+    prediction = model((features[:,None], features[:,None]), stackedNeighbors, d)
+    # compute the loss
+    lossTerm = lossFunction(prediction, groundTruth)
+    loss = torch.mean(lossTerm)
+    # store the losses for later processing
+#     losses.append(lossTerm.detach().cpu().numpy())
+    # store the current weights before the update
+#     weights.append(copy.deepcopy(model.state_dict()))
+    return loss
+
+def buildLossLandscape(nx, targetWeights, targetBias, batch, lossFunction, model, optimizer, device, simulationStates, minDomain, maxDomain, particleSupport, getFeatures, getGroundTruth, stacked):
+    center = torch.clone(torch.hstack((model.weight[:,0,0], model.bias)).detach())
+    
+    currentWeights = model.weight
+    currentBias = model.bias
+        
+    loss = getLoss(batch, lossFunction, model, optimizer, simulationStates, minDomain, maxDomain, particleSupport, getFeatures, getGroundTruth, stacked)
+    loss.backward()
+
+    currentGrad = model.weight.grad
+    biasGrad = model.bias.grad
+
+    idealWeights = torch.hstack((targetWeights, targetBias)).to(device)
+    idealDirection = torch.clone(idealWeights - torch.hstack((currentWeights[:,0,0].detach(), currentBias.detach())).detach()).to(device)
+    actualGradient = torch.clone(torch.hstack((currentGrad[:,0,0].detach().cpu(), biasGrad.detach().cpu()))).to(device)
+    normIdealDirection = torch.clone(idealDirection / torch.linalg.norm(idealDirection))
+    normCurrentDirection = torch.clone((actualGradient / torch.linalg.norm(actualGradient)))
+    center = torch.clone(torch.hstack((currentWeights[:,0,0], currentBias)).detach())
+
+    orthogonalDirection = normCurrentDirection - normIdealDirection.dot(normCurrentDirection) * normIdealDirection
+    orthogonalDirection = orthogonalDirection / torch.linalg.norm(orthogonalDirection).to(device)
+#     print(normIdealDirection)
+#     print(normCurrentDirection)
+#     print(orthogonalDirection)
+#     print(normCurrentDirection.dot(normIdealDirection), normCurrentDirection.dot(orthogonalDirection))
+#     print(orthogonalDirection.dot(normIdealDirection), orthogonalDirection.dot(normCurrentDirection))
+    # startingWeights = 
+    # with torch.no_grad():    
+    #     model.weight[:,0,0] = torch.tensor(weightFn(np.linspace(-1,1,n)))
+    #     model.weight[:,0,0] = kernel(torch.abs(torch.linspace(-1,1,n)),1) * baseArea / particleSupport
+#     with torch.no_grad():
+#         model.weight[:,0,0] = torch.nn.Parameter(center[:-1].type(model.weight.dtype)
+#         model.bias = torch.nn.Parameter(center[-1].type(model.weight.dtype).to(model.weight.device))
+        
+    stackedPositions, features, groundTruth, stackedNeighbors, d = loadBatch(simulationStates, minDomain, maxDomain, particleSupport, np.arange(1), getFeatures, getGroundTruth, stacked)
+
+    limit = torch.linalg.norm(idealDirection) * 1.1
+#     nx = 127
+    xExtent = [-limit,limit]
+    yExtent = [-limit,limit]
+    xs = torch.linspace(xExtent[0],xExtent[1],nx)
+    ys = torch.linspace(yExtent[0],yExtent[1],nx)
+    # ys = [0]
+    with torch.no_grad():
+        model.weight[:,0,0] = torch.nn.Parameter(center[:-1].type(model.weight.dtype).to(model.weight.device))
+        model.bias = torch.nn.Parameter(center[-1].type(model.weight.dtype).to(model.weight.device))
+
+    losses = []
+    for xi in tqdm(xs,leave = False):
+        lossx = []
+        for yi in tqdm(ys,leave = False):
+            currentWeights = center + xi * orthogonalDirection + yi * normIdealDirection
+            with torch.no_grad():
+                model.weight[:,0,0] = torch.nn.Parameter(currentWeights[:-1].type(model.weight.dtype).to(model.weight.device))
+                model.bias = torch.nn.Parameter(currentWeights[-1].type(model.weight.dtype).to(model.weight.device))
+    #             model.weight = torch.nn.Parameter(currentWeights.type(model.weight.dtype).to(model.weight.device))
+                prediction = model((features[:,None], features[:,None]), stackedNeighbors, d)
+                lossTerm = lossFunction(prediction, groundTruth)
+                loss = torch.mean(lossTerm)
+                lossx.append(loss)
+
+        losses.append(torch.hstack(lossx))
+    losses = torch.vstack(losses)
+
+    with torch.no_grad():
+        model.weight[:,0,0] = torch.nn.Parameter(center[:-1].type(model.weight.dtype).to(model.weight.device))
+        model.bias = torch.nn.Parameter(center[-1].type(model.weight.dtype).to(model.weight.device))
+        
+        
+    return losses, idealDirection, actualGradient, orthogonalDirection, [x.cpu() for x in xExtent], [x.cpu() for x in yExtent]
+
+
+def plotLossLandscape(nx, idealWeights, batch, lossFunction, model, optimizer, device, simulationStates, minDomain, maxDomain, particleSupport, getFeatures, getGroundTruth, stacked):
+    currentWeights = model.weight
+    currentBias = model.bias
+#     idealWeights = torch.clone(torch.hstack((kernel(torch.abs(torch.linspace(-1,1,n)),1) * baseArea / particleSupport,torch.tensor(0))))
+    idealDirection = torch.clone(idealWeights - torch.hstack((currentWeights[:,0,0].detach().cpu(), currentBias.detach().cpu())).detach())
+
+    lossLandscape, idealDirection, actualGradient, orthogonalDirection, xExtent, yExtent = buildLossLandscape(nx, idealWeights[:-1], idealWeights[-1], [0], lossFunction, model, optimizer, device, simulationStates, minDomain, maxDomain, particleSupport, getFeatures, getGroundTruth, stacked)
+
+
+    fig, axis = plt.subplots(1,1, figsize=(12,12), sharex = False, sharey = False, squeeze = False)
+    losses = lossLandscape.detach().cpu().numpy()
+
+
+
+    im = axis[0,0].imshow(losses.transpose()[::-1,:],extent=[xExtent[0],xExtent[1],yExtent[0],yExtent[1]], norm=LogNorm(vmin=np.min(losses), vmax=np.max(losses)), interpolation = 'bicubic')
+    ax1_divider = make_axes_locatable(axis[0,0])
+    cax1 = ax1_divider.append_axes("right", size="2%", pad="2%")
+    cb1 = fig.colorbar(im, cax=cax1,orientation='vertical')
+    cb1.ax.tick_params(labelsize=8) 
+    axis[0,0].scatter(0,0, c = 'red', s = 2)
+
+    idealPoint = torch.linalg.norm(idealDirection)
+
+    curGradX = (idealDirection / torch.linalg.norm(idealDirection)).dot(actualGradient).cpu().numpy()
+    curGradY = orthogonalDirection.dot(actualGradient).cpu().numpy()
+
+    currentGradient = np.hstack((curGradX, curGradY))
+    currentGradient = currentGradient if np.linalg.norm(currentGradient) < idealPoint else currentGradient / np.linalg.norm(currentGradient) * idealPoint.item()
+
+
+
+    # axis[0,0].scatter(0,idealPoint.cpu().numpy() , c = 'white', s = 2)
+    axis[0,0].plot([0,0],[0,idealPoint.cpu().numpy()], c = 'white', lw = 2)
+
+    axis[0,0].scatter(currentGradient[0],currentGradient[1] , c = 'blue', s = 2)
+    axis[0,0].plot([0,currentGradient[0]],[0,currentGradient[1]] , c = 'blue', lw = 2)
+    fig.tight_layout()
+
+
+def buildLossAndGradientLandscape(nx, targetWeights, targetBias, batch, lossFunction, model, optimizer, device, simulationStates, minDomain, maxDomain, particleSupport, getFeatures, getGroundTruth, stacked):
+    center = torch.clone(torch.hstack((model.weight[:,0,0], model.bias)).detach())
+    
+    currentWeights = model.weight
+    currentBias = model.bias
+    
+    optimizer.zero_grad()
+    loss = getLoss(batch, lossFunction, model, optimizer, simulationStates, minDomain, maxDomain, particleSupport, getFeatures, getGroundTruth, stacked)
+    loss.backward()
+
+    currentGrad = model.weight.grad
+    biasGrad = model.bias.grad
+
+    idealWeights = torch.hstack((targetWeights, targetBias)).to(device)
+    idealDirection = torch.clone(idealWeights - torch.hstack((currentWeights[:,0,0].detach(), currentBias.detach())).detach()).to(device)
+    actualGradient = torch.clone(torch.hstack((currentGrad[:,0,0].detach().cpu(), biasGrad.detach().cpu()))).to(device)
+    normIdealDirection = torch.clone(idealDirection / torch.linalg.norm(idealDirection))
+    normCurrentDirection = torch.clone((actualGradient / torch.linalg.norm(actualGradient)))
+    center = torch.clone(torch.hstack((currentWeights[:,0,0], currentBias)).detach())
+
+    orthogonalDirection = normCurrentDirection - normIdealDirection.dot(normCurrentDirection) * normIdealDirection
+    orthogonalDirection = orthogonalDirection / torch.linalg.norm(orthogonalDirection).to(device)
+        
+    stackedPositions, features, groundTruth, stackedNeighbors, d = loadBatch(simulationStates, minDomain, maxDomain, particleSupport, np.arange(1), getFeatures, getGroundTruth, stacked)
+
+    limit = min(torch.linalg.norm(actualGradient) * 1.1,torch.tensor(1).to(actualGradient.device).type(actualGradient.dtype))
+#     nx = 127
+    xExtent = [-limit,limit]
+    yExtent = [-limit,limit]
+    xs = torch.linspace(xExtent[0],xExtent[1],nx)
+    ys = torch.linspace(yExtent[0],yExtent[1],nx)
+    # ys = [0]
+    with torch.no_grad():
+        model.weight[:,0,0] = torch.nn.Parameter(center[:-1].type(model.weight.dtype).to(model.weight.device))
+        model.bias = torch.nn.Parameter(center[-1].type(model.weight.dtype).to(model.weight.device))
+
+    losses = []
+    gradients = []
+    for xi in tqdm(xs,leave = False):
+        lossx = []
+        gradx = []
+        for yi in tqdm(ys,leave = False):
+            currentWeights = center + xi * orthogonalDirection + yi * normIdealDirection
+            with torch.no_grad():
+                model.weight[:,0,0] = torch.nn.Parameter(currentWeights[:-1].type(model.weight.dtype).to(model.weight.device))
+                model.bias = torch.nn.Parameter(currentWeights[-1].type(model.weight.dtype).to(model.weight.device))
+            optimizer.zero_grad()
+#             model.weight = torch.nn.Parameter(currentWeights.type(model.weight.dtype).to(model.weight.device))
+            prediction = model((features[:,None], features[:,None]), stackedNeighbors, d)
+            lossTerm = lossFunction(prediction, groundTruth)
+            loss = torch.mean(lossTerm)
+            lossx.append(loss)
+            loss.backward()
+            gradx.append(torch.linalg.norm(torch.hstack((model.weight.grad[:,0,0], model.bias.grad))).detach().cpu())
+
+        losses.append(torch.hstack(lossx))
+        gradients.append(torch.hstack(gradx))
+    losses = torch.vstack(losses)
+    gradients = torch.vstack(gradients)
+
+    with torch.no_grad():
+        model.weight[:,0,0] = torch.nn.Parameter(center[:-1].type(model.weight.dtype).to(model.weight.device))
+        model.bias = torch.nn.Parameter(center[-1].type(model.weight.dtype).to(model.weight.device))
+        
+        
+    return losses, gradients, idealDirection, actualGradient, orthogonalDirection, [x.cpu() for x in xExtent], [x.cpu() for x in yExtent]
+def plotLossAndGradientLandscape(nx, idealWeights, batch, lossFunction, model, optimizer, device, simulationStates, minDomain, maxDomain, particleSupport, getFeatures, getGroundTruth, stacked):
+    zeroWeights = torch.zeros_like(idealWeights)
+
+    lossLandscape, gradientLandscape, idealDirection, actualGradient, orthogonalDirection, xExtent, yExtent = buildLossAndGradientLandscape(nx, zeroWeights[:-1], zeroWeights[-1], [0], lossFunction, model, optimizer, device, simulationStates, minDomain, maxDomain, particleSupport, getFeatures, getGroundTruth, stacked)
+
+
+    fig, axis = plt.subplots(1,2, figsize=(18,9), sharex = False, sharey = False, squeeze = False)
+    losses = lossLandscape.detach().cpu().numpy()
+    gradients = gradientLandscape.detach().cpu().numpy()
+
+
+    axis[0,0].set_title('Loss Landscape')
+    im = axis[0,0].imshow(losses[::-1,:],extent=[xExtent[0],xExtent[1],yExtent[0],yExtent[1]], norm=LogNorm(vmin=np.min(losses), vmax=np.max(losses)), interpolation = 'bilinear')
+    ax1_divider = make_axes_locatable(axis[0,0])
+    cax1 = ax1_divider.append_axes("bottom", size="2%", pad="5%")
+    cb1 = fig.colorbar(im, cax=cax1,orientation='horizontal')
+    cb1.ax.tick_params(labelsize=8) 
+    axis[0,0].scatter(0,0, c = 'red', s = 2)
+
+
+    axis[0,1].set_title('Gradient Magnitude Landscape')
+    im = axis[0,1].imshow(gradients[::-1,:],extent=[xExtent[0],xExtent[1],yExtent[0],yExtent[1]], norm=LogNorm(vmin=np.min(gradients), vmax=np.max(gradients)), interpolation = 'bilinear')
+    ax1_divider = make_axes_locatable(axis[0,1])
+    cax1 = ax1_divider.append_axes("bottom", size="2%", pad="5%")
+    cb1 = fig.colorbar(im, cax=cax1,orientation='horizontal')
+    cb1.ax.tick_params(labelsize=8) 
+    # axis[0,0].scatter(0,0, c = 'red', s = 2)
+
+    idealPoint = torch.linalg.norm(idealDirection)
+
+    curGradX = (idealDirection / torch.linalg.norm(idealDirection)).dot(actualGradient).cpu().numpy()
+    curGradY = orthogonalDirection.dot(actualGradient).cpu().numpy()
+
+    currentGradient = np.hstack((curGradY, curGradX))
+    currentGradient = currentGradient if np.linalg.norm(currentGradient) < idealPoint else currentGradient / np.linalg.norm(currentGradient) * idealPoint.item()
+
+
+    # idealWeights = torch.hstack((targetWeights, targetBias)).to(device)
+    # targetGradient = torch.clone(targetWeights.to(currentWeights.device) - torch.hstack((currentWeights[:,0,0].detach(), currentBias.detach())).detach()).to(device)
+
+    # targetGradX = (idealDirection / torch.linalg.norm(idealDirection)).dot(targetGradient).cpu().numpy()
+    # targetGradY = orthogonalDirection.dot(targetGradient).cpu().numpy()
+
+    # targetGradient = np.hstack((targetGradX, targetGradY))
+    # targetGradient = targetGradient if np.linalg.norm(targetGradient) < idealPoint else targetGradient / np.linalg.norm(targetGradient) * idealPoint.item()
+
+
+
+    # axis[0,0].scatter(0,idealPoint.cpu().numpy() , c = 'white', s = 2)
+    # axis[0,0].plot([0,0],[0,idealPoint.cpu().numpy()], c = 'white', lw = 2)
+
+    # axis[0,0].scatter(currentGradient[0],currentGradient[1] , c = 'blue', s = 2)
+    # axis[0,0].plot([0,currentGradient[0]],[0,currentGradient[1]] , c = 'blue', lw = 2)
+
+    # axis[0,0].scatter(targetGradient[0],targetGradient[1] , c = 'red', s = 2)
+    # axis[0,0].plot([0,targetGradient[0]],[0,targetGradient[1]] , c = 'red', lw = 2)
+
+    xpts = np.linspace(xExtent[0], xExtent[1], losses.shape[0])
+    ypts = np.linspace(yExtent[0], yExtent[1], losses.shape[0])
+    XX, YY = np.meshgrid(xpts, ypts)
+
+    testData = (XX - 5)**2 + YY**2
+
+    xgrad, ygrad = np.gradient(losses)
+    axis[0,0].streamplot(XX, YY, -ygrad, -xgrad, color = 'white')
+    # axis[0,0].quiver(XX[::2,::2], YY[::2,::2], -ygrad[::2,::2], -xgrad[::2,::2], color ='white')
+
+    xgrad, ygrad = np.gradient(gradients)
+    axis[0,1].streamplot(XX, YY, -ygrad, -xgrad, color = 'white')
+
+    fig.tight_layout()
