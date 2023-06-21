@@ -196,3 +196,59 @@ def plotWeights(dict, basis, normalized):
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+def processDataLoaderIter(pb, iterations, epoch, lr, dataLoader, dataIter, batchSize, model, optimizer, simulationStates, minDomain, maxDomain, particleSupport, lossFunction, getFeatures, getGroundTruth, stacked, train = True, prefix = '', augmentAngle = False, augmentJitter = False, jitterAmount = 0.01):
+    with record_function("process data loader"): 
+        losses = []
+        batchIndices = []
+        weights = []
+
+        if train:
+            model.train(True)
+        else:
+            model.train(False)
+
+        i = 0
+        for b in (pbl := tqdm(range(iterations), leave=False)):
+            # get next batch from dataLoader, if all batches have been processed get a new iterator (which shuffles the batch order)
+            try:
+                bdata = next(dataIter)
+                if len(bdata) < batchSize :
+                    raise Exception('batch too short')
+            except:
+                dataIter = iter(dataLoader)
+                bdata = next(dataIter)
+            # the actual batch processing step
+            with record_function("process data loader[batch]"): 
+                # reset optimizer gradients
+                if train:
+                    optimizer.zero_grad()
+                # load data for batch                
+                stackedPositions, features, groundTruth, stackedNeighbors, d = loadBatch(simulationStates, minDomain, maxDomain, particleSupport, bdata, getFeatures, getGroundTruth, stacked)
+                
+                
+                # run the network layer
+                prediction = model((features[:,None], features[:,None]), stackedNeighbors, d)
+                # compute the loss
+                lossTerm = lossFunction(prediction, groundTruth)
+                loss = torch.mean(lossTerm)
+                # store the losses for later processing
+                losses.append(lossTerm.detach().cpu().numpy())
+                # store the current weights before the update
+                weights.append(copy.deepcopy({k: v.cpu() for k, v in model.state_dict().items()}))
+                # update the network weights
+                if train:
+                    loss.backward()
+                    optimizer.step()
+                # create some information to put on the tqdm progress bars
+                batchString = str(np.array2string(np.array(bdata), formatter={'float_kind':lambda x: "%.2f" % x, 'int':lambda x:'%04d' % x}))
+                pbl.set_description('%8s[gpu %d]: %3d [%1d] @ %1.1e: :  %s -> %.2e' %(prefix, 0, epoch, 0, lr, batchString, loss.detach().cpu().numpy()))
+                pb.set_description('[gpu %d] %90s - Learning: %1.4e' %(0, "", np.mean(np.vstack(losses))))
+                pb.update()
+                batchIndices.append(bdata)
+        # stack the processed batches and losses for further processing
+        bIndices  = np.hstack(batchIndices)
+#         losses = np.vstack(losses)
+#         losses = np.vstack(losses)
+        # and return
+        return bIndices, losses, weights

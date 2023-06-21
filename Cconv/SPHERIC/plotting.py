@@ -48,7 +48,36 @@ import matplotlib.patches as patches
 import matplotlib.tri as tri
 import random
 from scipy.interpolate import CloughTocher2DInterpolator, LinearNDInterpolator, NearestNDInterpolator
+from tqdm.notebook import tqdm
+import copy
+from trainingHelper import *
+from sph import *
 
+def plotDensityField(fluidPositions, fluidAreas, minDomain, maxDomain, particleSupport):
+    ghostPositions = createGhostParticles(fluidPositions, minDomain, maxDomain)
+    fluidNeighbors, fluidRadialDistances, fluidDistances = findNeighborhoods(fluidPositions, ghostPositions, particleSupport)
+    fluidDensity = computeDensity(fluidPositions, fluidAreas, particleSupport, fluidRadialDistances, fluidNeighbors)
+
+    xs = fluidPositions.detach().cpu().numpy()
+    densityField = fluidDensity.detach().cpu().numpy()
+    fig, axis = plt.subplots(1, 3, figsize=(18,6), sharex = False, sharey = False, squeeze = False)
+    numSamples = densityField.shape[-1]
+    # xs = np.linspace(-1,1,numSamples)
+    fs = numSamples/2
+    fftfreq = np.fft.fftshift(np.fft.fftfreq(xs.shape[-1], 1/fs/1))    
+    x = densityField
+    y = np.abs(np.fft.fftshift(np.fft.fft(x) / len(x)))
+    axis[0,0].plot(xs, densityField)
+    axis[0,0].set_title('Density Field')
+    axis[0,1].set_title('FFT')
+    axis[0,2].set_title('PSD')
+    axis[0,1].loglog(fftfreq[fftfreq.shape[0]//2:],y[fftfreq.shape[0]//2:], label = 'baseTarget')
+    f, Pxx_den = scipy.signal.welch(densityField, fs, nperseg=len(x)//32)
+    axis[0,2].loglog(f, Pxx_den, label = 'baseTarget')
+    axis[0,2].set_xlabel('frequency [Hz]')
+    axis[0,2].set_ylabel('PSD [V**2/Hz]')
+    fig.tight_layout()
+    return fluidDensity
 
 # Plotting function for convenience
 def plot1DValues(x,counts, minDomain, maxDomain, scatter = False, xlabel = None, ylabel = None, title = None):
