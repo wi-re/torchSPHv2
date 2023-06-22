@@ -1,15 +1,32 @@
+# Copyright 2023 <COPYRIGHT HOLDER>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy 
+# of this software and associated documentation files (the “Software”), to deal 
+# in the Software without restriction, including without limitation the rights 
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell 
+# copies of the Software, and to permit persons to whom the Software is furnished 
+# to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included 
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
+# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
+# PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
+# HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF 
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE 
+# OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
 # main file that includes all relevant sph functionality
 from sph import *
-
 # main file that includes all learning relevant functionality, not necessary to understand
-from torch.optim import Adam
 from rbfConv import *
-from torch_geometric.loader import DataLoader
 from tqdm.notebook import tqdm
 # plotting/UI related imports
 import matplotlib as mpl
 import copy
-plt.style.use('dark_background')
+
 cmap = mpl.colormaps['viridis']
 
 
@@ -44,64 +61,7 @@ def loadBatch(simulationStates, minDomain, maxDomain, particleSupport, bdata, ge
     d = stackedRadialDistances[:,None] * torch.sign(stackedDistances[:,None])  
     
     return stackedPositions, getFeatures(stackedPositions, stackedAreas, stackedVelocities, stackedUpdates), getGroundTruth(bdata, stacked, simulationStates), stackedNeighbors, d
-# iterative training script, lifted from some other code of mine for convenience
-def processDataLoaderIter(pb, iterations, epoch, lr, dataLoader, dataIter, batchSize, model, optimizer, simulationStates, minDomain, maxDomain, particleSupport, lossFunction, getFeatures, getGroundTruth, stacked, train = True, prefix = '', augmentAngle = False, augmentJitter = False, jitterAmount = 0.01):
-    with record_function("process data loader"): 
-        losses = []
-        batchIndices = []
-        weights = []
 
-        if train:
-            model.train(True)
-        else:
-            model.train(False)
-
-        i = 0
-        for b in (pbl := tqdm(range(iterations), leave=False)):
-            # get next batch from dataLoader, if all batches have been processed get a new iterator (which shuffles the batch order)
-            try:
-                bdata = next(dataIter)
-                if len(bdata) < batchSize:
-                    raise Exception('batch too short')
-            except:
-                dataIter = iter(dataLoader)
-                bdata = next(dataIter)
-            # the actual batch processing step
-            with record_function("process data loader[batch]"): 
-                # reset optimizer gradients
-                if train:
-                    optimizer.zero_grad()
-                # load data for batch                
-                stackedPositions, features, groundTruth, stackedNeighbors, d = loadBatch(simulationStates, minDomain, maxDomain, particleSupport, bdata, getFeatures, getGroundTruth, stacked)
-                
-                
-                # run the network layer
-                prediction = model((features[:,None], features[:,None]), stackedNeighbors, d)
-                # compute the loss
-                lossTerm = lossFunction(prediction, groundTruth)
-                loss = torch.mean(lossTerm)
-                # store the losses for later processing
-                losses.append(lossTerm.detach().cpu().numpy())
-                # store the current weights before the update
-                weights.append(copy.deepcopy(model.state_dict()))
-                # weights.append(torch.clone(model.weight.detach().cpu()).numpy())
-                # update the network weights
-                if train:
-                    loss.backward()
-                    optimizer.step()
-                # create some information to put on the tqdm progress bars
-                batchString = str(np.array2string(np.array(bdata), formatter={'float_kind':lambda x: "%.2f" % x, 'int':lambda x:'%04d' % x}))
-                pbl.set_description('%8s[gpu %d]: %3d [%1d] @ %1.1e: :  %s -> %.2e' %(prefix, 0, epoch, 0, lr, batchString, loss.detach().cpu().numpy()))
-                pb.set_description('[gpu %d] %90s - Learning: %1.4e' %(0, "", np.mean(np.vstack(losses))))
-                pb.update()
-                batchIndices.append(bdata)
-        # stack the processed batches and losses for further processing
-        bIndices  = np.hstack(batchIndices)
-#         losses = np.vstack(losses)
-#         losses = np.vstack(losses)
-        # and return
-        return bIndices, losses, weights
-    
 # useful function for learning, returns non normalized windows
 def getWindowFunction(windowFunction):
     windowFn = lambda r: torch.ones_like(r)
@@ -165,35 +125,6 @@ def getWindowFunction(windowFunction):
         windowFn = lambda r: torch.clamp(1 - r, min = 0)
     return windowFn
 
-def plotWeights(dict, basis, normalized):
-    # Plot the learned convolution (only works for single layer models (for now))
-    fig, axis = plt.subplots(1, 2, figsize=(16,4), sharex = False, sharey = False, squeeze = False)
-    x =  torch.linspace(-1,1,511)
-    n = dict['weight'].shape[0]
-    # internal function that is used for the rbf convolution
-    fx = evalBasisFunction(n, x , which = basis, periodic=False)
-    fx = fx / torch.sum(fx, axis = 0)[None,:] if normalized else fx # normalization step
-    # plot the individual basis functions with a weight of 1
-    for y in range(n):
-        axis[0,0].plot(x, fx[y,:], label = '$f_%d(x)$' % y)
-    # plot the overall convolution basis for all weights equal to 1
-    axis[0,0].plot(x,torch.sum(fx, axis=0),ls='--',c='white', label = '$\Sigma_i f_i(x)$')
-    # axis[0,1].legend(loc='upper center', bbox_to_anchor=(0.5, 1.20), ncol=5, fancybox=True, shadow=False)
-    axis[0,0].set_title('Basis Functions')
-
-    # plot the individual basis functions with the learned weights
-    # for y in range(n):
-    #     fy = model.weight[:,0][y].detach() * fx[y,:]
-    #     axis[0,1].plot(x[fy != 0], fy[fy != 0], label = '$w_d f_%d(x)$' % y, ls = '--', alpha = 0.5)
-    axis[0,1].plot(x,torch.sum(dict['weight'][:,0].detach() * fx,axis=0) + dict['bias'].detach(),ls='--',c='white', label = '$\Sigma_i w_i f_i(x)$')
-    # axis[0,0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.20), ncol=5, fancybox=True, shadow=False)
-    axis[0,1].set_title('Learned convolution')
-
-    fig.tight_layout()
-
-
-
-
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -225,8 +156,6 @@ def processDataLoaderIter(pb, iterations, epoch, lr, dataLoader, dataIter, batch
                     optimizer.zero_grad()
                 # load data for batch                
                 stackedPositions, features, groundTruth, stackedNeighbors, d = loadBatch(simulationStates, minDomain, maxDomain, particleSupport, bdata, getFeatures, getGroundTruth, stacked)
-                
-                
                 # run the network layer
                 prediction = model((features[:,None], features[:,None]), stackedNeighbors, d)
                 # compute the loss
@@ -248,7 +177,5 @@ def processDataLoaderIter(pb, iterations, epoch, lr, dataLoader, dataIter, batch
                 batchIndices.append(bdata)
         # stack the processed batches and losses for further processing
         bIndices  = np.hstack(batchIndices)
-#         losses = np.vstack(losses)
-#         losses = np.vstack(losses)
         # and return
         return bIndices, losses, weights
