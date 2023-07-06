@@ -24,10 +24,10 @@ from ..util import *
 from ..ghostParticles import *
 
 from .deltaSPH import *
-from .diffusion import computeVelocityDiffusion
+# from .diffusion import computeVelocityDiffusion
 from .densityDiffusion import *
-from .momentum import computeDivergenceTerm
-from .pressure import computePressureAccel
+# from .momentum import computeDivergenceTerm
+# from .pressure import computePressureAccel
 
 from src.modules.densityDiffusion import *
 from src.kernels import kernel, kernelGradient, spikyGrad, wendland, wendlandGrad, cohesionKernel, getKernelFunctions

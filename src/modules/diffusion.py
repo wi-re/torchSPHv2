@@ -28,7 +28,7 @@ from matplotlib.ticker import MaxNLocator
 import matplotlib.ticker as mticker
 
 @torch.jit.script
-def computeVelocityDiffusion(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float, rhoi, rhoj, ui, uj, alpha : float, c0 : float, restDensity : float):
+def computeVelocityDiffusionA(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float, rhoi, rhoj, ui, uj, alpha : float, c0 : float, restDensity : float):
     gradW = kernelGradient(radialDistances, distances, support)
 
     uji = uj[j] - ui[i]
@@ -42,6 +42,23 @@ def computeVelocityDiffusion(i, j, ri, rj, Vi, Vj, distances, radialDistances, s
     term = (pi_ij * Vj[j] * rhoj[j]  / (rhoi[i] + rhoj[j]))[:,None] * gradW
 
     return (support * alpha * c0) * scatter_sum(term, i, dim=0, dim_size = numParticles)
+
+@torch.jit.script
+def computeVelocityDiffusion(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float, rhoi, rhoj, ui, uj, alpha : float, c0 : float, restDensity : float):
+    gradW = kernelGradient(radialDistances, distances, support)
+
+    uji = uj[j] - ui[i]
+    rji = rj[j] - ri[i]
+    rji2 = torch.linalg.norm(rji, dim=1)**2 + eps
+
+    pi_ij = torch.einsum('nu, nu -> n', uji, rji) 
+    # pi_ij[pi_ij > 0] = 0
+
+    pi_ij = pi_ij / rji2
+    term = (pi_ij * Vj[j])[:,None] * gradW
+
+    return (support * alpha * c0 *restDensity / rhoi)[:,None] * scatter_sum(term, i, dim=0, dim_size = numParticles)
+
 
 
 class diffusionModule(Module):

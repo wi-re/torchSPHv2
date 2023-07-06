@@ -26,7 +26,7 @@ from ..ghostParticles import *
 from .deltaSPH import *
 from .diffusion import computeVelocityDiffusion
 from .densityDiffusion import *
-from .momentum import computeDivergenceTerm
+from .momentum import computeDivergenceTermDelta, computeDivergenceTermPrice
 from .pressure import computePressureAccel, computePressureAccelDeltaPlus
 
 from ..randomParticles import genNoisyParticles
@@ -96,6 +96,7 @@ class solidBoundaryModule(BoundaryModule):
         self.eps = self.support **2 * 0.1
         self.restDensity = simulationConfig['fluid']['restDensity']
         self.simulationScheme = simulationConfig['simulation']['scheme']
+        self.momentumScheme = simulationConfig['momentum']['scheme']
         if not self.active:
             return
         if simulationConfig['simulation']['mode'] == 'generative':
@@ -694,19 +695,30 @@ class solidBoundaryModule(BoundaryModule):
             return fluidNormalizationMatrix
     def computeRenormalizedDensityGradient(self, simulationState, simulation):
         with record_function('boundaryCondition[mDBC] - computeRenormalizedDensityGradient'):
+            gradW = kernelGradient(self.boundaryToFluidNeighborRadialDistances, self.boundaryToFluidNeighborDistances, self.support)    
+            # normalizedGradients = invertNormalizationMatrix_GJ(self.normalizationMatrix, gradW, simulationState['fluidNeighbors'][0])
+            normalizedGradients = invertNormalizationMatrix_PINV(simulationState['normalizationMatrix'], gradW, self.boundaryToFluidNeighbors[1])
+            dwij_mag = torch.linalg.norm(gradW, axis = 1, ord = 1)
+            norm_mag = torch.linalg.norm(normalizedGradients, axis = 1, ord = 1)
+
+            eps = 1e-4 * self.support
+            tol = 0.1
+            change = abs(norm_mag - dwij_mag) / (dwij_mag + eps)
+            normalizedGradients = torch.where((change < tol)[:,None], normalizedGradients, gradW)
+
             # fluid -> boundary            
-            self.renormalizedGrad, self.renormalizedDensityGradient  = computeRenormalizedDensityGradient(self.boundaryToFluidNeighbors[0], self.boundaryToFluidNeighbors[1], \
-                                                                                                  self.boundaryPositions, simulationState['fluidPosition'], self.fluidVolume, simulationState['fluidVolume'],\
-                                                                                                  self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
-                                                                                                  self.support, self.numPtcls, self.eps,\
-                                                                                                  self.fluidL, simulation.densityDiffusionModule.fluidL, \
-                                                                                                  self.boundaryDensity * self.restDensity, simulationState['fluidDensity'] * self.restDensity)   
+            # self.renormalizedGrad, self.renormalizedDensityGradient  = computeRenormalizedDensityGradient(self.boundaryToFluidNeighbors[0], self.boundaryToFluidNeighbors[1], \
+            #                                                                                       self.boundaryPositions, simulationState['fluidPosition'], self.fluidVolume, simulationState['fluidVolume'],\
+            #                                                                                       self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
+            #                                                                                       self.support, self.numPtcls, self.eps,\
+            #                                                                                       self.fluidL, simulation.densityDiffusionModule.fluidL, \
+            #                                                                                       self.boundaryDensity * self.restDensity, simulationState['fluidDensity'] * self.restDensity)   
             self.fluidRenormalizedGrad, fluidRenormalizedDensityGradient  = computeRenormalizedDensityGradient(self.boundaryToFluidNeighbors[1], self.boundaryToFluidNeighbors[0], \
                                                                                                   simulationState['fluidPosition'], self.boundaryPositions, simulationState['fluidVolume'], self.fluidVolume,\
                                                                                                   -self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps,\
                                                                                                   simulation.densityDiffusionModule.fluidL, self.fluidL, \
-                                                                                                  simulationState['fluidDensity'] * self.restDensity, self.boundaryDensity * self.restDensity)   
+                                                                                                  simulationState['fluidDensity'] * self.restDensity, self.boundaryDensity * self.restDensity, normalizedGradients)   
             # self.boundaryRenormalizedGrad, boundaryRenormalizedDensityGradient = computeRenormalizedDensityGradient(self.boundaryToBoundaryNeighbors[0], self.boundaryToBoundaryNeighbors[1], \
             #                                                                                       self.boundaryPositions, self.boundaryPositions, self.fluidVolume, self.fluidVolume,\
             #                                                                                       self.boundaryToBoundaryNeighborDistances, self.boundaryToBoundaryNeighborRadialDistances,\
@@ -746,18 +758,32 @@ class solidBoundaryModule(BoundaryModule):
     def computeDpDt(self, simulationState, simulation):
         with record_function('boundaryCondition[mDBC] - computeDpDt'):
             self.fluidVolume = self.boundaryVolume * self.restDensity / self.boundaryDensity / self.restDensity
-            self.divergenceTerm = computeDivergenceTerm(self.boundaryToFluidNeighbors[0], self.boundaryToFluidNeighbors[1], \
-                                                                                                  self.boundaryPositions, simulationState['fluidPosition'], self.fluidVolume, simulationState['fluidVolume'],\
-                                                                                                  self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
-                                                                                                  self.support, self.numPtcls, self.eps,\
-                                                                                                  self.boundaryDensity * self.restDensity, simulationState['fluidDensity'] * self.restDensity,\
-                                                                                                  self.boundaryVelocity, simulationState['fluidVelocity'])    
-            fluidDivergenceTerm = computeDivergenceTerm(self.boundaryToFluidNeighbors[1], self.boundaryToFluidNeighbors[0], \
-                                                                                                  simulationState['fluidPosition'], self.boundaryPositions, simulationState['fluidVolume'], self.fluidVolume,\
-                                                                                                  -self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
-                                                                                                  self.support, simulationState['fluidDensity'].shape[0], self.eps,\
-                                                                                                  simulationState['fluidDensity'] * self.restDensity, self.boundaryDensity * self.restDensity,\
-                                                                                                  simulationState['fluidVelocity'], self.boundaryVelocity)    
+            if self.momentumScheme == 'deltaSPH':
+                self.divergenceTerm = computeDivergenceTermDelta(self.boundaryToFluidNeighbors[0], self.boundaryToFluidNeighbors[1], \
+                                                                                                    self.boundaryPositions, simulationState['fluidPosition'], self.fluidVolume, simulationState['fluidVolume'],\
+                                                                                                    self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
+                                                                                                    self.support, self.numPtcls, self.eps,\
+                                                                                                    self.boundaryDensity * self.restDensity, simulationState['fluidDensity'] * self.restDensity,\
+                                                                                                    self.boundaryVelocity, simulationState['fluidVelocity'])    
+                fluidDivergenceTerm = computeDivergenceTermDelta(self.boundaryToFluidNeighbors[1], self.boundaryToFluidNeighbors[0], \
+                                                                                                    simulationState['fluidPosition'], self.boundaryPositions, simulationState['fluidVolume'], self.fluidVolume,\
+                                                                                                    -self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
+                                                                                                    self.support, simulationState['fluidDensity'].shape[0], self.eps,\
+                                                                                                    simulationState['fluidDensity'] * self.restDensity, self.boundaryDensity * self.restDensity,\
+                                                                                                    simulationState['fluidVelocity'], self.boundaryVelocity)   
+            if self.momentumScheme == 'price':
+                self.divergenceTerm = computeDivergenceTerm(self.boundaryToFluidNeighbors[0], self.boundaryToFluidNeighbors[1], \
+                                                                                                    self.boundaryPositions, simulationState['fluidPosition'], self.fluidVolume, simulationState['fluidVolume'],\
+                                                                                                    self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
+                                                                                                    self.support, self.numPtcls, self.eps,\
+                                                                                                    self.boundaryDensity * self.restDensity, simulationState['fluidDensity'] * self.restDensity,\
+                                                                                                    self.boundaryVelocity, simulationState['fluidVelocity'])    
+                fluidDivergenceTerm = computeDivergenceTerm(self.boundaryToFluidNeighbors[1], self.boundaryToFluidNeighbors[0], \
+                                                                                                    simulationState['fluidPosition'], self.boundaryPositions, simulationState['fluidVolume'], self.fluidVolume,\
+                                                                                                    -self.boundaryToFluidNeighborDistances, self.boundaryToFluidNeighborRadialDistances,\
+                                                                                                    self.support, simulationState['fluidDensity'].shape[0], self.eps,\
+                                                                                                    simulationState['fluidDensity'] * self.restDensity, self.boundaryDensity * self.restDensity,\
+                                                                                                    simulationState['fluidVelocity'], self.boundaryVelocity)    
             # boundaryDivergenceTerm = computeDivergenceTerm(self.boundaryToBoundaryNeighbors[0], self.boundaryToBoundaryNeighbors[1], \
             #                                                                                       self.boundaryPositions, self.boundaryPositions, self.fluidVolume, self.fluidVolume,\
             #                                                                                       self.boundaryToBoundaryNeighborDistances, self.boundaryToBoundaryNeighborRadialDistances,\

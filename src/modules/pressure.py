@@ -35,7 +35,7 @@ def computePressureAccel(i, j, ri, rj, Vi, Vj, distances, radialDistances, suppo
     pij = pi[i] + pj[j]        
     term = (pij * Vj[j])[:,None] * gradW
 
-    return - 1 / rhoi[:,None] * scatter_sum(term, i, dim=0, dim_size = numParticles)
+    return - 1 / (rhoi[:,None]) * scatter_sum(term, i, dim=0, dim_size = numParticles)
 
 @torch.jit.script
 def computePressureAccelDeltaPlus(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float, rhoi, rhoj, pi, pj, surfaceMask):

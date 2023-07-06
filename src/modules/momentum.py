@@ -29,7 +29,7 @@ from .densityDiffusion import *
 
 
 @torch.jit.script
-def computeDivergenceTerm(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float, rhoi, rhoj, ui, uj):
+def computeDivergenceTermPrice(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float, rhoi, rhoj, ui, uj):
     gradW = kernelGradient(radialDistances, distances, support)
 
     uji = uj[j] - ui[i]
@@ -37,11 +37,25 @@ def computeDivergenceTerm(i, j, ri, rj, Vi, Vj, distances, radialDistances, supp
 
     return - scatter_sum(prod * Vj[j] * rhoj[j], i, dim=0, dim_size = numParticles)
 
+@torch.jit.script
+def computeDivergenceTermDelta(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float, rhoi, rhoj, ui, uj):
+    gradW = kernelGradient(radialDistances, distances, support)
+
+    uji = uj[j] - ui[i]
+    prod = torch.einsum('nu,nu -> n', uji, gradW) 
+
+    return - rhoi * scatter_sum(prod * Vj[j], i, dim=0, dim_size = numParticles)
 
 class momentumModule(Module):    
     def __init__(self):
         super().__init__('densityInterpolation', 'Evaluates density at the current timestep')
     
+    def getParameters(self):
+        return [
+            Parameter('momentum', 'scheme', 'string', 'deltaSPH', required = False, export = True, hint = '')
+        ]
+        
+
     def initialize(self, simulationConfig, simulationState):
         self.support = simulationConfig['particle']['support']    
         self.backgroundPressure = simulationConfig['fluid']['backgroundPressure']
@@ -67,6 +81,7 @@ class momentumModule(Module):
         
         self.c0 = simulationConfig['fluid']['c0']
         self.eps = self.support **2 * 0.1
+        self.scheme = simulationConfig['momentum']['scheme']
         
     def resetState(self, simulationState):
         self.divergenceTerm = None
@@ -76,12 +91,21 @@ class momentumModule(Module):
 
     def computeDpDt(self, simulationState, simulation):
         with record_function('density[continuity] - compute drho/dt'):
-            self.divergenceTerm = computeDivergenceTerm(simulationState['fluidNeighbors'][0], simulationState['fluidNeighbors'][1], \
+            if self.scheme == 'price':
+                self.divergenceTerm = computeDivergenceTermPrice(simulationState['fluidNeighbors'][0], simulationState['fluidNeighbors'][1], \
                                                                                                   simulationState['fluidPosition'], simulationState['fluidPosition'], simulationState['fluidVolume'], simulationState['fluidVolume'],\
                                                                                                   simulationState['fluidDistances'], simulationState['fluidRadialDistances'],\
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps,\
                                                                                                   simulationState['fluidDensity'] * self.restDensity, simulationState['fluidDensity'] * self.restDensity,\
                                                                                                   simulationState['fluidVelocity'], simulationState['fluidVelocity'])
+            else:
+                self.divergenceTerm = computeDivergenceTermDelta(simulationState['fluidNeighbors'][0], simulationState['fluidNeighbors'][1], \
+                                                                                                  simulationState['fluidPosition'], simulationState['fluidPosition'], simulationState['fluidVolume'], simulationState['fluidVolume'],\
+                                                                                                  simulationState['fluidDistances'], simulationState['fluidRadialDistances'],\
+                                                                                                  self.support, simulationState['fluidDensity'].shape[0], self.eps,\
+                                                                                                  simulationState['fluidDensity'] * self.restDensity, simulationState['fluidDensity'] * self.restDensity,\
+                                                                                                  simulationState['fluidVelocity'], simulationState['fluidVelocity'])
+
             self.divergenceTerm += simulation.boundaryModule.computeDpDt(simulationState, simulation)
             
             self.dpdt = self.divergenceTerm #+ self.densityDiffusion

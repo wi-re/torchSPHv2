@@ -21,7 +21,7 @@ shape = 'sphere'
 device='cuda'
 
 [particle]
-radius = 0.01
+radius = 0.05
 
 [gravity]
 magnitude = 1
@@ -35,7 +35,7 @@ c0 = 10
 boundaryScheme = 'solid'
 verbose = false
 densityScheme = 'continuum'
-scheme = 'deltaPlus'
+scheme = 'deltaSPH'
 
 [pressure]
 fluidPressureTerm = 'TaitEOS'
@@ -44,7 +44,7 @@ gamma = 7.0
 
 [diffusion]
 velocityScheme = 'deltaSPH'
-densityScheme = 'MOG'
+densityScheme = 'deltaSPH'
 alpha = 0.01
 
 [integration]
