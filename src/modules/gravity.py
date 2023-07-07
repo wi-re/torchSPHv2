@@ -50,7 +50,7 @@ class gravityModule(Module):
                 distance = torch.linalg.norm(difference,axis=1)
                 difference[distance > 1e-7] = difference[distance > 1e-7] / distance[distance > 1e-7, None]
                 if self.potentialField:
-                    simulationState['fluidAcceleration'] += -self.magnitude * difference * (distance)[:,None]
+                    simulationState['fluidAcceleration'] += -0.5 * self.magnitude**2 * difference * (distance)[:,None]**2
                 else:
                     simulationState['fluidAcceleration'] += -self.magnitude * difference
             else:

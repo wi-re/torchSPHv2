@@ -104,8 +104,8 @@ class diffusionModule(Module):
                                                                                                   simulationState['fluidDensity'] * self.restDensity, simulationState['fluidDensity'] * self.restDensity,\
                                                                                                   simulationState['fluidVelocity'],simulationState['fluidVelocity'],
                                                                                                   self.alpha, self.c0, self.restDensity)
-            if self.boundaryDiffusion:
-                self.velocityDiffusion += simulation.boundaryModule.computeVelocityDiffusion(simulationState, simulation)
+            # if self.boundaryDiffusion:
+                # self.velocityDiffusion += simulation.boundaryModule.computeVelocityDiffusion(simulationState, simulation)
             simulationState['fluidAcceleration'] += self.velocityDiffusion
             simulation.sync(simulationState['fluidAcceleration'])
             # return self.velocityDiffusion

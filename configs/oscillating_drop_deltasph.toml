@@ -26,6 +26,7 @@ radius = 0.05
 [gravity]
 magnitude = 1
 pointSource = true
+potentialField = true
 
 
 [fluid]
@@ -45,7 +46,8 @@ gamma = 7.0
 [diffusion]
 velocityScheme = 'deltaSPH'
 densityScheme = 'deltaSPH'
-alpha = 0.01
+boundaryDiffusion = false
+alpha = 0.02
 
 [integration]
 scheme = 'RK4'

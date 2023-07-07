@@ -188,10 +188,10 @@ class dfsphSimulation(SPHSimulation):
         if self.verbose: print(step)
         with record_function(step):     
             self.velocityDiffusionModule.evaluate(self.simulationState, self)    
-        step = '12 - laminar viscosity'
-        if self.verbose: print(step)
-        with record_function(step):       
-            self.laminarViscosityModule.computeLaminarViscosity(self.simulationState, self)   
+        # step = '12 - laminar viscosity'
+        # if self.verbose: print(step)
+        # with record_function(step):       
+            # self.laminarViscosityModule.computeLaminarViscosity(self.simulationState, self)   
 
         step = '13 - Velocity source contribution'
         if self.verbose: print(step)
