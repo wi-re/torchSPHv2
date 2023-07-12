@@ -120,6 +120,10 @@ class deltaSPHSimulation(SPHSimulation):
         if self.config['simulation']['scheme'] == 'deltaPlus' or (self.config['shifting']['scheme'] == 'deltaPlus' and self.config['shifting']['enabled'] == True):
             self.shiftingModule = deltaPlusModule()
             self.modules.append(self.shiftingModule)
+        # Enable shifting for deltaPlus
+        if (self.config['shifting']['scheme'] == 'implicit' and self.config['shifting']['enabled'] == True):
+            self.shiftingModule = implicitIterativeShiftModule()
+            self.modules.append(self.shiftingModule)
         # Add boundary handling modules
         if self.config['simulation']['boundaryScheme'] == 'solid': 
             self.boundaryModule = solidBoundaryModule() 

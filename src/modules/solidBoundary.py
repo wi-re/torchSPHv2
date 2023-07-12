@@ -266,6 +266,8 @@ class solidBoundaryModule(BoundaryModule):
 
 
     def saveState(self, perennialState, copy):
+        if not self.active:
+            return
         perennialState['boundaryPosition']    = self.boundaryPositions    if not copy else torch.clone(self.boundaryPositions)
         perennialState['boundaryVelocity']    = self.boundaryVelocity     if not copy else torch.clone(self.boundaryVelocity)
         perennialState['boundaryDensity']     = self.boundaryDensity      if not copy else torch.clone(self.boundaryDensity)
@@ -280,6 +282,8 @@ class solidBoundaryModule(BoundaryModule):
         
         perennialState['boundaryParticles'] = perennialState['boundaryPosition'].shape[0]
     def setupSimulationState(self, perennialState):
+        if not self.active:
+            return
         self.boundaryPositions  = torch.clone(perennialState['boundaryPosition']) 
         self.boundaryVelocity  = torch.clone(perennialState['boundaryVelocity']) 
         self.boundaryDensity  = torch.clone(perennialState['boundaryDensity']) 
@@ -550,6 +554,8 @@ class solidBoundaryModule(BoundaryModule):
         # return self.boundaryDensityContribution
 
     def evalBoundaryDensity(self, simulationState, simulation):
+        if self.boundaryToFluidNeighbors == None:
+            return 
         if self.simulationDensityScheme == 'summation':
             self.evalBoundaryDensitySummation(simulationState, simulation)
         elif self.simulationDensityScheme == 'continuum':

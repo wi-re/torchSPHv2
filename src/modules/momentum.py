@@ -105,8 +105,8 @@ class momentumModule(Module):
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps,\
                                                                                                   simulationState['fluidDensity'] * self.restDensity, simulationState['fluidDensity'] * self.restDensity,\
                                                                                                   simulationState['fluidVelocity'], simulationState['fluidVelocity'])
-
-            self.divergenceTerm += simulation.boundaryModule.computeDpDt(simulationState, simulation)
+            if simulation.boundaryModule.active:
+                self.divergenceTerm += simulation.boundaryModule.computeDpDt(simulationState, simulation)
             
             self.dpdt = self.divergenceTerm #+ self.densityDiffusion
             simulationState['dpdt'] = self.dpdt

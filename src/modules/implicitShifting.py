@@ -220,6 +220,7 @@ class implicitIterativeShiftModule(Module):
         
         JJ[simulationState['fluidSurfaceMask'] < 0.5] = 0
     
+        
         normals = simulationState['boundaryGradient']
         surfNorm = torch.linalg.norm(normals, axis = 1)**2
         proj = torch.einsum('nd, nd -> n', JJ, normals)[:,None] * normals  
