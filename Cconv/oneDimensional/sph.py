@@ -81,6 +81,18 @@ def findNeighborhoods(particles, allParticles, support):
     
     return fluidNeighbors, fluidRadialDistances, fluidDistances
 
+def periodicNeighborSearch(fluidPositions, particleSupport, minDomain, maxDomain):
+    distanceMat = fluidPositions[:,None] - fluidPositions
+    distanceMat = torch.remainder(distanceMat + minDomain, maxDomain - minDomain) - maxDomain
+    neighs = torch.abs(distanceMat) < particleSupport
+    n0 = torch.sum(neighs, dim = 0)
+    indices = torch.arange(fluidPositions.shape[0])
+    indexMat = indices.expand(fluidPositions.shape[0], fluidPositions.shape[0])
+    j, i = indexMat[neighs], indexMat.mT[neighs]
+    distances = -distanceMat[neighs]
+    directions = torch.sign(distances)    
+    return torch.vstack((i, j)), torch.abs(distances)  / particleSupport, directions
+
 # Summation density formulation. Note that we ignore the rest density here as this term cancels out everywhere
 # that we use it and it makes learning this term more straight forward.
 def computeDensity(particles, particleArea, particleSupport, fluidRadialDistances, fluidNeighbors):
@@ -178,22 +190,18 @@ def samplePDF(pdf, n = 2048, numParticles = 1024, plot = False, randomSampling =
 
 # SPH simulation step, returns dudt, dxdt as well as current density and pressure
 def computeUpdate(fluidPositions, fluidVelocities, fluidAreas, minDomain, maxDomain, kappa, restDensity, diffusionAlpha, diffusionBeta, c0, xsphCoefficient, particleSupport, dt):
-    #  1. Create ghost particles for our boundary conditions
-    ghostPositions = createGhostParticles(fluidPositions, minDomain, maxDomain)
-    #  2. Find neighborhoods of all particles:
-    fluidNeighbors, fluidRadialDistances, fluidDistances = findNeighborhoods(fluidPositions, ghostPositions, particleSupport)
-    #  3. Compute \rho using an SPH interpolation
+    # 1. Find neighborhoods of all particles:
+    fluidNeighbors, fluidRadialDistances, fluidDistances = periodicNeighborSearch(fluidPositions, particleSupport, minDomain, maxDomain)
+    # 2. Compute \rho using an SPH interpolation
     fluidDensity = computeDensity(fluidPositions, fluidAreas, particleSupport, fluidRadialDistances, fluidNeighbors)
-    #  4. Compute the pressure of each particle using an ideal gas EOS
+    # 3. Compute the pressure of each particle using an ideal gas EOS
     fluidPressure = (fluidDensity - 1.0) * kappa * restDensity
-    #  5. Compute the XSPH term and apply it to the particle velocities:    
-    xsphUpdate = computeXSPH(fluidPositions, fluidVelocities, fluidDensity, fluidAreas, particleSupport, xsphCoefficient, fluidNeighbors, fluidRadialDistances)
-    #  6. Compute pressure forces and resulting acceleration
+    # 4. Compute pressure forces and resulting acceleration
     fluidPressureForces = computePressureForces(fluidPositions, fluidDensity, fluidPressure, fluidAreas, particleSupport, restDensity, fluidNeighbors, fluidRadialDistances, fluidDistances)
     fluidAccel = fluidPressureForces # / (fluidAreas * restDensity)
-    # 7. Compute kinematic viscosity
-    laminarViscosity = computeDiffusion(fluidPositions, fluidVelocities, fluidAreas, fluidDensity, particleSupport, restDensity, diffusionAlpha, diffusionBeta, c0, fluidNeighbors, fluidRadialDistances, fluidDistances) # currently broken for some reason
-#     fluidAccel += laminarViscosity
-    fluidAccel += xsphUpdate / dt + laminarViscosity
+    # 5. Compute the XSPH term and apply it to the particle velocities:    
+    # xsphUpdate = computeXSPH(fluidPositions, fluidVelocities, fluidDensity, fluidAreas, particleSupport, xsphCoefficient, fluidNeighbors, fluidRadialDistances)
+    # fluidAccel += xsphUpdate / dt
+    # 6. Compute kinematic viscosity
+    fluidAccel += computeDiffusion(fluidPositions, fluidVelocities, fluidAreas, fluidDensity, particleSupport, restDensity, diffusionAlpha, diffusionBeta, c0, fluidNeighbors, fluidRadialDistances, fluidDistances) # currently broken for some reason
     return fluidAccel, fluidVelocities, fluidDensity, fluidPressure
-

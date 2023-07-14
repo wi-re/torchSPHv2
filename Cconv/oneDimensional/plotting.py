@@ -103,30 +103,31 @@ def plotSimulationState(simulationStates, minDomain, maxDomain, dt, timepoints =
     axis[1,0].set_ylabel('Velocity[m/s]')
     axis[0,0].set_ylabel('Density[1/m]')
 
-    def plotTimePoint(i, c, simulationStates, axis):
+    def plotTimePoint(i, c, simulationStates, axis, minDomain, maxDomain):
         x = simulationStates[i,0,:]
+        xPos = torch.remainder(x + minDomain, maxDomain - minDomain) - maxDomain
         y = simulationStates[i,c,:]
-        idx = torch.argsort(x)
-        axis.plot(x[idx].detach().cpu().numpy(), y[idx].detach().cpu().numpy(), label = 't = %1.2g' % (i * dt))
+        idx = torch.argsort(xPos)
+        axis.plot(xPos[idx].detach().cpu().numpy(), y[idx].detach().cpu().numpy(), label = 't = %1.2g' % (i * dt))
     if timepoints == []:
-        plotTimePoint(0,1, simulationStates, axis[1,0])
-        plotTimePoint(0,2, simulationStates, axis[0,0])
+        plotTimePoint(0,1, simulationStates, axis[1,0], minDomain, maxDomain)
+        plotTimePoint(0,2, simulationStates, axis[0,0], minDomain, maxDomain)
         
-        plotTimePoint(simulationStates.shape[0]//4,1, simulationStates, axis[1,0])
-        plotTimePoint(simulationStates.shape[0]//4,2, simulationStates, axis[0,0])
+        plotTimePoint(simulationStates.shape[0]//4,1, simulationStates, axis[1,0], minDomain, maxDomain)
+        plotTimePoint(simulationStates.shape[0]//4,2, simulationStates, axis[0,0], minDomain, maxDomain)
         
-        plotTimePoint(simulationStates.shape[0]//4*2,1, simulationStates, axis[1,0])
-        plotTimePoint(simulationStates.shape[0]//4*2,2, simulationStates, axis[0,0])
+        plotTimePoint(simulationStates.shape[0]//4*2,1, simulationStates, axis[1,0], minDomain, maxDomain)
+        plotTimePoint(simulationStates.shape[0]//4*2,2, simulationStates, axis[0,0], minDomain, maxDomain)
         
-        plotTimePoint(simulationStates.shape[0]//4*3,1, simulationStates, axis[1,0])
-        plotTimePoint(simulationStates.shape[0]//4*3,2, simulationStates, axis[0,0])
+        plotTimePoint(simulationStates.shape[0]//4*3,1, simulationStates, axis[1,0], minDomain, maxDomain)
+        plotTimePoint(simulationStates.shape[0]//4*3,2, simulationStates, axis[0,0], minDomain, maxDomain)
         
-        plotTimePoint(simulationStates.shape[0]-1,1, simulationStates, axis[1,0])
-        plotTimePoint(simulationStates.shape[0]-1,2, simulationStates, axis[0,0])
+        plotTimePoint(simulationStates.shape[0]-1,1, simulationStates, axis[1,0], minDomain, maxDomain)
+        plotTimePoint(simulationStates.shape[0]-1,2, simulationStates, axis[0,0], minDomain, maxDomain)
     else:
         for t in timepoints:
-            plotTimePoint(t,1, simulationStates, axis[1,0])
-            plotTimePoint(t,2, simulationStates, axis[0,0])
+            plotTimePoint(t,1, simulationStates, axis[1,0], minDomain, maxDomain)
+            plotTimePoint(t,2, simulationStates, axis[0,0], minDomain, maxDomain)
 
     axis[0,0].legend(loc='center left', bbox_to_anchor=(1, 0.5))
     axis[1,0].legend(loc='center left', bbox_to_anchor=(1, 0.5))
@@ -162,13 +163,15 @@ def plotDensityField(fluidPositions, fluidAreas, minDomain, maxDomain, particleS
 def regularPlot(simulationStates, minDomain, maxDomain, dt, nx = 512, ny = 2048):
     timeArray = torch.arange(simulationStates.shape[0])[:,None].repeat(1,simulationStates.shape[2]) * dt
     positionArray = simulationStates[:,0]
+    positionArray = torch.remainder(positionArray + minDomain, maxDomain - minDomain) - maxDomain
+    
     xys = torch.vstack((timeArray.flatten().to(positionArray.device).type(positionArray.dtype), positionArray.flatten())).mT.detach().cpu().numpy()
 
     interpVelocity = NearestNDInterpolator(xys, simulationStates[:,1].flatten().detach().cpu().numpy())
     interpDensity = NearestNDInterpolator(xys, simulationStates[:,2].flatten().detach().cpu().numpy())
 
     X = torch.linspace(torch.min(timeArray), torch.max(timeArray), ny).detach().cpu().numpy()
-    Y = torch.linspace(torch.min(positionArray), torch.max(positionArray), nx).detach().cpu().numpy()
+    Y = torch.linspace(minDomain, maxDomain, nx).detach().cpu().numpy()
     X, Y = np.meshgrid(X, Y)  # 2D grid for interpolation
     # Z = interp(X, Y)
 
