@@ -31,6 +31,219 @@ from .densityDiffusion import *
 
 from src.modules.densityDiffusion import *
 from src.kernels import kernel, kernelGradient, spikyGrad, wendland, wendlandGrad, cohesionKernel, getKernelFunctions
+
+def neighborhood(positions, h):
+    j, i = radius(positions, positions, h,max_num_neighbors = 1000)
+    cartesianDistances = positions[j] - positions[i]
+    radialDistances = torch.linalg.norm(cartesianDistances, dim = 1) / h
+    cDistances = cartesianDistances / ((radialDistances * h)[:,None] + 0.0001 * h**2)
+    
+    return i, j, radialDistances, cDistances, cartesianDistances 
+
+@torch.jit.script
+def pinv2x2(M):
+    with record_function('Pseudo Inverse 2x2'):
+        a = M[:,0,0]
+        b = M[:,0,1]
+        c = M[:,1,0]
+        d = M[:,1,1]
+
+        theta = 0.5 * torch.atan2(2 * a * c + 2 * b * d, a**2 + b**2 - c**2 - d**2)
+        cosTheta = torch.cos(theta)
+        sinTheta = torch.sin(theta)
+        U = torch.zeros_like(M)
+        U[:,0,0] = cosTheta
+        U[:,0,1] = - sinTheta
+        U[:,1,0] = sinTheta
+        U[:,1,1] = cosTheta
+
+        S1 = a**2 + b**2 + c**2 + d**2
+        S2 = torch.sqrt((a**2 + b**2 - c**2 - d**2)**2 + 4* (a * c + b *d)**2)
+
+        o1 = torch.sqrt((S1 + S2) / 2)
+        o2 = torch.sqrt((S1 - S2) / 2)
+
+        phi = 0.5 * torch.atan2(2 * a * b + 2 * c * d, a**2 - b**2 + c**2 - d**2)
+        cosPhi = torch.cos(phi)
+        sinPhi = torch.sin(phi)
+        s11 = torch.sign((a * cosTheta + c * sinTheta) * cosPhi + ( b * cosTheta + d * sinTheta) * sinPhi)
+        s22 = torch.sign((a * sinTheta - c * cosTheta) * sinPhi + (-b * sinTheta + d * cosTheta) * cosPhi)
+
+        V = torch.zeros_like(M)
+        V[:,0,0] = cosPhi * s11
+        V[:,0,1] = - sinPhi * s22
+        V[:,1,0] = sinPhi * s11
+        V[:,1,1] = cosPhi * s22
+
+
+        o1_1 = torch.zeros_like(o1)
+        o2_1 = torch.zeros_like(o2)
+
+        o1_1[torch.abs(o1) > 1e-5] = 1 / o1[torch.abs(o1) > 1e-5] 
+        o2_1[torch.abs(o2) > 1e-5] = 1 / o2[torch.abs(o2) > 1e-5] 
+        o = torch.vstack((o1_1, o2_1))
+        S_1 = torch.diag_embed(o.mT, dim1 = 2, dim2 = 1)
+
+        eigVals = torch.vstack((o1, o2)).mT
+        eigVals[torch.abs(eigVals[:,1]) > torch.abs(eigVals[:,0]),:] = torch.flip(eigVals[torch.abs(eigVals[:,1]) > torch.abs(eigVals[:,0]),:],[1])
+
+        return torch.matmul(torch.matmul(V, S_1), U.mT), eigVals
+
+    
+@torch.jit.script
+def computeNormalizationMatrix(i, j, rij, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float):
+    gradW = kernelGradient(radialDistances, distances, support)
+
+    r_ba = -rij #* support / 2
+    fac = Vj[j]
+
+#     term = torch.einsum('nu,nv -> nuv', r_ba, gradW)
+#     term[:,0,0] = term[:,0,0] * fac
+#     term[:,0,1] = term[:,0,1] * fac
+#     term[:,1,0] = term[:,1,0] * fac
+#     term[:,1,1] = term[:,1,1] * fac
+    term = torch.zeros((r_ba.shape[0],2,2)).to(r_ba.device).type(r_ba.dtype)
+    term[:,0,0] = gradW[:,0] * r_ba[:,0] * fac
+    term[:,0,1] = gradW[:,0] * r_ba[:,1] * fac
+    term[:,1,0] = gradW[:,1] * r_ba[:,0] * fac
+    term[:,1,1] = gradW[:,1] * r_ba[:,1] * fac
+
+    fluidNormalizationMatrix = scatter(term, i, dim=0, dim_size=numParticles, reduce = 'sum')
+    return fluidNormalizationMatrix
+@torch.jit.script
+def computeTerm(i, j, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float):
+    gradW = kernelGradient(radialDistances, distances, support)
+
+    fac = Vj[j]
+
+    fluidNormalizationMatrix = scatter(fac[:,None] * gradW, i, dim=0, dim_size=numParticles, reduce = 'sum')
+    return fluidNormalizationMatrix
+
+# sqrt2 = np.sqrt(2)
+
+@torch.jit.script
+def computeFreeSurface(i, j, positions, L, lambdas, volume, rij, cartesianDistances, radialDistances, h, numParticles):
+    term = computeTerm(i, j, volume, volume, cartesianDistances, radialDistances, h, numParticles, 1e-4)
+
+    nu = torch.bmm(L, term.unsqueeze(2))[:,:,0]
+    n = nu / (torch.linalg.norm(nu, dim = 1) + 0.01 * h**2)[:,None]
+    lMin = torch.min(torch.abs(lambdas), dim = 1)[0]
+# #   Plot particle normals  
+# #     fig, axis = plt.subplots(1, 3, figsize=(18,6), sharex = False, sharey = False, squeeze = False)
+# #     mask = torch.logical_and(lMin > 0.25, lMin < 0.75)
+# #     scatterPlot(fig, axis[0,0], positions[mask], n[mask,0], 'n.x')
+# #     scatterPlot(fig, axis[0,1], positions[mask], n[mask,1], 'n.y')
+# #     axis[0,2].quiver(positions[mask,0], positions[mask,1], n[mask,0], n[mask,1])
+# #     axis[0,2].axis('equal')
+# #     fig.tight_layout()
+
+    T = positions + n * h / 3
+
+    tau = torch.vstack((-n[:,1], n[:,0])).mT
+    xji = -rij
+    xjt = positions[j] - T[i]
+    condA1 = torch.linalg.norm(xji, dim = 1) >= torch.sqrt(torch.tensor(2)) * h /3
+    condA2 = torch.linalg.norm(xjt, dim = 1) < h / 3
+    condA = torch.logical_and(torch.logical_and(condA1, condA2), i != j)
+    cA = scatter(condA, i, dim=0, dim_size = numParticles, reduce = 'sum')
+    condB1 = torch.linalg.norm(xji, dim = 1) < torch.sqrt(torch.tensor(2)) * h /3
+    condB2 =  torch.abs(torch.einsum('nu,nu -> n', -n[i], xjt)) + torch.abs(torch.einsum('nu,nu -> n', tau[i], xjt)) < h / 3
+    condB =  torch.logical_and(torch.logical_and(condB1, condB2), i != j)
+    cB = scatter(condB, i, dim=0, dim_size = numParticles, reduce = 'sum')
+    fs = torch.where(torch.logical_and(torch.logical_not(cA), torch.logical_not(cB)), torch.ones_like(lMin), torch.zeros_like(lMin))
+#   Plot FS Conditions  
+#     print('condition A1, true for: ', torch.sum(condA1), 'false for: ', torch.sum(torch.logical_not(condA1)), 'rate: %4.4g %%'% ((torch.sum(condA1) / condA1.shape[0]).numpy() * 100))
+#     print('condition A2, true for: ', torch.sum(condA2), 'false for: ', torch.sum(torch.logical_not(condA2)), 'rate: %4.4g %%'% ((torch.sum(condA2) / condA2.shape[0]).numpy() * 100))
+#     print('condition A, true for: ', torch.sum(condA), 'false for: ', torch.sum(torch.logical_not(condA)), 'rate: %4.4g %%'% ((torch.sum(condA) / condA.shape[0]).numpy() * 100))
+
+
+#     print('condition B1, true for: ', torch.sum(condB1), 'false for: ', torch.sum(torch.logical_not(condB1)), 'rate: %4.4g %%'% ((torch.sum(condB1) / condB1.shape[0]).numpy() * 100))
+#     print('condition B2, true for: ', torch.sum(condB2), 'false for: ', torch.sum(torch.logical_not(condB2)), 'rate: %4.4g %%'% ((torch.sum(condB2) / condB2.shape[0]).numpy() * 100))
+#     print('condition B, true for: ', torch.sum(condB), 'false for: ', torch.sum(torch.logical_not(condB)), 'rate: %4.4g %%'% ((torch.sum(condB) / condB.shape[0]).numpy() * 100))
+
+#     cA1 = scatter(condA1, i, dim=0, dim_size = numParticles, reduce = 'sum')
+#     cA2 = scatter(condA2, i, dim=0, dim_size = numParticles, reduce = 'sum')
+#     cB1 = scatter(condB1, i, dim=0, dim_size = numParticles, reduce = 'sum')
+#     cB2 = scatter(condB2, i, dim=0, dim_size = numParticles, reduce = 'sum')
+
+#     # fig, axis = plt.subplots(2, 3, figsize=(18,12), sharex = False, sharey = False, squeeze = False)
+#     # scatterPlot(fig, axis[0,0], positions, torch.where(cA1, torch.ones(positions.shape[0]), torch.zeros(positions.shape[0])), 'condA1')
+#     # scatterPlot(fig, axis[0,1], positions, torch.where(cA2, torch.ones(positions.shape[0]), torch.zeros(positions.shape[0])), 'condA2')
+#     # scatterPlot(fig, axis[0,2], positions, torch.where(cA, torch.ones(positions.shape[0]), torch.zeros(positions.shape[0])), 'condA')
+#     # scatterPlot(fig, axis[1,0], positions, torch.where(cB1, torch.ones(positions.shape[0]), torch.zeros(positions.shape[0])), 'condB1')
+#     # scatterPlot(fig, axis[1,1], positions, torch.where(cB2, torch.ones(positions.shape[0]), torch.zeros(positions.shape[0])), 'condB2')
+#     # scatterPlot(fig, axis[1,2], positions, torch.where(cB, torch.ones(positions.shape[0]), torch.zeros(positions.shape[0])), 'condB')
+
+#     fig, axis = plt.subplots(1, 1, figsize=(6,6), sharex = False, sharey = False, squeeze = False)
+#     scatterPlot(fig, axis[0,0], positions, torch.where(fs, torch.ones(positions.shape[0]), torch.zeros(positions.shape[0])), 'FS')
+#     fig.tight_layout()
+    
+    return fs
+
+@torch.jit.script
+def computeShiftingTerm(i, j, Vi, Vj, distances, radialDistances, corr, support, numParticles : int, eps : float):
+    R = 0.2
+    n = 4
+    W = kernel(radialDistances, support) / corr
+    term = 1. + R * torch.pow(W, n)
+    
+    gradW = kernelGradient(radialDistances, distances, support)
+    
+    s = (Vj[j] * term)[:,None] * gradW
+    fluidNormalizationMatrix = scatter(s, i, dim=0, dim_size=numParticles, reduce = 'sum')
+    return fluidNormalizationMatrix
+
+@torch.jit.script
+def computeNormals(i, j, Vi, Vj, li, lj, Li, Lj, distances, radialDistances, support, numParticles : int, eps : float):
+    
+    gradW = kernelGradient(radialDistances, distances, support)
+    kernelTerm = torch.bmm(Li[i], gradW.unsqueeze(2))[:,:,0]
+    
+    fac = Vj[j] * (lj[j] - li[i])
+    term = -fac[:,None] * kernelTerm
+    fluidNormalizationMatrix = scatter(term, i, dim=0, dim_size=numParticles, reduce = 'sum')
+    return fluidNormalizationMatrix
+
+@torch.jit.script
+def computeShiftAmount(i, j, volume, lambdas, L, expandedFSM, cartesianDistances, radialDistances, h, numParticles, Ma, c0, dx):
+    lMin = torch.min(torch.abs(lambdas), dim = 1)[0]
+    gradLambda = computeNormals(i, j, volume, volume, lMin, lMin, L, L, cartesianDistances, radialDistances, h, numParticles, 1e-4)
+    normals = gradLambda / (torch.linalg.norm(gradLambda, dim = 1) + 1e-4 * h**2)[:,None]
+
+    normals[expandedFSM < 1,:] = 0
+    kappa = torch.where(scatter(torch.arccos((normals[i] * normals[j]).sum(1)), i, dim = 0, dim_size = numParticles, reduce = 'max') >= 15 * np.pi/180, torch.zeros(numParticles), torch.ones(numParticles))
+    fac = - Ma * (2 * h / 3) * c0 
+#     Plot ev normals
+#     mask = expandedFSM > 0
+
+#     fig, axis = plt.subplots(1, 3, figsize=(18,6), sharex = False, sharey = False, squeeze = False)
+#     scatterPlot(fig, axis[0,0], positions[mask], normals[mask,0] , 'dr.x')
+#     scatterPlot(fig, axis[0,1], positions[mask], normals[mask,1] , 'dr.y')
+#     scatterPlot(fig, axis[0,2], positions[mask], kappa[mask] , 'kappa')
+#     fig.tight_layout()
+    du = -fac * computeShiftingTerm(i, j, volume, volume, cartesianDistances, radialDistances, kernel(dx / h, h), h, numParticles, 1e-4)
+
+    shiftTermA = torch.zeros_like(du)
+    shiftTermB = kappa[:,None] * torch.bmm((torch.eye(2).reshape((1,2,2)).repeat(numParticles,1,1) - torch.einsum('nu, nv -> nuv', normals, normals)), du.unsqueeze(2))[:,:,0]
+    shiftTermB = torch.bmm((torch.eye(2).reshape((1,2,2)).repeat(numParticles,1,1) - torch.einsum('nu, nv -> nuv', normals, normals)), du.unsqueeze(2))[:,:,0]
+    shiftTermC = du
+
+    prodTerm = -(normals * du).sum(1)
+#     print(prodTerm[torch.logical_and(lMin >= 0.55, expandedFSM > 0)])
+    lambdaThreshold = 0.55
+    condA = torch.logical_and(lMin >= lambdaThreshold, torch.logical_and(prodTerm >= 0, expandedFSM > 0))
+    condB = torch.logical_and(lMin >= lambdaThreshold, torch.logical_and(prodTerm < 0, expandedFSM > 0))
+    condC = expandedFSM < 1
+    
+#     print(torch.max(prodTerm))
+
+    shiftVelocity = shiftTermA
+    shiftVelocity[condA,:] = shiftTermB[condA,:]
+    shiftVelocity[condB,:] = du[condB,:]
+    shiftVelocity[condC,:] = du[condC,:]
+    
+    return shiftVelocity, normals#, condA, condB, condC, kappa
+
 class deltaPlusModule(Module):
 #     def getParameters(self):
 #         return [
@@ -67,7 +280,7 @@ class deltaPlusModule(Module):
         
         self.alpha = simulationConfig['diffusion']['alpha']
         self.delta = simulationConfig['diffusion']['delta'] 
-        dx = simulationConfig['particle']['support'] * simulationConfig['particle']['packing']
+        self.dx = simulationConfig['particle']['support'] * simulationConfig['particle']['packing']
         c0 = 10.0 * np.sqrt(2.0*9.81*0.3)
         h0 = simulationConfig['particle']['support']
         dt = 0.25 * h0 / (1.1 * c0)
@@ -77,7 +290,42 @@ class deltaPlusModule(Module):
         self.c0 = simulationConfig['fluid']['c0']
         self.eps = self.support **2 * 0.1
         self.scheme = simulationConfig['diffusion']['densityScheme']
+        self.umax = simulationConfig['fluid']['umax']
+
+        self.support = np.sqrt(50 / np.pi * simulationConfig['particle']['area'])
+
+        # self.dx = simulationConfig['particle']['packing'] *
         
+
+    def computeShiftStep(self, simulationState, simulation):
+    #     numParticles = int(numParticles)
+        h = self.support
+        positions = simulationState['fluidPosition']
+        numParticles = positions.shape[0]
+        area = simulationState['fluidArea']
+
+        i, j, radialDistances, cartesianDistances, rij = neighborhood(positions, h)
+        # rho = scatter(area * kernel(radialDistances, h), i, dim = 0, dim_size = numParticles, reduce = 'sum')
+        # neighs = scatter(torch.ones_like(radialDistances), i, dim = 0, dim_size = numParticles, reduce = 'sum')
+        volume = area / simulationState['fluidDensity']
+        normalizationMatrices = computeNormalizationMatrix(i, j, rij, volume, volume, cartesianDistances, radialDistances, h, numParticles, 1e-4)
+
+        L, lambdas = pinv2x2(normalizationMatrices)
+        # Linv, invLambdas = pinv2x2(L)
+        # invLambdas = 1 / lambdas
+        fs = computeFreeSurface(i,j, positions, L, lambdas, volume, rij, cartesianDistances, radialDistances, h, numParticles)
+        expandedFSM = scatter(fs[j], i, dim = 0, dim_size = numParticles, reduce = 'max')
+        du, normals = computeShiftAmount(i, j, volume, lambdas, L, expandedFSM, cartesianDistances, radialDistances, h, numParticles, self.umax / self.c0, simulation.config['fluid']['c0'], self.dx)
+        
+        dmag = torch.clamp(torch.linalg.norm(du, dim = 1), max = self.umax/2)
+    #     print(torch.linalg.norm(du, dim = 1))
+    #     print(dmag)
+        du = (dmag / (torch.linalg.norm(du, dim = 1) + 1e-4 * h**2))[:,None] * du
+    #     print(du)
+        # dr = dt * du
+        
+        simulationState['fluidUpdate'] = du
+
     def computeShiftAmount(self, simulationState, simulation):
         i,j = simulationState['fluidNeighbors']
         support = self.support
@@ -246,7 +494,7 @@ class deltaPlusModule(Module):
         self.detectFluidSurface(simulationState, simulation)
         
     def shift(self, simulationState, simulation):
-        if 'fluidSurfaceMask' not in simulationState:
-            self.detectSurface(simulationState, simulation)
-        self.computeShiftAmount(simulationState, simulation)
-        self.adjustShiftingAmount(simulationState, simulation)
+        # if 'fluidSurfaceMask' not in simulationState:
+            # self.detectSurface(simulationState, simulation)
+        self.computeShiftStep(simulationState, simulation)
+        # self.adjustShiftingAmount(simulationState, simulation)

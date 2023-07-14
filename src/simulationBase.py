@@ -70,6 +70,7 @@ class SPHSimulation():
             Parameter('fluid', 'gravity', 'float array', [0,0], required = False, export = True, hint = '')  ,
             Parameter('fluid', 'backgroundPressure', 'bool', False, required = False, export = True, hint = '')  ,
             Parameter('fluid', 'c0', 'float', -1, required = False, export = True, hint = '')  ,
+            Parameter('fluid', 'umax', 'float', 5, required = False, export = True, hint = '')  ,
         ]
         
         basicIntegrationParameters = [
@@ -729,7 +730,7 @@ class SPHSimulation():
                     self.boundaryModule.evalBoundaryDensity(self.simulationState, self)
                 self.shiftingModule.shift(self.simulationState, self)
 
-                self.simulationState['fluidPosition'] += self.simulationState['fluidUpdate']
+                self.simulationState['fluidPosition'] += dt * self.simulationState['fluidUpdate']
 
         step = '15 - Bookkeeping'
         if self.verbose: print(step)

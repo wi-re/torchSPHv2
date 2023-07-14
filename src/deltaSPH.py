@@ -168,9 +168,9 @@ class deltaSPHSimulation(SPHSimulation):
             self.boundaryModule.evalBoundaryDensity(self.simulationState, self)
         step = '5 - surface detection'
         if self.verbose: print(step)
-        with record_function(step):           
-            if hasattr(self, 'shiftingModule'):
-                self.shiftingModule.detectSurface(self.simulationState, self)    
+        # with record_function(step):           
+            # if hasattr(self, 'shiftingModule'):
+                # self.shiftingModule.detectSurface(self.simulationState, self)    
         step = ' 6 - Initializing acceleration'
         if self.verbose: print(step)
         with record_function(step):

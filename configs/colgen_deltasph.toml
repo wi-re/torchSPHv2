@@ -71,7 +71,8 @@ radius = 0.005
 magnitude = 0
 
 [fluid]
-c0 = 20
+c0 = 50
+umax = 5
 
 [simulation]
 boundaryScheme = 'solid'
@@ -95,11 +96,11 @@ kinematic = 0.0
 
 [integration]
 scheme = 'RK4'
-dt = 0.001
+dt = 0.0002
 
 [shifting]
-enabled = false
-scheme = 'implicit'
+enabled = true
+scheme = 'deltaPlus'
 
 [kernel]
 targetNeighbors = 50
