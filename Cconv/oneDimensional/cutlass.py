@@ -282,6 +282,7 @@ class cutlass(torch.autograd.Function):
                             normalizationFactor = u.sum(-1)
                             conv = torch.einsum('nu, uio,ni -> no',u,weight, x_j[batch]) * normalizationFactor[:,None]
                         else:
+                            # print(u.shape, weight.shape, x_j[batch].shape)
                             conv = torch.einsum('nu, uio,ni -> no',u,weight, x_j[batch])
                         del u
                         out += scatter_sum(conv, index = edge_index[0,batch], dim_size = ctx.dim_size, dim = ctx.dim)

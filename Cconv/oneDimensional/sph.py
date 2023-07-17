@@ -86,7 +86,7 @@ def periodicNeighborSearch(fluidPositions, particleSupport, minDomain, maxDomain
     distanceMat = torch.remainder(distanceMat + minDomain, maxDomain - minDomain) - maxDomain
     neighs = torch.abs(distanceMat) < particleSupport
     n0 = torch.sum(neighs, dim = 0)
-    indices = torch.arange(fluidPositions.shape[0])
+    indices = torch.arange(fluidPositions.shape[0]).to(fluidPositions.device)
     indexMat = indices.expand(fluidPositions.shape[0], fluidPositions.shape[0])
     j, i = indexMat[neighs], indexMat.mT[neighs]
     distances = -distanceMat[neighs]

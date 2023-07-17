@@ -390,16 +390,17 @@ class RbfConv(MessagePassing):
         edge_weights = None
         if not(self.windowFn is None):
             edge_weights = self.windowFn(torch.linalg.norm(edge_attr, axis = 1))
+        mapped = edge_attr
 
-        positions = torch.hstack((edge_attr, torch.zeros(edge_attr.shape[0],1, device = edge_attr.device, dtype = edge_attr.dtype)))
-        if self.coordinateMapping == 'polar':
-            spherical = mapToSpherical(positions)
-            mapped = torch.vstack((spherical[:,0] * 2. - 1.,spherical[:,1] / np.pi)).mT
-        if self.coordinateMapping == 'cartesian':
-            mapped = edge_attr
-        if self.coordinateMapping == 'preserving':
-            cubePositions = mapToSpherePreserving(positions)
-            mapped = torch.vstack((cubePositions[:,0],cubePositions[:,1] / np.pi)).mT
+        # positions = torch.hstack((edge_attr, torch.zeros(edge_attr.shape[0],1, device = edge_attr.device, dtype = edge_attr.dtype)))
+        # if self.coordinateMapping == 'polar':
+        #     spherical = mapToSpherical(positions)
+        #     mapped = torch.vstack((spherical[:,0] * 2. - 1.,spherical[:,1] / np.pi)).mT
+        # if self.coordinateMapping == 'cartesian':
+        #     mapped = edge_attr
+        # if self.coordinateMapping == 'preserving':
+        #     cubePositions = mapToSpherePreserving(positions)
+        #     mapped = torch.vstack((cubePositions[:,0],cubePositions[:,1] / np.pi)).mT
         convolution = cutlass.apply
         out = convolution(edge_index, x_i, x_j, mapped, edge_weights, self.weight, 
                                   x_i.shape[0], self.node_dim,
