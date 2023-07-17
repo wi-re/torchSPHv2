@@ -205,3 +205,109 @@ def computeUpdate(fluidPositions, fluidVelocities, fluidAreas, minDomain, maxDom
     # 6. Compute kinematic viscosity
     fluidAccel += computeDiffusion(fluidPositions, fluidVelocities, fluidAreas, fluidDensity, particleSupport, restDensity, diffusionAlpha, diffusionBeta, c0, fluidNeighbors, fluidRadialDistances, fluidDistances) # currently broken for some reason
     return fluidAccel, fluidVelocities, fluidDensity, fluidPressure
+
+from plotting import *
+def initSimulation(pdf, numParticles, minDomain, maxDomain, baseArea, particleSupport, dtype, device, plot = False):
+    # sample the pdf using the inverse CFD, plotting shows the pdf
+    sampled = samplePDF(pdf, plot = False, numParticles = numParticles)
+    # sample positions according to the given pdf
+    fluidPositions = ((torch.tensor(sampled)/2 +0.5)* (maxDomain - minDomain) + minDomain).type(dtype).to(device)
+    # initially zero velocity everywhere
+    fluidVelocities = torch.zeros(fluidPositions.shape[0]).type(dtype).to(device)
+    # and all particles with identical masses
+    fluidAreas = torch.ones_like(fluidPositions) * baseArea
+    # simulationStates holds all timestep information
+    simulationStates = []
+    # plot initial density field to show starting conditions
+    if plot:
+        density = plotDensityField(fluidPositions, fluidAreas, minDomain, maxDomain, particleSupport)
+    return fluidPositions, fluidAreas, fluidVelocities
+def runSimulation(fluidPositions_, fluidAreas_, fluidVelocities_, timesteps, minDomain, maxDomain, kappa, restDensity, diffusionAlpha, diffusionBeta, c0, xsphConstant, particleSupport, dt):
+    fluidPositions = torch.clone(fluidPositions_)
+    fluidAreas = torch.clone(fluidAreas_)
+    fluidVelocities = torch.clone(fluidVelocities_)
+    simulationStates = []
+    # run the simulation using RK4
+    for i in tqdm(range(timesteps)):
+        # Compute state for substep 1
+        v1 = torch.clone(fluidVelocities)
+        # RK4 substep 1
+        dudt_k1, dxdt_k1, fluidDensity, fluidPressure = computeUpdate(fluidPositions, fluidVelocities, fluidAreas, minDomain, maxDomain, kappa, restDensity, diffusionAlpha, diffusionBeta, c0, xsphConstant, particleSupport, dt)   
+        # Compute state for substep 2
+        x_k1 = fluidPositions + 0.5 * dt * dxdt_k1
+        u_k1 = fluidVelocities + 0.5 * dt * dudt_k1    
+        # RK4 substep 2
+        dudt_k2, dxdt_k2, _, _ = computeUpdate(x_k1, u_k1, fluidAreas, minDomain, maxDomain, kappa, restDensity, diffusionAlpha, diffusionBeta, c0, xsphConstant, particleSupport, 0.5 * dt)    
+        # Compute state for substep 2
+        x_k2 = fluidPositions + 0.5 * dt * dxdt_k2
+        u_k2 = fluidVelocities + 0.5 * dt * dudt_k2
+        # RK4 substep 3
+        dudt_k3, dxdt_k3, _, _ = computeUpdate(x_k2, u_k2, fluidAreas, minDomain, maxDomain, kappa, restDensity, diffusionAlpha, diffusionBeta, c0, xsphConstant, particleSupport,  0.5 * dt)    
+        # Compute state for substep 4    
+        x_k3 = fluidPositions + dt * dxdt_k3
+        u_k3 = fluidVelocities + dt * dudt_k3
+        # RK4 substep 4
+        dudt_k4, dxdt_k4, _, _ = computeUpdate(x_k3, u_k3, fluidAreas, minDomain, maxDomain, kappa, restDensity, diffusionAlpha, diffusionBeta, c0, xsphConstant, particleSupport, dt)    
+        # RK substeps done, store current simulation state for later processing/learning. density and pressure are based on substep 1 (i.e., the starting point for this timestep)
+        simulationStates.append(torch.stack([fluidPositions, fluidVelocities, fluidDensity, fluidPressure, dt/6 * (dudt_k1 + 2* dudt_k2 + 2 * dudt_k3 + dudt_k4), dudt_k1, dudt_k2, dudt_k3, dudt_k4, dxdt_k1, dxdt_k2, dxdt_k3, dxdt_k4, fluidAreas]))
+        # time integration using RK4 for velocity
+    #     fluidVelocities = fluidVelocities + dt * dudt_k1 # semi implicit euler mode
+        fluidVelocities = fluidVelocities + dt/6 * (dudt_k1 + 2* dudt_k2 + 2 * dudt_k3 + dudt_k4)
+        fluidPositions = fluidPositions + dt * fluidVelocities
+    # After the simulation has run we stack all the states into one large array for easier slicing and analysis
+    simulationStates = torch.stack(simulationStates)
+    return simulationStates
+
+import os
+from datetime import datetime
+import h5py
+
+def export(simulationStates, numParticles, timesteps, minDomain, maxDomain, kappa, restDensity, diffusionAlpha, diffusionBeta, c0, xsphConstant, particleRadius, baseArea, particleSupport, dt, generator, generatorSettings):
+    if not os.path.exists('./output/'):
+        os.makedirs('./output/')
+
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    outFile = h5py.File('./output/out_%s_%08d_%s.hdf5' % (generator, generatorSettings['seed'], timestamp),'w')
+
+    outFile.attrs['minDomain'] = minDomain
+    outFile.attrs['maxDomain'] = maxDomain
+
+    outFile.attrs['baseArea'] = baseArea
+    outFile.attrs['particleRadius'] = particleRadius
+    outFile.attrs['particleSupport'] = particleSupport
+
+    outFile.attrs['xsphConstant'] = xsphConstant
+    outFile.attrs['diffusionAlpha'] = diffusionAlpha
+    outFile.attrs['diffusionBeta'] = diffusionBeta
+    outFile.attrs['kappa'] = kappa
+    outFile.attrs['restDensity'] = restDensity
+    outFile.attrs['c0'] = c0
+    outFile.attrs['dt'] = dt
+
+    outFile.attrs['numParticles'] = numParticles
+    outFile.attrs['timesteps'] = timesteps
+
+    outFile.attrs['generator'] = generator
+
+    grp = outFile.create_group('generatorSettings')
+    grp.attrs.update(generatorSettings)
+
+    grp = outFile.create_group('simulationData')
+
+    grp.create_dataset('fluidPosition', data = simulationStates[:,0].detach().cpu().numpy())
+    grp.create_dataset('fluidVelocities', data = simulationStates[:,1].detach().cpu().numpy())
+    grp.create_dataset('fluidDensity', data = simulationStates[:,2].detach().cpu().numpy())
+    grp.create_dataset('fluidPressure', data = simulationStates[:,3].detach().cpu().numpy())
+    grp.create_dataset('fluidAreas', data = simulationStates[:,13].detach().cpu().numpy())
+
+    grp.create_dataset('dudt', data = simulationStates[:,4].detach().cpu().numpy())
+    grp.create_dataset('dudt_k1', data = simulationStates[:,5].detach().cpu().numpy())
+    grp.create_dataset('dudt_k2', data = simulationStates[:,6].detach().cpu().numpy())
+    grp.create_dataset('dudt_k3', data = simulationStates[:,7].detach().cpu().numpy())
+    grp.create_dataset('dudt_k4', data = simulationStates[:,8].detach().cpu().numpy())
+
+    grp.create_dataset('dxdt_k1', data = simulationStates[:,9].detach().cpu().numpy())
+    grp.create_dataset('dxdt_k2', data = simulationStates[:,10].detach().cpu().numpy())
+    grp.create_dataset('dxdt_k3', data = simulationStates[:,11].detach().cpu().numpy())
+    grp.create_dataset('dxdt_k4', data = simulationStates[:,12].detach().cpu().numpy())
+    outFile.close()
