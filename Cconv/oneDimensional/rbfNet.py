@@ -43,6 +43,19 @@ class RbfNet(torch.nn.Module):
         self.fcs = torch.nn.ModuleList()
         self.relu = getattr(nn.functional, 'relu')
         self.normalized = normalized
+        if len(layers) == 1:
+            self.convs.append(RbfConv(
+                in_channels = fluidFeatures, out_channels = self.features[0],
+                dim = 1, size = [n],
+                rbf = rbf,
+                bias = True,
+                linearLayer = False, biasOffset = False, feedThrough = False,
+                preActivation = None, postActivation = None,
+                coordinateMapping = coordinateMapping,
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False, normalizeInterpolation = normalized))
+
+            self.centerIgnore = False
+            return
 
         self.convs.append(RbfConv(
             in_channels = fluidFeatures, out_channels = self.features[0],
@@ -115,6 +128,8 @@ class RbfNet(torch.nn.Module):
             
         linearOutput = (self.fcs[0](fluidFeatures))
         fluidConvolution = (self.convs[0]((fluidFeatures, fluidFeatures), fluidEdgeIndex, fluidEdgeLengths))
+        if len(layers) == 1:
+            return fluidConvolution
         ans = torch.hstack((linearOutput, fluidConvolution))
         if verbose:
             print('first layer output', ans[:4])
