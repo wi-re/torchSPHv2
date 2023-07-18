@@ -32,16 +32,16 @@ from rbfConv import *
 from tqdm import tqdm
 import os
 
-
 class RbfNet(torch.nn.Module):
     def __init__(self, fluidFeatures, layers = [32,64,64,2], denseLayer = True, activation = 'relu',
-                coordinateMapping = 'polar', n = 8, windowFn = None, rbf = 'linear',batchSize = 32, ignoreCenter = True, normalized = False):
+                coordinateMapping = 'cartesian', n = 8, windowFn = None, rbf = 'linear',batchSize = 32, ignoreCenter = True, normalized = False):
         super().__init__()
         self.centerIgnore = ignoreCenter
         self.features = copy.copy(layers)
         self.convs = torch.nn.ModuleList()
         self.fcs = torch.nn.ModuleList()
         self.relu = getattr(nn.functional, 'relu')
+        self.layers = layers
         self.normalized = normalized
         if len(layers) == 1:
             self.convs.append(RbfConv(
@@ -107,12 +107,7 @@ class RbfNet(torch.nn.Module):
             nequals = fi != fj
 
         i, ni = torch.unique(fi, return_counts = True)
-#         b, nb = torch.unique(bf, return_counts = True)
-        
         self.ni = ni
-#         self.nb = nb
-
-#         ni[i[b]] += nb
         self.li = torch.exp(-1 / 16 * ni)
 
         if self.centerIgnore:
@@ -126,10 +121,10 @@ class RbfNet(torch.nn.Module):
             fluidEdgeLengths = distances
         fluidEdgeLengths = fluidEdgeLengths.clamp(-1,1)
             
-        linearOutput = (self.fcs[0](fluidFeatures))
         fluidConvolution = (self.convs[0]((fluidFeatures, fluidFeatures), fluidEdgeIndex, fluidEdgeLengths))
-        if len(layers) == 1:
-            return fluidConvolution
+        if len(self.layers) == 1:
+            return fluidConvolution 
+        linearOutput = (self.fcs[0](fluidFeatures))
         ans = torch.hstack((linearOutput, fluidConvolution))
         if verbose:
             print('first layer output', ans[:4])
@@ -152,7 +147,48 @@ class RbfNet(torch.nn.Module):
         return ans
     
 
-def getWindowFunction(windowFunction):
+normDict = {}
+normDict['zero'] = {}
+normDict['zero']['cubicSpline'] = 0.5
+normDict['zero']['quarticSpline'] = 0.3680000000000001
+normDict['zero']['quinticSpline'] = 0.2716049382716052
+
+normDict['zero']['Wendland2_1D'] = 1.0
+normDict['zero']['Wendland4_1D'] = 1.0
+normDict['zero']['Wendland6_1D'] = 1.0
+
+normDict['zero']['Wendland2'] = 1.0
+normDict['zero']['Wendland4'] = 1.0
+normDict['zero']['Wendland6'] = 1.0
+
+normDict['zero']['Hoct4'] = 0.9004611977424557
+normDict['zero']['Spiky'] = 1.0
+normDict['zero']['Mueller'] = 1.0
+normDict['zero']['poly6'] = 1.0
+normDict['zero']['Parabola'] = 1.0
+normDict['zero']['Linear'] = 1.0
+
+normDict['integral'] = {}
+normDict['integral']['cubicSpline'] = 0.3750000004808612
+normDict['integral']['quarticSpline'] = 0.24576000000063475
+normDict['integral']['quinticSpline'] = 0.16460905349817873
+
+normDict['integral']['Wendland2_1D'] = 0.8000000007695265
+normDict['integral']['Wendland4_1D'] = 0.6666666666675429
+normDict['integral']['Wendland6_1D'] = 0.5818181818188082
+
+normDict['integral']['Wendland2'] = 0.6666666679481377
+normDict['integral']['Wendland4'] = 0.5925925925933454
+normDict['integral']['Wendland6'] = 0.5333333333335031
+
+normDict['integral']['Hoct4'] = 0.4724016135230473
+normDict['integral']['Spiky'] = 0.5000309999743467
+normDict['integral']['Mueller'] = 0.9142857147993859
+normDict['integral']['poly6'] = 0.5000309999743467
+normDict['integral']['Parabola'] = 1.3333126666253334
+normDict['integral']['Linear'] = 0.999999999970667
+
+def getWindowFunction(windowFunction, norm = None):
     windowFn = lambda r: torch.ones_like(r)
     if windowFunction == 'cubicSpline':
         windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 3 - 4 * torch.clamp(1/2 - r, min = 0) ** 3
@@ -212,8 +248,27 @@ def getWindowFunction(windowFunction):
         windowFn = lambda r: torch.clamp(1 - r**2, min = 0)
     if windowFunction == 'Linear':
         windowFn = lambda r: torch.clamp(1 - r, min = 0)
+        
+    if norm is not None:
+        return lambda q: windowFn(q) / normDict[norm][windowFunction]
     return windowFn
-            
+# Window Function normalization test
+# norm = 'integral'
+# print('cubicSpline', getWindowFunction('cubicSpline', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('cubicSpline', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())
+# print('quarticSpline', getWindowFunction('quarticSpline', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('quarticSpline', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())
+# print('quinticSpline', getWindowFunction('quinticSpline', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('quinticSpline', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())
+# print('Wendland2_1D', getWindowFunction('Wendland2_1D', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('Wendland2_1D', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())
+# print('Wendland4_1D', getWindowFunction('Wendland4_1D', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('Wendland4_1D', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())
+# print('Wendland6_1D', getWindowFunction('Wendland6_1D', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('Wendland6_1D', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())
+# print('Wendland2', getWindowFunction('Wendland2', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('Wendland2', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())
+# print('Wendland4', getWindowFunction('Wendland4', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('Wendland4', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())
+# print('Wendland6', getWindowFunction('Wendland6', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('Wendland6', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())
+# print('Hoct4', getWindowFunction('Hoct4', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('Hoct4', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())
+# print('Spiky', getWindowFunction('Spiky', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('Spiky', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())
+# print('Mueller', getWindowFunction('Mueller', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('Mueller', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())
+# print('poly6', getWindowFunction('poly6', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('poly6', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())
+# print('Parabola', getWindowFunction('Parabola', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('Parabola', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())
+# print('Linear', getWindowFunction('Linear', norm = norm)(torch.tensor([0]).type(torch.float64)).numpy().item(), torch.trapezoid(getWindowFunction('Linear', norm = norm)(torch.abs(torch.linspace(-1,1,255).type(torch.float64))),torch.linspace(-1,1,255).type(torch.float64)).numpy().item())       
 
 class RbfInputNet(torch.nn.Module):
     def __init__(self, fluidFeatures, boundaryFeatures, layers = [32,64,64,2], denseLayer = True, activation = 'relu',

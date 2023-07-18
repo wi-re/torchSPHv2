@@ -62,68 +62,68 @@ def loadBatch(simulationStates, minDomain, maxDomain, particleSupport, bdata, ge
     
     return stackedPositions, getFeatures(stackedPositions, stackedAreas, stackedVelocities, stackedUpdates), getGroundTruth(bdata, stacked, simulationStates), stackedNeighbors, d
 
-# useful function for learning, returns non normalized windows
-def getWindowFunction(windowFunction):
-    windowFn = lambda r: torch.ones_like(r)
-    if windowFunction == 'cubicSpline':
-        windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 3 - 4 * torch.clamp(1/2 - r, min = 0) ** 3
-    if windowFunction == 'quarticSpline':
-        windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 4 - 5 * torch.clamp(3/5 - r, min = 0) ** 4 + 10 * torch.clamp(1/5- r, min = 0) ** 4
-    if windowFunction == 'quinticSpline':
-        windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 5 - 6 * torch.clamp(2/3 - r, min = 0) ** 5 + 15 * torch.clamp(1/3 - r, min = 0) ** 5
-    if windowFunction == 'Wendland2_1D':
-        windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 3 * (1 + 3 * r)
-    if windowFunction == 'Wendland4_1D':
-        windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 5 * (1 + 5 * r + 8 * r**2)
-    if windowFunction == 'Wendland6_1D':
-        windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 7 * (1 + 7 * r + 19 * r**2 + 21 * r**3)
-    if windowFunction == 'Wendland2':
-        windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 4 * (1 + 4 * r)
-    if windowFunction == 'Wendland4':
-        windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 6 * (1 + 6 * r + 35/3 * r**2)
-    if windowFunction == 'Wendland6':
-        windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 8 * (1 + 8 * r + 25 * r**2 + 32 * r**3)
-    if windowFunction == 'Hoct4':
-        def hoct4(x):
-            alpha = 0.0927 # Subject to 0 = (1 − α)** nk−2 + A(γ − α)**nk−2 + B(β − α)**nk−2
-            beta = 0.5 # Free parameter
-            gamma = 0.75 # Free parameter
-            nk = 4 # order of kernel
+# # useful function for learning, returns non normalized windows
+# def getWindowFunction(windowFunction):
+#     windowFn = lambda r: torch.ones_like(r)
+#     if windowFunction == 'cubicSpline':
+#         windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 3 - 4 * torch.clamp(1/2 - r, min = 0) ** 3
+#     if windowFunction == 'quarticSpline':
+#         windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 4 - 5 * torch.clamp(3/5 - r, min = 0) ** 4 + 10 * torch.clamp(1/5- r, min = 0) ** 4
+#     if windowFunction == 'quinticSpline':
+#         windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 5 - 6 * torch.clamp(2/3 - r, min = 0) ** 5 + 15 * torch.clamp(1/3 - r, min = 0) ** 5
+#     if windowFunction == 'Wendland2_1D':
+#         windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 3 * (1 + 3 * r)
+#     if windowFunction == 'Wendland4_1D':
+#         windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 5 * (1 + 5 * r + 8 * r**2)
+#     if windowFunction == 'Wendland6_1D':
+#         windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 7 * (1 + 7 * r + 19 * r**2 + 21 * r**3)
+#     if windowFunction == 'Wendland2':
+#         windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 4 * (1 + 4 * r)
+#     if windowFunction == 'Wendland4':
+#         windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 6 * (1 + 6 * r + 35/3 * r**2)
+#     if windowFunction == 'Wendland6':
+#         windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 8 * (1 + 8 * r + 25 * r**2 + 32 * r**3)
+#     if windowFunction == 'Hoct4':
+#         def hoct4(x):
+#             alpha = 0.0927 # Subject to 0 = (1 − α)** nk−2 + A(γ − α)**nk−2 + B(β − α)**nk−2
+#             beta = 0.5 # Free parameter
+#             gamma = 0.75 # Free parameter
+#             nk = 4 # order of kernel
 
-            A = (1 - beta**2) / (gamma ** (nk - 3) * (gamma ** 2 - beta ** 2))
-            B = - (1 + A * gamma ** (nk - 1)) / (beta ** (nk - 1))
-            P = -nk * (1 - alpha) ** (nk - 1) - nk * A * (gamma - alpha) ** (nk - 1) - nk * B * (beta - alpha) ** (nk - 1)
-            Q = (1 - alpha) ** nk + A * (gamma - alpha) ** nk + B * (beta - alpha) ** nk - P * alpha
+#             A = (1 - beta**2) / (gamma ** (nk - 3) * (gamma ** 2 - beta ** 2))
+#             B = - (1 + A * gamma ** (nk - 1)) / (beta ** (nk - 1))
+#             P = -nk * (1 - alpha) ** (nk - 1) - nk * A * (gamma - alpha) ** (nk - 1) - nk * B * (beta - alpha) ** (nk - 1)
+#             Q = (1 - alpha) ** nk + A * (gamma - alpha) ** nk + B * (beta - alpha) ** nk - P * alpha
 
-            termA = P * x + Q
-            termB = (1 - x) ** nk + A * (gamma - x) ** nk + B * (beta - x) ** nk
-            termC = (1 - x) ** nk + A * (gamma - x) ** nk
-            termD = (1 - x) ** nk
-            termE = 0 * x
+#             termA = P * x + Q
+#             termB = (1 - x) ** nk + A * (gamma - x) ** nk + B * (beta - x) ** nk
+#             termC = (1 - x) ** nk + A * (gamma - x) ** nk
+#             termD = (1 - x) ** nk
+#             termE = 0 * x
 
-            termA[x > alpha] = 0
-            termB[x <= alpha] = 0
-            termB[x > beta] = 0
-            termC[x <= beta] = 0
-            termC[x > gamma] = 0
-            termD[x <= gamma] = 0
-            termD[x > 1] = 0
-            termE[x < 1] = 0
+#             termA[x > alpha] = 0
+#             termB[x <= alpha] = 0
+#             termB[x > beta] = 0
+#             termC[x <= beta] = 0
+#             termC[x > gamma] = 0
+#             termD[x <= gamma] = 0
+#             termD[x > 1] = 0
+#             termE[x < 1] = 0
 
-            return termA + termB + termC + termD + termE
+#             return termA + termB + termC + termD + termE
 
-        windowFn = lambda r: hoct4(r)
-    if windowFunction == 'Spiky':
-        windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 3
-    if windowFunction == 'Mueller':
-        windowFn = lambda r: torch.clamp(1 - r ** 2, min = 0) ** 3
-    if windowFunction == 'poly6':
-        windowFn = lambda r: torch.clamp((1 - r)**3, min = 0)
-    if windowFunction == 'Parabola':
-        windowFn = lambda r: torch.clamp(1 - r**2, min = 0)
-    if windowFunction == 'Linear':
-        windowFn = lambda r: torch.clamp(1 - r, min = 0)
-    return windowFn
+#         windowFn = lambda r: hoct4(r)
+#     if windowFunction == 'Spiky':
+#         windowFn = lambda r: torch.clamp(1 - r, min = 0) ** 3
+#     if windowFunction == 'Mueller':
+#         windowFn = lambda r: torch.clamp(1 - r ** 2, min = 0) ** 3
+#     if windowFunction == 'poly6':
+#         windowFn = lambda r: torch.clamp((1 - r)**3, min = 0)
+#     if windowFunction == 'Parabola':
+#         windowFn = lambda r: torch.clamp(1 - r**2, min = 0)
+#     if windowFunction == 'Linear':
+#         windowFn = lambda r: torch.clamp(1 - r, min = 0)
+#     return windowFn
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
