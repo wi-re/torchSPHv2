@@ -139,7 +139,7 @@ def processDataLoaderIter(pb, iterations, epoch, lr,
 from rbfNet import getWindowFunction, RbfNet
 from torch.optim import Adam
 
-def trainModel(particleData, settings, dataSet, trainingFiles, n = 16, basis = 'linear', layers = [1], window = None, windowNorm = None, epochs = 5, iterations = 1000, initialLR = 1e-2, groundTruthFn = None, featureFn = None, lossFn = None, device = 'cpu'):   
+def trainModelOverfit(particleData, settings, dataSet, trainingFiles, n = 16, basis = 'linear', layers = [1], window = None, windowNorm = None, epochs = 5, iterations = 1000, initialLR = 1e-2, groundTruthFn = None, featureFn = None, lossFn = None, device = 'cpu'):   
     windowFn = getWindowFunction(window, norm = windowNorm) if window is not None else None
     model = RbfNet(fluidFeatures = 1, 
                    layers = layers, 
@@ -190,7 +190,7 @@ def generateSyntheticData(n, device):
     
     return xp, fx[:,None], neighbors[0,:], neighbors[1,:]
 
-def plotModel(modelState, device, baseArea, particleSupport):
+def plotModelOverfit(modelState, device, baseArea, particleSupport):
     fig, axis = plt.subplot_mosaic('''DBC
     ABC
     EBC
@@ -280,7 +280,7 @@ def getMetrics(modelState, iteration = -1):
     
     return l2.numpy(), r2, lombScargle
 
-def plotModelset(models, device):
+def plotModelsetOverfit(models, device):
     fig, axis = plt.subplot_mosaic('''ABE
     CBE
     DBF''', figsize=(16,6), sharex = False, width_ratios=[1,2,1])
@@ -400,4 +400,383 @@ def plotModelsetInteractive(fig, axis, models, device):
 
     fig.suptitle('Basis: %s, Window: %s, WindowNorm: %s' % (models[0]['basis'], models[0]['window'] if models[0]['window'] is not None else 'None', models[0]['windowNorm'] if models[0]['windowNorm'] is not None else 'None'))
 
+    fig.tight_layout()
+
+
+
+def plotModel(modelState, testData, device, baseArea, particleSupport):
+    fig, axis = plt.subplot_mosaic('''ABC
+    FGH
+    DDD''', figsize=(12,6), sharex = False)
+
+
+    xSynthetic, featuresSynthetic, iSynthetic, jSynthetic = generateSyntheticData(511, device)
+
+    steps = modelState['iterations'] * modelState['epochs']
+    ls = np.logspace(0, np.log10(steps), num =  50)
+    ls = [int(np.floor(f)) for f in ls]
+    ls = np.unique(ls).tolist()
+
+    axis['F'].plot(xSynthetic[:,0].detach().cpu().numpy(), modelState['model'](featuresSynthetic, iSynthetic, jSynthetic, xSynthetic).detach().cpu().numpy(),ls='-',c= 'green', alpha = 0.95)
+    axis['F'].plot(xSynthetic[:,0].detach().cpu().numpy(), kernel(torch.abs(xSynthetic), 1).detach().cpu().numpy(), c = 'red')
+    axis['F'].set_title('convolution operator')
+
+    axis['A'].loglog(torch.mean(torch.vstack(modelState['losses']), dim = 1), ls = '-', c = 'black')
+    axis['A'].loglog(torch.min(torch.vstack(modelState['losses']), dim = 1)[0], ls = '--', c = 'black')
+    axis['A'].loglog(torch.max(torch.vstack(modelState['losses']), dim = 1)[0], ls = '--', c = 'black')
+    axis['A'].set_title('Loss Curve')
+    with torch.no_grad():
+        for i, k in  enumerate(testData.keys()):
+            ax = axis['B']
+            if i == 0:
+                ax = axis['B']
+            if i == 1:
+                ax = axis['C']
+            if i == 2:
+                ax = axis['G']
+            if i == 3:
+                ax = axis['H']    
+            norm = mpl.colors.Normalize(vmin=0, vmax=len(testData[k][0]) - 1)
+            gt = testData[k][9].reshape(len(testData[k][0]), testData[k][0][0].shape[0])
+            for i, (xs, rhos) in enumerate(zip(testData[k][0], gt)):
+                c = cmap(norm(i))
+                ax.plot(xs.cpu().numpy(), rhos.cpu().numpy(), c = c)
+            prediction = modelState['model'](testData[k][5], testData[k][6], testData[k][7], testData[k][8]).reshape(len(testData[k][0]), testData[k][0][0].shape[0]).detach().cpu().numpy()
+            for i, (xs, rhos) in enumerate(zip(testData[k][0], prediction)):
+                c = cmap(norm(i))
+                ax.plot(xs.cpu().numpy(), rhos, ls = '--', c = c)
+
+            ax.set_title(k)
+
+    def plot(fig, axis, mat, title, cmap = 'viridis', norm = 'linear'):
+        im = axis.imshow(mat, cmap = cmap, norm = norm)
+        axis.axis('auto')
+        ax1_divider = make_axes_locatable(axis)
+        cax1 = ax1_divider.append_axes("right", size="1%", pad="1%")
+        cb1 = fig.colorbar(im, cax=cax1,orientation='vertical')
+        cb1.ax.tick_params(labelsize=8) 
+        axis.set_title(title)
+
+    lMat = torch.vstack(modelState['losses']).mT
+    plot(fig, axis['D'],lMat, title = 'Losses', norm = LogNorm(vmin=torch.min(lMat[lMat> 0]), vmax=torch.max(lMat)))
+    fig.tight_layout()
+    
+
+def getTestcase(testingData, settings, f, frames, device):
+    positions = [testingData[f]['positions'][t,:].to(device) for t in frames]
+    velocities = [testingData[f]['velocity'][t,:].to(device) for t in frames]
+    areas = [testingData[f]['area'][t,:].to(device) for t in frames]
+    dudts = [testingData[f]['dudt'][t,:].to(device) for t in frames]
+    densities = [testingData[f]['density'][t,:].to(device) for t in frames]
+    setup = [settings[f] for t in frames]
+    
+    return positions, velocities, areas, dudts, densities, setup
+def loadTestcase(testingData, settings, f, frames, device, groundTruthFn, featureFn):
+    positions, velocities, areas, dudts, density, setup = getTestcase(testingData, settings, f, frames, device)
+
+    i, j, distance, direction = batchedNeighborsearch(positions, setup)
+    x, u, v, rho, dudt = flatten(positions, velocities, areas, density, dudts)
+
+    x = x[:,None].to(device)    
+    groundTruth = groundTruthFn(positions, velocities, areas, density, dudts).to(device)
+    distance = (distance * direction)[:,None].to(device)
+    features = featureFn(x, u, v, rho, dudt).to(device)
+#     print(groundTruth)
+    return positions, velocities, areas, density, dudts, features, i, j, distance, groundTruth
+
+
+def plotLosses(trainedModel, testData):
+    fig, axis = plt.subplot_mosaic('''AA
+    BC
+    DE''', figsize=(12,8), sharey = True, sharex = True)
+
+    axis['A'].semilogy(torch.mean(torch.vstack(trainedModel['losses']), dim = 1), c = 'black')
+    # axis['A'].semilogy(torch.min(torch.vstack(trainedModel['losses']), dim = 1)[0], c = 'black', ls = '--')
+    axis['A'].semilogy(torch.max(torch.vstack(trainedModel['losses']), dim = 1)[0], c = 'black', ls = '--')
+
+    axis['B'].semilogy(torch.mean(torch.vstack(trainedModel['losses']), dim = 1), c = 'black', ls = '-', alpha = 0.5)
+    axis['C'].semilogy(torch.mean(torch.vstack(trainedModel['losses']), dim = 1), c = 'black', ls = '-', alpha = 0.5)
+    axis['D'].semilogy(torch.mean(torch.vstack(trainedModel['losses']), dim = 1), c = 'black', ls = '-', alpha = 0.5)
+    axis['E'].semilogy(torch.mean(torch.vstack(trainedModel['losses']), dim = 1), c = 'black', ls = '-', alpha = 0.5)
+
+    testFrames = list(trainedModel['testLosses'].keys())
+    testLosses = trainedModel['testLosses']
+
+    for k in testData.keys():
+        frames = len(testLosses[0][k])
+        norm = mpl.colors.Normalize(vmin = 0, vmax = frames - 1)
+
+        ax = axis['B']
+        if k == 'sawTooth':
+            ax = axis['B']
+        if k == 'square':
+            ax = axis['C']
+        if k == 'uniform':
+            ax = axis['E']
+        if k == 'sin':
+            ax = axis['D']    
+        for f in range(frames):
+            ax.semilogy(testFrames, [np.mean(testLosses[l][k][f]) for l in testFrames], c = cmap(norm(f)))
+    #         ax.plot(testFrames, [np.min(testLosses[l][k][f]) for l in testFrames], c = cmap(norm(f)), ls = '--', alpha = 0.5)
+    #         ax.plot(testFrames, [np.max(testLosses[l][k][f]) for l in testFrames], c = cmap(norm(f)), ls = '--', alpha = 0.5)
+    axis['B'].set_title('sawTooth')
+    axis['C'].set_title('square')
+    axis['D'].set_title('sin')
+    axis['E'].set_title('uniform')
+
+    fig.tight_layout()
+
+def plotModelset(models, device, nMax = 32):
+    fig, axis = plt.subplot_mosaic('''AABC
+    AADE
+    FFGG''', figsize=(16,6), sharex = False)
+    ns = range(1, nMax + 1)
+
+    l2s = np.zeros(nMax)
+    r2s = np.zeros(nMax)
+    lombs = np.zeros(nMax)
+
+    norm = mpl.colors.Normalize(vmin = 1, vmax = nMax)
+
+    xSynthetic, featuresSynthetic, iSynthetic, jSynthetic = generateSyntheticData(511, device)
+
+    steps = models[0]['iterations'] * models[0]['epochs']
+    # axis['E'].plot(xSynthetic[:,0].detach().cpu().numpy(), kernel(torch.abs(xSynthetic), 1).detach().cpu().numpy(), c = 'red')
+    # axis['F'].plot(models[0]['x'][:,0].detach().cpu().numpy(), models[0]['gt'].detach().cpu().numpy())
+
+    # axis['B'].grid(axis = 'y', which = 'major', ls = '--', alpha = 0.6)
+
+    trainingLosses = []
+    testingLosses = []
+    for i in range(len(models)):
+        modelState = models[i]
+        c = cmap(norm(i + 1))
+        testFrames = list(modelState['testLosses'].keys())
+        testLosses = modelState['testLosses']
+        axis['A'].semilogy(torch.mean(torch.vstack(modelState['losses']), dim = 1), c = c)
+        trainingLosses.append(torch.mean(torch.vstack(modelState['losses']), dim = 1)[-1])
+        testLs = []
+        for k in testData.keys():
+            frames = len(testLosses[0][k])
+    #         norm = mpl.colors.Normalize(vmin = 0, vmax = frames - 1)
+
+            ax = axis['B']
+            if k == 'sawTooth':
+                ax = axis['B']
+            if k == 'square':
+                ax = axis['C']
+            if k == 'uniform':
+                ax = axis['E']
+            if k == 'sin':
+                ax = axis['D']    
+            losses = []
+            for f in range(frames):
+                losses.append([np.mean(testLosses[l][k][f]) for l in testFrames])
+            testLs.append(np.mean(losses,axis = 0)[-1])
+            ax.semilogy(testFrames, np.mean(losses,axis = 0), c =c)
+        testingLosses.append(np.mean(testLs))
+
+    axis['A'].set_title('Loss Curve')
+    axis['B'].set_title('sawTooth')
+    axis['C'].set_title('square')
+    axis['D'].set_title('sin')
+    axis['E'].set_title('uniform')
+    axis['F'].semilogy(np.arange(nMax) + 1, trainingLosses)
+    axis['F'].set_title('Training Loss / Parameters')
+    axis['G'].semilogy(np.arange(nMax) + 1, testingLosses)
+    axis['G'].set_title('Testing Loss / Parameters')
+    fig.suptitle('Basis: %s, Window: %s, WindowNorm: %s' % (models[0]['basis'], models[0]['window'] if models[0]['window'] is not None else 'None', models[0]['windowNorm'] if models[0]['windowNorm'] is not None else 'None'))
+
+    fig.tight_layout()
+
+    # return fig, axis
+
+def plotModelset(models, testData, device, nMax = 32):
+    fig, axis = plt.subplot_mosaic('''AABC
+    AADE
+    FFGG''', figsize=(16,6), sharex = False)
+    ns = range(1, nMax + 1)
+
+    l2s = np.zeros(nMax)
+    r2s = np.zeros(nMax)
+    lombs = np.zeros(nMax)
+
+    norm = mpl.colors.Normalize(vmin = 1, vmax = nMax)
+
+    xSynthetic, featuresSynthetic, iSynthetic, jSynthetic = generateSyntheticData(511, device)
+
+    steps = models[0]['iterations'] * models[0]['epochs']
+    # axis['E'].plot(xSynthetic[:,0].detach().cpu().numpy(), kernel(torch.abs(xSynthetic), 1).detach().cpu().numpy(), c = 'red')
+    # axis['F'].plot(models[0]['x'][:,0].detach().cpu().numpy(), models[0]['gt'].detach().cpu().numpy())
+
+    # axis['B'].grid(axis = 'y', which = 'major', ls = '--', alpha = 0.6)
+
+    trainingLosses = []
+    testingLosses = []
+    for i in range(len(models)):
+        modelState = models[i]
+        c = cmap(norm(i + 1))
+        testFrames = list(modelState['testLosses'].keys())
+        testLosses = modelState['testLosses']
+        axis['A'].semilogy(torch.mean(torch.vstack(modelState['losses']), dim = 1), c = c)
+        trainingLosses.append(torch.mean(torch.vstack(modelState['losses']), dim = 1)[-1])
+        testLs = []
+        for k in testData.keys():
+            frames = len(testLosses[0][k])
+    #         norm = mpl.colors.Normalize(vmin = 0, vmax = frames - 1)
+
+            ax = axis['B']
+            if k == 'sawTooth':
+                ax = axis['B']
+            if k == 'square':
+                ax = axis['C']
+            if k == 'uniform':
+                ax = axis['E']
+            if k == 'sin':
+                ax = axis['D']    
+            losses = []
+            for f in range(frames):
+                losses.append([np.mean(testLosses[l][k][f]) for l in testFrames])
+            testLs.append(np.mean(losses,axis = 0)[-1])
+            ax.semilogy(testFrames, np.mean(losses,axis = 0), c =c)
+        testingLosses.append(np.mean(testLs))
+
+    axis['A'].set_title('Loss Curve')
+    axis['B'].set_title('sawTooth')
+    axis['C'].set_title('square')
+    axis['D'].set_title('sin')
+    axis['E'].set_title('uniform')
+    axis['F'].semilogy(np.arange(nMax) + 1, trainingLosses)
+    axis['F'].set_title('Training Loss / Parameters')
+    axis['G'].semilogy(np.arange(nMax) + 1, testingLosses)
+    axis['G'].set_title('Testing Loss / Parameters')
+    fig.suptitle('Basis: %s, Window: %s, WindowNorm: %s' % (models[0]['basis'], models[0]['window'] if models[0]['window'] is not None else 'None', models[0]['windowNorm'] if models[0]['windowNorm'] is not None else 'None'))
+
+    fig.tight_layout()
+
+    # return fig, axis
+def plotModelset2(models, testData, device, nMax = 32):
+    fig, axis = plt.subplot_mosaic('''AABCHH
+    AADEHH
+    FFGGHH''', figsize=(16,6), sharex = False)
+    ns = range(1, nMax + 1)
+
+    l2s = np.zeros(nMax)
+    r2s = np.zeros(nMax)
+    lombs = np.zeros(nMax)
+
+    norm = mpl.colors.Normalize(vmin = 1, vmax = nMax)
+
+    xSynthetic, featuresSynthetic, iSynthetic, jSynthetic = generateSyntheticData(511, device)
+
+    steps = models[0]['iterations'] * models[0]['epochs']
+    axis['H'].plot(xSynthetic[:,0].detach().cpu().numpy(), kernel(torch.abs(xSynthetic), 1).detach().cpu().numpy(), c = 'red')
+    # axis['F'].plot(models[0]['x'][:,0].detach().cpu().numpy(), models[0]['gt'].detach().cpu().numpy())
+
+    # axis['B'].grid(axis = 'y', which = 'major', ls = '--', alpha = 0.6)
+
+    trainingLosses = []
+    testingLosses = []
+    for i in range(len(models)):
+        modelState = models[i]
+        c = cmap(norm(i + 1))
+        axis['H'].plot(xSynthetic[:,0].detach().cpu().numpy(), modelState['model'](featuresSynthetic, iSynthetic, jSynthetic, xSynthetic).detach().cpu().numpy(),ls='-',c= c, alpha = 0.95)
+        testFrames = list(modelState['testLosses'].keys())
+        testLosses = modelState['testLosses']
+        axis['A'].semilogy(torch.mean(torch.vstack(modelState['losses']), dim = 1), c = c)
+        trainingLosses.append(torch.mean(torch.vstack(modelState['losses']), dim = 1)[-1])
+        testLs = []
+        for k in testData.keys():
+            frames = len(testLosses[0][k])
+    #         norm = mpl.colors.Normalize(vmin = 0, vmax = frames - 1)
+
+            ax = axis['B']
+            if k == 'sawTooth':
+                ax = axis['B']
+            if k == 'square':
+                ax = axis['C']
+            if k == 'uniform':
+                ax = axis['E']
+            if k == 'sin':
+                ax = axis['D']    
+            losses = []
+            for f in range(frames):
+                losses.append([np.mean(testLosses[l][k][f]) for l in testFrames])
+            testLs.append(np.mean(losses,axis = 0)[-1])
+            ax.semilogy(testFrames, np.mean(losses,axis = 0), c =c)
+        testingLosses.append(np.mean(testLs))
+
+    axis['A'].set_title('Loss Curve')
+    axis['B'].set_title('sawTooth')
+    axis['C'].set_title('square')
+    axis['D'].set_title('sin')
+    axis['E'].set_title('uniform')
+    axis['F'].semilogy(np.arange(nMax) + 1, trainingLosses)
+    axis['F'].set_title('Training Loss / Parameters')
+    axis['G'].semilogy(np.arange(nMax) + 1, testingLosses)
+    axis['G'].set_title('Testing Loss / Parameters')
+    axis['H'].set_title('Convolutional Operator')
+    fig.suptitle('Basis: %s, Window: %s, WindowNorm: %s' % (models[0]['basis'], models[0]['window'] if models[0]['window'] is not None else 'None', models[0]['windowNorm'] if models[0]['windowNorm'] is not None else 'None'))
+
+    fig.tight_layout()
+
+    # return fig, axis
+
+
+def plotModel(modelState, testData, device, baseArea, particleSupport):
+    fig, axis = plt.subplot_mosaic('''ABC
+    FGH
+    DDD''', figsize=(12,6), sharex = False)
+
+
+    xSynthetic, featuresSynthetic, iSynthetic, jSynthetic = generateSyntheticData(511, device)
+
+    steps = modelState['iterations'] * modelState['epochs']
+    ls = np.logspace(0, np.log10(steps), num =  50)
+    ls = [int(np.floor(f)) for f in ls]
+    ls = np.unique(ls).tolist()
+
+    axis['F'].plot(xSynthetic[:,0].detach().cpu().numpy(), modelState['model'](featuresSynthetic, iSynthetic, jSynthetic, xSynthetic).detach().cpu().numpy(),ls='-',c= 'green', alpha = 0.95)
+    axis['F'].plot(xSynthetic[:,0].detach().cpu().numpy(), kernel(torch.abs(xSynthetic), 1).detach().cpu().numpy(), c = 'red')
+    axis['F'].set_title('convolution operator')
+
+    axis['A'].loglog(torch.mean(torch.vstack(modelState['losses']), dim = 1), ls = '-', c = 'black')
+    axis['A'].loglog(torch.min(torch.vstack(modelState['losses']), dim = 1)[0], ls = '--', c = 'black')
+    axis['A'].loglog(torch.max(torch.vstack(modelState['losses']), dim = 1)[0], ls = '--', c = 'black')
+    axis['A'].set_title('Loss Curve')
+    with torch.no_grad():
+        for i, k in  enumerate(testData.keys()):
+            ax = axis['B']
+            if i == 0:
+                ax = axis['B']
+            if i == 1:
+                ax = axis['C']
+            if i == 2:
+                ax = axis['G']
+            if i == 3:
+                ax = axis['H']    
+            norm = mpl.colors.Normalize(vmin=0, vmax=len(testData[k][0]) - 1)
+            gt = testData[k][9].reshape(len(testData[k][0]), testData[k][0][0].shape[0])
+            for i, (xs, rhos) in enumerate(zip(testData[k][0], gt)):
+                c = cmap(norm(i))
+                ax.plot(xs.cpu().numpy(), rhos.cpu().numpy(), c = c)
+            prediction = modelState['model'](testData[k][5], testData[k][6], testData[k][7], testData[k][8]).reshape(len(testData[k][0]), testData[k][0][0].shape[0]).detach().cpu().numpy()
+            for i, (xs, rhos) in enumerate(zip(testData[k][0], prediction)):
+                c = cmap(norm(i))
+                ax.plot(xs.cpu().numpy(), rhos, ls = '--', c = c)
+
+            ax.set_title(k)
+
+    def plot(fig, axis, mat, title, cmap = 'viridis', norm = 'linear'):
+        im = axis.imshow(mat, cmap = cmap, norm = norm)
+        axis.axis('auto')
+        ax1_divider = make_axes_locatable(axis)
+        cax1 = ax1_divider.append_axes("right", size="1%", pad="1%")
+        cb1 = fig.colorbar(im, cax=cax1,orientation='vertical')
+        cb1.ax.tick_params(labelsize=8) 
+        axis.set_title(title)
+
+    lMat = torch.vstack(modelState['losses']).mT
+    plot(fig, axis['D'],lMat, title = 'Losses', norm = LogNorm(vmin=torch.min(lMat[lMat> 0]), vmax=torch.max(lMat)))
+    fig.suptitle('basis %s @ %2d terms, window: %s [%s]' % (modelState['basis'], modelState['n'], modelState['window'] if modelState['window'] is not None else 'None', modelState['windowNorm'] if modelState['windowNorm'] is not None else 'None'))
     fig.tight_layout()

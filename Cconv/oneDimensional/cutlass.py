@@ -222,6 +222,46 @@ def evalFourierSeries(n, x):
         fs.append(fourier(i, x))
     return torch.stack(fs)
 
+def fourier2(n, x):
+    if n == 0:
+        return torch.ones_like(x) / np.sqrt(2. * np.pi)
+    elif n  % 2 == 0:
+        return torch.cos(((n - 1) // 2 + 1) * x) * sqrt_pi_1
+    return torch.sin(((n-1) // 2 + 1) * x) * sqrt_pi_1
+def evalFourierSeries2(n, x):
+    fs = []
+    for i in range(n):
+        fs.append(fourier2(i, x))
+    return torch.stack(fs)
+
+def wrongFourierBasis(n, x):
+    if n % 2 == 0:
+        return (torch.cos((n // 2 + 1) * x) * sqrt_pi_1)
+    return (torch.sin((n // 2 + 1) * x) * sqrt_pi_1)
+def correctFourierBasis(n, x):
+    if n % 2 == 0:
+        return (torch.cos((n // 2 + 1) * x) * sqrt_pi_1)
+    return (torch.sin((n // 2 + 1) * x) * sqrt_pi_1)
+def buildFourierSeries(n, x, kind = 'fourier'):
+    ndc = True if 'ndc' in kind else False
+    fs = []
+    for i in range(n):
+        if not ndc and i == 0:
+            if 'odd' in  kind:
+                fs.append(x / 2. * np.pi)
+            else:
+                fs.append(torch.ones_like(x) / np.sqrt(2. * np.pi))
+            continue
+        if 'odd' in kind:
+            fs.append(torch.sin(((i - (0 if ndc else 1)) + 1) * x) * sqrt_pi_1)
+        elif 'even' in kind:
+            fs.append(torch.cos(((i - (0 if ndc else 1)) + 1) * x) * sqrt_pi_1)
+        elif 'ffourier' in kind:
+            fs.append(correctFourierBasis(i - (0 if ndc else 1),x))
+        else:
+            fs.append(wrongFourierBasis(i + (1 if ndc else 0),x))
+    return torch.stack(fs)
+
 # Parent function that delegates the call to the corresponding evaluation functions
 def evalBasisFunction(n, x, which = 'chebyshev', periodic = False):   
     s = which.split()    
@@ -229,8 +269,8 @@ def evalBasisFunction(n, x, which = 'chebyshev', periodic = False):
         return evalChebSeries(n, x)
     if s[0] == 'chebyshev2':
         return evalChebSeries2(n, x)
-    if s[0] == 'fourier':
-        return evalFourierSeries(n, x * np.pi)
+    if 'fourier' in which:
+        return buildFourierSeries(n, x * np.pi, kind = s)
     if s[0] == 'linear':
         return evalRBFSeries(n, x, which = 'linear', epsilon = 1., periodic = periodic)        
     if s[0] == 'rbf':

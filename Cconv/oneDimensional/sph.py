@@ -261,13 +261,16 @@ def runSimulation(fluidPositions_, fluidAreas_, fluidVelocities_, timesteps, min
 import os
 from datetime import datetime
 import h5py
-
-def export(simulationStates, numParticles, timesteps, minDomain, maxDomain, kappa, restDensity, diffusionAlpha, diffusionBeta, c0, xsphConstant, particleRadius, baseArea, particleSupport, dt, generator, generatorSettings):
-    if not os.path.exists('./output/'):
-        os.makedirs('./output/')
+def export(simulationStates, numParticles, timesteps, minDomain, maxDomain, kappa, restDensity, diffusionAlpha, diffusionBeta, c0, xsphConstant, particleRadius, baseArea, particleSupport, dt, generator, generatorSettings, folder = 'output', nameOverride = None):
+    
+    if not os.path.exists('./%s/' % folder):
+        os.makedirs('./%s/' % folder)
 
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    outFile = h5py.File('./output/out_%s_%08d_%s.hdf5' % (generator, generatorSettings['seed'], timestamp),'w')
+    if nameOverride is None:
+        outFile = h5py.File('./%s/out_%s_%08d_%s.hdf5' % (folder, generator, generatorSettings['seed'], timestamp),'w')
+    else:
+        outFile = h5py.File('./%s/%s.hdf5' % (folder, nameOverride),'w')
 
     outFile.attrs['minDomain'] = minDomain
     outFile.attrs['maxDomain'] = maxDomain
