@@ -405,9 +405,14 @@ def plotModelsetInteractive(fig, axis, models, device):
 
 
 def plotModel(modelState, testData, device, baseArea, particleSupport):
-    fig, axis = plt.subplot_mosaic('''ABC
-    FGH
-    DDD''', figsize=(12,6), sharex = False)
+    if modelState['fluidFeatures'] == 1:
+        fig, axis = plt.subplot_mosaic('''ABC
+        FGH
+        DDD''', figsize=(12,6), sharex = False)
+    else:
+        fig, axis = plt.subplot_mosaic('''ABC
+        AGH
+        DDD''', figsize=(12,6), sharex = False)
 
 
     xSynthetic, featuresSynthetic, iSynthetic, jSynthetic = generateSyntheticData(511, device)
@@ -416,10 +421,10 @@ def plotModel(modelState, testData, device, baseArea, particleSupport):
     ls = np.logspace(0, np.log10(steps), num =  50)
     ls = [int(np.floor(f)) for f in ls]
     ls = np.unique(ls).tolist()
-
-    axis['F'].plot(xSynthetic[:,0].detach().cpu().numpy(), modelState['model'](featuresSynthetic, iSynthetic, jSynthetic, xSynthetic).detach().cpu().numpy(),ls='-',c= 'green', alpha = 0.95)
-    axis['F'].plot(xSynthetic[:,0].detach().cpu().numpy(), kernel(torch.abs(xSynthetic), 1).detach().cpu().numpy(), c = 'red')
-    axis['F'].set_title('convolution operator')
+    if modelState['fluidFeatures'] == 1:
+        axis['F'].plot(xSynthetic[:,0].detach().cpu().numpy(), modelState['model'](featuresSynthetic, iSynthetic, jSynthetic, xSynthetic).detach().cpu().numpy(),ls='-',c= 'green', alpha = 0.95)
+        axis['F'].plot(xSynthetic[:,0].detach().cpu().numpy(), kernel(torch.abs(xSynthetic), 1).detach().cpu().numpy(), c = 'red')
+        axis['F'].set_title('convolution operator')
 
     axis['A'].loglog(torch.mean(torch.vstack(modelState['losses']), dim = 1), ls = '-', c = 'black')
     axis['A'].loglog(torch.min(torch.vstack(modelState['losses']), dim = 1)[0], ls = '--', c = 'black')
@@ -724,10 +729,14 @@ def plotModelset2(models, testData, device, nMax = 32):
 
 
 def plotModel(modelState, testData, device, baseArea, particleSupport):
-    fig, axis = plt.subplot_mosaic('''ABC
-    FGH
-    DDD''', figsize=(12,6), sharex = False)
-
+    if modelState['fluidFeatures'] == 1:
+        fig, axis = plt.subplot_mosaic('''ABC
+        FGH
+        DDD''', figsize=(12,6), sharex = False)
+    else:
+        fig, axis = plt.subplot_mosaic('''ABC
+        AGH
+        DDD''', figsize=(12,6), sharex = False)
 
     xSynthetic, featuresSynthetic, iSynthetic, jSynthetic = generateSyntheticData(511, device)
 
@@ -736,9 +745,10 @@ def plotModel(modelState, testData, device, baseArea, particleSupport):
     ls = [int(np.floor(f)) for f in ls]
     ls = np.unique(ls).tolist()
 
-    axis['F'].plot(xSynthetic[:,0].detach().cpu().numpy(), modelState['model'](featuresSynthetic, iSynthetic, jSynthetic, xSynthetic).detach().cpu().numpy(),ls='-',c= 'green', alpha = 0.95)
-    axis['F'].plot(xSynthetic[:,0].detach().cpu().numpy(), kernel(torch.abs(xSynthetic), 1).detach().cpu().numpy(), c = 'red')
-    axis['F'].set_title('convolution operator')
+    if modelState['fluidFeatures'] == 1:
+        axis['F'].plot(xSynthetic[:,0].detach().cpu().numpy(), modelState['model'](featuresSynthetic, iSynthetic, jSynthetic, xSynthetic).detach().cpu().numpy(),ls='-',c= 'green', alpha = 0.95)
+        axis['F'].plot(xSynthetic[:,0].detach().cpu().numpy(), kernel(torch.abs(xSynthetic), 1).detach().cpu().numpy(), c = 'red')
+        axis['F'].set_title('convolution operator')
 
     axis['A'].loglog(torch.mean(torch.vstack(modelState['losses']), dim = 1), ls = '-', c = 'black')
     axis['A'].loglog(torch.min(torch.vstack(modelState['losses']), dim = 1)[0], ls = '--', c = 'black')
