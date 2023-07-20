@@ -1,72 +1,56 @@
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier' -y 'fourier' -w None -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 5 -m 5 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w None -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w None -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier' -y 'ffourier' -w None -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier ndc' -y 'fourier ndc' -w None -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier ndc' -y 'ffourier ndc' -w None -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd' -y 'fourier odd' -w None -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even' -y 'fourier even' -w None -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd ndc' -y 'fourier odd ndc' -w None -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even ndc' -y 'fourier even ndc' -w None -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd lin' -y 'fourier odd lin' -w None -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd sgn' -y 'fourier odd sgn' -w None -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier' -y 'fourier' -w poly6 -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 5 -m 5 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w poly6 -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w poly6 -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier' -y 'ffourier' -w poly6 -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier ndc' -y 'fourier ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier ndc' -y 'ffourier ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd' -y 'fourier odd' -w poly6 -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even' -y 'fourier even' -w poly6 -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd ndc' -y 'fourier odd ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even ndc' -y 'fourier even ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd lin' -y 'fourier odd lin' -w poly6 -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd sgn' -y 'fourier odd sgn' -w poly6 -cmap cartesian --epochs 25 --networkseed 209652396 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier' -y 'fourier' -w None -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 5 -m 5 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w None -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w None -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier' -y 'ffourier' -w None -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier ndc' -y 'fourier ndc' -w None -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier ndc' -y 'ffourier ndc' -w None -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd' -y 'fourier odd' -w None -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even' -y 'fourier even' -w None -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd ndc' -y 'fourier odd ndc' -w None -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even ndc' -y 'fourier even ndc' -w None -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd lin' -y 'fourier odd lin' -w None -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd sgn' -y 'fourier odd sgn' -w None -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier' -y 'fourier' -w poly6 -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 5 -m 5 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w poly6 -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w poly6 -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier' -y 'ffourier' -w poly6 -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier ndc' -y 'fourier ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier ndc' -y 'ffourier ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd' -y 'fourier odd' -w poly6 -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even' -y 'fourier even' -w poly6 -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd ndc' -y 'fourier odd ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even ndc' -y 'fourier even ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd lin' -y 'fourier odd lin' -w poly6 -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd sgn' -y 'fourier odd sgn' -w poly6 -cmap cartesian --epochs 25 --networkseed 398764591 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier' -y 'fourier' -w None -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 5 -m 5 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w None -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w None -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier' -y 'ffourier' -w None -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier ndc' -y 'fourier ndc' -w None -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier ndc' -y 'ffourier ndc' -w None -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd' -y 'fourier odd' -w None -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even' -y 'fourier even' -w None -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd ndc' -y 'fourier odd ndc' -w None -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even ndc' -y 'fourier even ndc' -w None -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd lin' -y 'fourier odd lin' -w None -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd sgn' -y 'fourier odd sgn' -w None -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier' -y 'fourier' -w poly6 -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 5 -m 5 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w poly6 -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w poly6 -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier' -y 'ffourier' -w poly6 -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier ndc' -y 'fourier ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier ndc' -y 'ffourier ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd' -y 'fourier odd' -w poly6 -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even' -y 'fourier even' -w poly6 -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd ndc' -y 'fourier odd ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even ndc' -y 'fourier even ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd lin' -y 'fourier odd lin' -w poly6 -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd sgn' -y 'fourier odd sgn' -w poly6 -cmap cartesian --epochs 25 --networkseed 924231285 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier' -y 'fourier' -w None -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 5 -m 5 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w None -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w None -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier' -y 'ffourier' -w None -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier ndc' -y 'fourier ndc' -w None -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier ndc' -y 'ffourier ndc' -w None -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd' -y 'fourier odd' -w None -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even' -y 'fourier even' -w None -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd ndc' -y 'fourier odd ndc' -w None -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even ndc' -y 'fourier even ndc' -w None -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd lin' -y 'fourier odd lin' -w None -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd sgn' -y 'fourier odd sgn' -w None -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier' -y 'fourier' -w poly6 -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 5 -m 5 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w poly6 -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier 5' -y 'ffourier 5' -w poly6 -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier' -y 'ffourier' -w poly6 -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier ndc' -y 'fourier ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'ffourier ndc' -y 'ffourier ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd' -y 'fourier odd' -w poly6 -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
 clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even' -y 'fourier even' -w poly6 -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd ndc' -y 'fourier odd ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
-clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier even ndc' -y 'fourier even ndc' -w poly6 -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd lin' -y 'fourier odd lin' -w poly6 -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default
+clear && python ./comboNetTraining.py --frameDistance 16 -n 4 -m 4 --arch '32 64 64 3' -x 'fourier odd sgn' -y 'fourier odd sgn' -w poly6 -cmap cartesian --epochs 25 --networkseed 404868288 -netArch default

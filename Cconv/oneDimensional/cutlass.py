@@ -247,8 +247,10 @@ def buildFourierSeries(n, x, kind = 'fourier'):
     fs = []
     for i in range(n):
         if not ndc and i == 0:
-            if 'odd' in  kind:
+            if 'lin' in  kind:
                 fs.append(x / 2. * np.pi)
+            elif 'sgn' in kind:
+                fs.append(torch.sign(x) / 2. * np.pi)
             else:
                 fs.append(torch.ones_like(x) / np.sqrt(2. * np.pi))
             continue
