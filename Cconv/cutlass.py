@@ -226,8 +226,8 @@ def evalFourierSeries(n, x):
     for i in range(n):
         fs.append(fourier(i, x))
     return torch.stack(fs)
-
 def wrongFourierBasis(n, x):
+    
     if n % 2 == 0:
         return (torch.cos((n // 2 + 1) * x) * sqrt_pi_1)
     return (torch.sin((n // 2 + 1) * x) * sqrt_pi_1)
@@ -240,11 +240,16 @@ def buildFourierSeries(n, x, kind = 'fourier'):
     fs = []
     for i in range(n):
         if not ndc and i == 0:
-            fs.append(torch.ones_like(x) / np.sqrt(2. * np.pi))
+            if 'lin' in  kind:
+                fs.append(x / 2. * np.pi)
+            elif 'sgn' in kind:
+                fs.append(torch.sign(x) / 2. * np.pi)
+            else:
+                fs.append(torch.ones_like(x) / np.sqrt(2. * np.pi))
             continue
-        if 'even' in kind:
+        if 'odd' in kind:
             fs.append(torch.sin(((i - (0 if ndc else 1)) + 1) * x) * sqrt_pi_1)
-        elif 'odd' in kind:
+        elif 'even' in kind:
             fs.append(torch.cos(((i - (0 if ndc else 1)) + 1) * x) * sqrt_pi_1)
         elif 'ffourier' in kind:
             fs.append(correctFourierBasis(i - (0 if ndc else 1),x))
