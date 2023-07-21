@@ -1,7 +1,7 @@
 import torch
 from sph import *
 
-def loadBatch(particleData, settings, dataSet, bdata, device):
+def loadBatch(particleData, settings, dataSet, bdata, device, offset):
     dataEntries = [dataSet[b] for b in bdata]
     
     positions = [particleData[f]['positions'][t,:].to(device) for f,t in dataEntries]
@@ -9,9 +9,13 @@ def loadBatch(particleData, settings, dataSet, bdata, device):
     areas = [particleData[f]['area'][t,:].to(device) for f,t in dataEntries]
     dudts = [particleData[f]['dudt'][t,:].to(device) for f,t in dataEntries]
     densities = [particleData[f]['density'][t,:].to(device) for f,t in dataEntries]
+
+    inputVelocity = [(particleData[f]['positions'][t,:] - particleData[f]['positions'][max(0, t - (offset -1 ))]).to(device) / settings[f]['dt'] for f,t in dataEntries] 
+    outputVelocity = [particleData[f]['stacked'][t,:].to(device) for f,t in dataEntries] 
+
     setup = [settings[f] for f,t in dataEntries]
     
-    return positions, velocities, areas, dudts, densities, setup
+    return positions, velocities, areas, dudts, densities, inputVelocity, outputVelocity, setup
     
 def batchedNeighborsearch(positions, setup):
     neighborLists = [periodicNeighborSearch(p, s['particleSupport'], s['minDomain'], s['maxDomain']) for p, s in zip(positions, setup)]
@@ -32,10 +36,10 @@ def batchedNeighborsearch(positions, setup):
     
     return neigh_i, neigh_j, neigh_distance, neigh_direction
 
-def flatten(positions, velocities, areas, density, dudts):
-    return torch.hstack(positions), torch.hstack(velocities), torch.hstack(areas), torch.hstack(density), torch.hstack(dudts)
+def flatten(positions, velocities, areas, density, dudts, inputVelocity, outputVelocity):
+    return torch.hstack(positions), torch.hstack(velocities), torch.hstack(areas), torch.hstack(density), torch.hstack(dudts), torch.hstack(inputVelocity), torch.hstack(outputVelocity)
 
-def loadFrames(particleData, settings, dataSet, f, frames, device):
+def loadFrames(particleData, settings, dataSet, f, frames, device, offset):
 #     dataEntries = [dataSet[b] for b in bdata]
     
     positions = [particleData[f]['positions'][t,:] for t in frames]
@@ -44,8 +48,11 @@ def loadFrames(particleData, settings, dataSet, f, frames, device):
     dudts = [particleData[f]['dudt'][t,:] for t in frames]
     densities = [particleData[f]['density'][t,:] for t in frames]
     setup = [settings[f] for t in frames]
+
+    inputVelocity = [(particleData[f]['positions'][t,:] - particleData[f]['positions'][max(0, t - (offset -1 ))]).to(device) / settings[f]['dt'] for t in frames] 
+    outputVelocity = [particleData[f]['stacked'][t,:].to(device) for t in frames] 
     
-    return positions, velocities, areas, dudts, densities, setup
+    return positions, velocities, areas, dudts, densities, inputVelocity, outputVelocity, setup
 
 
 def modelStep(model, positions, velocities, areas, densities, dudts, setup, getFeatures, device):
@@ -467,25 +474,27 @@ def plotModel(modelState, testData, device, baseArea, particleSupport):
     fig.tight_layout()
     
 
-def getTestcase(testingData, settings, f, frames, device):
+def getTestcase(testingData, settings, f, frames, device, offset):
     positions = [testingData[f]['positions'][t,:].to(device) for t in frames]
     velocities = [testingData[f]['velocity'][t,:].to(device) for t in frames]
     areas = [testingData[f]['area'][t,:].to(device) for t in frames]
     dudts = [testingData[f]['dudt'][t,:].to(device) for t in frames]
     densities = [testingData[f]['density'][t,:].to(device) for t in frames]
     setup = [settings[f] for t in frames]
+    inputVelocity = [(testingData[f]['positions'][t,:] - testingData[f]['positions'][max(0, t - (offset -1 ))]).to(device)  / settings[f]['dt'] for t in frames] 
+    outputVelocity = [testingData[f]['stacked'][t,:].to(device) for t in frames] 
     
-    return positions, velocities, areas, dudts, densities, setup
-def loadTestcase(testingData, settings, f, frames, device, groundTruthFn, featureFn):
-    positions, velocities, areas, dudts, density, setup = getTestcase(testingData, settings, f, frames, device)
+    return positions, velocities, areas, dudts, densities, inputVelocity, outputVelocity, setup
+def loadTestcase(testingData, settings, f, frames, device, groundTruthFn, featureFn, offset):
+    positions, velocities, areas, dudts, density, inputVelocity, outputVelocity, setup = getTestcase(testingData, settings, f, frames, device, offset)
 
     i, j, distance, direction = batchedNeighborsearch(positions, setup)
-    x, u, v, rho, dudt = flatten(positions, velocities, areas, density, dudts)
+    x, u, v, rho, dudt, inVel, outVel = flatten(positions, velocities, areas, density, dudts, inputVelocity, outputVelocity)
 
     x = x[:,None].to(device)    
-    groundTruth = groundTruthFn(positions, velocities, areas, density, dudts).to(device)
+    groundTruth = groundTruthFn(positions, velocities, areas, density, dudts, inputVelocity, outputVelocity).to(device)
     distance = (distance * direction)[:,None].to(device)
-    features = featureFn(x, u, v, rho, dudt).to(device)
+    features = featureFn(x, u, v, rho, dudt, inVel, outVel).to(device)
 #     print(groundTruth)
     return positions, velocities, areas, density, dudts, features, i, j, distance, groundTruth
 
@@ -789,4 +798,49 @@ def plotModel(modelState, testData, device, baseArea, particleSupport):
     lMat = torch.vstack(modelState['losses']).mT
     plot(fig, axis['D'],lMat, title = 'Losses', norm = LogNorm(vmin=torch.min(lMat[lMat> 0]), vmax=torch.max(lMat)))
     fig.suptitle('basis %s @ %2d terms, window: %s [%s]' % (modelState['basis'], modelState['n'], modelState['window'] if modelState['window'] is not None else 'None', modelState['windowNorm'] if modelState['windowNorm'] is not None else 'None'))
+    fig.tight_layout()
+
+def plotTrainedBatch(trainingData, settings, dataSet, bdata, device, offset, modelState, groundTruthFn, featureFn, lossFn):
+    positions, velocities, areas, dudts, density, inputVelocity, outputVelocity, setup = loadBatch(trainingData, settings, dataSet, bdata, device, offset)
+    i, j, distance, direction = batchedNeighborsearch(positions, setup)
+    x, u, v, rho, dudt, inVel, outVel = flatten(positions, velocities, areas, density, dudts, inputVelocity, outputVelocity)
+
+    x = x[:,None].to(device)    
+    groundTruth = groundTruthFn(positions, velocities, areas, density, dudts, inputVelocity, outputVelocity).to(device)
+    distance = (distance * direction)[:,None].to(device)
+    features = featureFn(x, u, v, rho, dudt, inVel, outVel).to(device)
+    
+    with torch.no_grad():
+        prediction = modelState['model'](features.to(device), i.to(device), j.to(device), distance.to(device))[:,0]
+        lossTerm = lossFn(prediction, groundTruth)
+        loss = torch.mean(lossTerm)
+    
+    fig, axis = plt.subplot_mosaic('''ABC
+    DEF''', figsize=(16,5), sharey = False, sharex = True)
+    
+    positions = torch.vstack(positions).mT.detach().cpu().numpy()
+    vel = u.reshape(positions.transpose().shape).mT.detach().cpu().numpy()
+    area = v.reshape(positions.transpose().shape).mT.detach().cpu().numpy()
+    dudt = dudt.reshape(positions.transpose().shape).mT.detach().cpu().numpy()
+    density = rho.reshape(positions.transpose().shape).mT.detach().cpu().numpy()
+    inVel = inVel.reshape(positions.transpose().shape).mT.detach().cpu().numpy()
+    outVel = outVel.reshape(positions.transpose().shape).mT.detach().cpu().numpy()
+    gt = groundTruth.reshape(positions.transpose().shape).mT.detach().cpu().numpy()
+    ft = features[:,0].reshape(positions.transpose().shape).mT.detach().cpu().numpy()
+    loss = lossTerm.reshape(positions.transpose().shape).mT.detach().cpu().numpy()
+    pred = prediction.reshape(positions.transpose().shape).mT.detach().cpu().numpy()
+    
+    axis['A'].set_title('Density')
+    axis['A'].plot(positions, density)
+    axis['E'].set_title('Ground Truth - Features[:,0]')
+    axis['E'].plot(positions, gt - ft)
+    axis['B'].set_title('Ground Truth')
+    axis['B'].plot(positions, gt)
+    axis['D'].set_title('Features[:,0]')
+    axis['D'].plot(positions, ft)
+    axis['C'].set_title('Prediction')
+    axis['C'].plot(positions, pred)
+    axis['F'].set_title('Loss')
+    axis['F'].plot(positions, loss)
+    
     fig.tight_layout()
