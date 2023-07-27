@@ -93,6 +93,7 @@ parser.add_argument('-cmap','--coordinateMapping', type=str, default='preserving
 parser.add_argument('-w','--windowFunction', type=str, default='poly6')
 parser.add_argument('-c','--cutoff', type=int, default=1800)
 parser.add_argument('-b','--batch_size', type=int, default=2)
+parser.add_argument('-o','--output', type = str, default = 'trainingData')
 parser.add_argument('--cutlassBatchSize', type=int, default=512)
 parser.add_argument('-r','--lr', type=float, default=0.01)
 parser.add_argument('--lr_decay_factor', type=float, default=0.9)
@@ -343,11 +344,11 @@ shortLabel = '%14s [%14s] - %s -> [%16s, %16s] x [%2d, %2d] @ %2s ' % (hyperPara
 # if args.gpus == 1:
 #     debugPrint(exportString)
 if args.verbose:
-    print('Writing output to ./trainingData/%s' % exportString)
+    print('Writing output to ./%s/%s' % (args.output, exportString))
 
 # exportPath = './trainingData/%s - %s.hdf5' %(self.config['export']['prefix'], timestamp)
-if not os.path.exists('./trainingData/%s' % exportString):
-    os.makedirs('./trainingData/%s' % exportString)
+if not os.path.exists('./%s/%s' % (args.output, exportString)):
+    os.makedirs('./%s/%s' % (args.output, exportString))
 # self.outFile = h5py.File(self.exportPath,'w')
 
 gtqdms = []
@@ -465,7 +466,7 @@ for epoch in range(epochs):
         lr = lr * 0.5
         for param_group in optimizer.param_groups:
             param_group['lr'] = 0.5 * param_group['lr']
-    torch.save(model.state_dict(), './trainingData/%s/model_%03d.torch' % (exportString, epoch))
+    torch.save(model.state_dict(), './%s/%s/model_%03d.torch' % (args.output, exportString, epoch))
 
 # for epoch in range(args.epochs):
 #     trainingEpochLoss = processDataLoader(epoch,unroll, train_ds, train_dataloader, model, optimizer, True, prefix = 'training')
@@ -526,9 +527,9 @@ for e in range(len(trainingEpochLosses)):
 modelData = {'hyperParameters' : hyperParameterDict, 'dataSet': dataSetDict, 'epochData': dataDict, 'files': trainingFiles}
 
 if args.verbose:
-    print('Writing out result data to ./trainingData/%s/results.json' % exportString)
+    print('Writing out result data to ./%s/%s/results.json' % (args.output, exportString))
 encodedNumpyData = json.dumps(modelData, cls=NumpyArrayEncoder, indent=4) 
-with open('./trainingData/%s/results.json' % exportString, "w") as write_file:
+with open('./%s/%s/results.json' % (args.output, exportString), "w") as write_file:
     json.dump(modelData, write_file, cls=NumpyArrayEncoder, indent=4) 
 
 # if args.verbose:
@@ -571,7 +572,7 @@ for ei in range(overallLosses.shape[0]):
     sns.kdeplot(overallLosses[ei,:,3], bw_adjust=.2, log_scale=False, label = 'epoch: %2d' % ei, c = cm.viridis(ei / ( overallLosses.shape[0] - 1)))
 
 fig.tight_layout()
-fig.savefig('./trainingData/%s/training_kde.png' % exportString, dpi = 300)
+fig.savefig('./%s/%s/training_kde.png' % (args.output, exportString), dpi = 300)
 
 
 # if args.forwardLoss:
