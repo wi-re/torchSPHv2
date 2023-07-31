@@ -50,10 +50,10 @@ class momentumModule(Module):
     def __init__(self):
         super().__init__('densityInterpolation', 'Evaluates density at the current timestep')
     
-    def getParameters(self):
-        return [
-            Parameter('momentum', 'scheme', 'string', 'deltaSPH', required = False, export = True, hint = '')
-        ]
+    # def getParameters(self):
+    #     return [
+    #         Parameter('momentum', 'scheme', 'string', 'deltaSPH', required = False, export = True, hint = '')
+    #     ]
         
 
     def initialize(self, simulationConfig, simulationState):
