@@ -46,6 +46,8 @@ trace.json
 traceGPU.json
 profile.txt
 
+paperData*
+
 Cconv/trainingData*/
 Cconv/convertedData*/
 export*/

@@ -32,7 +32,6 @@ from plotting import *
 from tqdm import tqdm
 import os
 
-
 class RbfNet(torch.nn.Module):
     def __init__(self, fluidFeatures, boundaryFeatures, layers = [32,64,64,2], denseLayer = True, activation = 'relu',
                 coordinateMapping = 'polar', n = 8, m = 8, windowFn = None, rbf_x = 'linear', rbf_y = 'linear', batchSize = 32, ignoreCenter = True, normalized = False):
@@ -43,6 +42,7 @@ class RbfNet(torch.nn.Module):
         self.fcs = torch.nn.ModuleList()
         self.relu = getattr(nn.functional, 'relu')
         self.normalized = normalized
+        self.hasBoundaryLayers = boundaryFeatures != 0
 
         self.convs.append(RbfConv(
             in_channels = fluidFeatures, out_channels = self.features[0],
@@ -53,25 +53,9 @@ class RbfNet(torch.nn.Module):
             preActivation = None, postActivation = None,
             coordinateMapping = coordinateMapping,
             batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False, normalizeInterpolation = normalized))
-        
-        self.convs.append(RbfConv(
-            in_channels = boundaryFeatures, out_channels = self.features[0],
-            dim = 2, size = [n,m],
-            rbf = [rbf_x, rbf_y],
-            bias = True,
-            linearLayer = False, biasOffset = False, feedThrough = False,
-            preActivation = None, postActivation = None,
-            coordinateMapping = coordinateMapping,
-            batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False, normalizeInterpolation = normalized))
-        
-        self.fcs.append(nn.Linear(in_features=fluidFeatures,out_features= layers[0],bias=True))
-        torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
-        torch.nn.init.zeros_(self.fcs[-1].bias)
-
-        self.features[0] = self.features[0]
-        for i, l in enumerate(layers[1:-1]):
+        if boundaryFeatures != 0:
             self.convs.append(RbfConv(
-                in_channels = (3 * self.features[0]) if i == 0 else self.features[i], out_channels = layers[i+1],
+                in_channels = boundaryFeatures, out_channels = self.features[0],
                 dim = 2, size = [n,m],
                 rbf = [rbf_x, rbf_y],
                 bias = True,
@@ -79,7 +63,23 @@ class RbfNet(torch.nn.Module):
                 preActivation = None, postActivation = None,
                 coordinateMapping = coordinateMapping,
                 batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False, normalizeInterpolation = normalized))
-            self.fcs.append(nn.Linear(in_features=3 * layers[0] if i == 0 else layers[i],out_features=layers[i+1],bias=True))
+
+        self.fcs.append(nn.Linear(in_features=fluidFeatures,out_features= layers[0],bias=True))
+        torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
+        torch.nn.init.zeros_(self.fcs[-1].bias)
+
+        self.features[0] = self.features[0]
+        for i, l in enumerate(layers[1:-1]):
+            self.convs.append(RbfConv(
+                in_channels = (3 * self.features[0] if boundaryFeatures != 0 else 2 * self.features[0]) if i == 0 else self.features[i], out_channels = layers[i+1],
+                dim = 2, size = [n,m],
+                rbf = [rbf_x, rbf_y],
+                bias = True,
+                linearLayer = False, biasOffset = False, feedThrough = False,
+                preActivation = None, postActivation = None,
+                coordinateMapping = coordinateMapping,
+                batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False, normalizeInterpolation = normalized))
+            self.fcs.append(nn.Linear(in_features=(3 * layers[0] if boundaryFeatures != 0 else 2 * self.features[0]) if i == 0 else layers[i],out_features=layers[i+1],bias=True))
             torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
             torch.nn.init.zeros_(self.fcs[-1].bias)
             
@@ -102,22 +102,27 @@ class RbfNet(torch.nn.Module):
                 fluidFeatures, boundaryFeatures,\
                 attributes, fluidBatches = None, boundaryBatches = None):
         fi, fj = radius(fluidPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = fluidBatches, batch_y = fluidBatches)
-        bf, bb = radius(boundaryPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = boundaryBatches, batch_y = fluidBatches)
+        if self.hasBoundaryLayers:
+            bf, bb = radius(boundaryPositions, fluidPositions, attributes['support'], max_num_neighbors = 256, batch_x = boundaryBatches, batch_y = fluidBatches)
         if self.centerIgnore:
             nequals = fi != fj
 
         i, ni = torch.unique(fi, return_counts = True)
-        b, nb = torch.unique(bf, return_counts = True)
+        if self.hasBoundaryLayers:
+            b, nb = torch.unique(bf, return_counts = True)
         
         self.ni = ni
-        self.nb = nb
-
-        ni[i[b]] += nb
+        if self.hasBoundaryLayers:
+            self.nb = nb
+            ni[i[b]] += nb
+            
         self.li = torch.exp(-1 / 16 * ni)
         
-        boundaryEdgeIndex = torch.stack([bf, bb], dim = 0)
-        boundaryEdgeLengths = (boundaryPositions[boundaryEdgeIndex[1]] - fluidPositions[boundaryEdgeIndex[0]])/attributes['support']
-        boundaryEdgeLengths = boundaryEdgeLengths.clamp(-1,1)
+        if self.hasBoundaryLayers:
+            boundaryEdgeIndex = torch.stack([bf, bb], dim = 0)
+            boundaryEdgeLengths = (boundaryPositions[boundaryEdgeIndex[1]] - fluidPositions[boundaryEdgeIndex[0]])/attributes['support']
+            boundaryEdgeLengths = boundaryEdgeLengths.clamp(-1,1)
+            
         if self.centerIgnore:
             fluidEdgeIndex = torch.stack([fi[nequals], fj[nequals]], dim = 0)
         else:
@@ -126,22 +131,28 @@ class RbfNet(torch.nn.Module):
         fluidEdgeLengths = fluidEdgeLengths.clamp(-1,1)
             
         linearOutput = (self.fcs[0](fluidFeatures))
-        boundaryConvolution = (self.convs[1]((fluidFeatures, boundaryFeatures), boundaryEdgeIndex, boundaryEdgeLengths))
+        if self.hasBoundaryLayers:
+            boundaryConvolution = (self.convs[1]((fluidFeatures, boundaryFeatures), boundaryEdgeIndex, boundaryEdgeLengths))
         fluidConvolution = (self.convs[0]((fluidFeatures, fluidFeatures), fluidEdgeIndex, fluidEdgeLengths))
-        ans = torch.hstack((linearOutput, fluidConvolution, boundaryConvolution))
+        if self.hasBoundaryLayers:
+            ans = torch.hstack((linearOutput, fluidConvolution, boundaryConvolution))
+        else:
+            ans = torch.hstack((linearOutput, fluidConvolution))
+            
         if verbose:
             print('first layer output', ans[:4])
         
         layers = len(self.convs)
-        for i in range(2,layers):
+        offset = 1 if self.hasBoundaryLayers else 0
+        for i in range(2 if self.hasBoundaryLayers else 1,layers):
             
             ansc = self.relu(ans)
             
             ansConv = self.convs[i]((ansc, ansc), fluidEdgeIndex, fluidEdgeLengths)
-            ansDense = self.fcs[i - 1](ansc)
+            ansDense = self.fcs[i - offset](ansc)
             
             
-            if self.features[i-2] == self.features[i-1] and ans.shape == ansConv.shape:
+            if self.features[i - 1 - offset] == self.features[i - offset] and ans.shape == ansConv.shape:
                 ans = ansConv + ansDense + ans
             else:
                 ans = ansConv + ansDense
