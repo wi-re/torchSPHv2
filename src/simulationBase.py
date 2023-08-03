@@ -107,9 +107,13 @@ class SPHSimulation():
             Parameter('periodicBC',    'buffer', 'float',     2, required = False, export = True, hint = '')
             
         ]
+
+        momentumParameters = [
+            Parameter('momentum', 'scheme', 'string', 'deltaSPH', required = False, export = True, hint = '')
+        ]
         
         return basicParticleParameters + basicRandomParameters + basicSimulationParameters + basicKernelParameters + basicComputeParameters + basicFluidParameters + \
-            basicIntegrationParameters + basicViscosityParameters + basicDomainParameters + basicExportParameters + basicPeriodicBCParameters
+            basicIntegrationParameters + basicViscosityParameters + basicDomainParameters + basicExportParameters + basicPeriodicBCParameters + momentumParameters
     
     def evalPacking(self, arg):
         packing = torch.tensor(arg, dtype = self.dtype, device = self.device)
