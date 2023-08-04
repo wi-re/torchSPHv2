@@ -349,11 +349,11 @@ class cutlass(torch.autograd.Function):
                 x_j = features_j[edge_index[1]]#torch.index_select(features, 0, edge_index[1])
                 x_j = x_j if edge_weights is None else x_j * edge_weights[:,None]
 
-                indices = torch.arange(0,edge_attr.shape[0]).to(features_j.device)
+                indices = torch.arange(0,edge_attr.shape[0], device = features_j.device)
             
                 batches = torch.split(indices, ctx.forwardBatchSize * 1024)
                 # convs = []
-            out = features_i.new_zeros((features_i.shape[0], weight.shape[-1])).type(features_i.dtype)
+            out = features_i.new_zeros((features_i.shape[0], weight.shape[-1]), dtype = features_i.dtype)
 
             for batch in batches:
                 if ctx.dimensions == 1:
@@ -438,7 +438,7 @@ class cutlass(torch.autograd.Function):
                 # debugPrint(edge_weights)
                 gradFeatures = torch.index_select(grad_output, 0, edge_index[0])
 
-                indices = torch.arange(0,edge_attr.shape[0]).to(features_i.device)
+                indices = torch.arange(0,edge_attr.shape[0], device = features_i.device)
             
                 batches = torch.split(indices, ctx.backwardBatchSize * 1024)
             
