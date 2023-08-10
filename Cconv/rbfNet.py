@@ -84,7 +84,7 @@ class RbfNet(torch.nn.Module):
             torch.nn.init.zeros_(self.fcs[-1].bias)
             
         self.convs.append(RbfConv(
-            in_channels = self.features[-2], out_channels = self.features[-1],
+            in_channels = self.features[-2] if len(layers) > 2 else (3 * self.features[0] if boundaryFeatures != 0 else 2 * self.features[0]), out_channels = self.features[-1],
                 dim = 2, size = [n,m],
                 rbf = [rbf_x, rbf_y],
                 bias = True,
@@ -92,7 +92,7 @@ class RbfNet(torch.nn.Module):
                 preActivation = None, postActivation = None,
                 coordinateMapping = coordinateMapping,
                 batch_size = [batchSize, batchSize], windowFn = windowFn, normalizeWeights = False, normalizeInterpolation = normalized))
-        self.fcs.append(nn.Linear(in_features=layers[-2],out_features=self.features[-1],bias=True))
+        self.fcs.append(nn.Linear(in_features=self.features[-2] if len(layers) > 2 else (3 * self.features[0] if boundaryFeatures != 0 else 2 * self.features[0]),out_features=self.features[-1],bias=True))
         torch.nn.init.xavier_uniform_(self.fcs[-1].weight)
         torch.nn.init.zeros_(self.fcs[-1].bias)
 
