@@ -21,7 +21,8 @@ from .randomParticles import genNoisyParticles, filterNoise, noisifyParticles, c
 class SPHSimulation():
     def getBasicParameters(self):
         basicParticleParameters = [
-            Parameter('particle', 'radius', 'float', 0.014426521330548324, required = False, export = True, hint = '')
+            Parameter('particle', 'radius', 'float', -1, required = False, export = True, hint = ''),
+            Parameter('particle', 'nx', 'int', 32, required = False, export = True, hint = '')
         ]
         
         basicSimulationParameters = [
@@ -552,7 +553,7 @@ class SPHSimulation():
             simulationState['dpdt'] = torch.clone(perennialState['dpdt'])
         
         simulationState['numParticles'] = perennialState['numParticles']
-        simulationState['realParticles'] =perennialState['realParticles']
+        simulationState['realParticles'] = perennialState['realParticles']
         
         simulationState['dt'] = perennialState['dt']
         simulationState['time'] = perennialState['time']
@@ -860,7 +861,7 @@ class SPHSimulation():
         self.config['particle']['support'] = np.single(np.sqrt(self.config['particle']['area'] / np.pi * self.config['kernel']['targetNeighbors']))
         
         # print('Computing packing and spacing parameters')
-        if self.config['simulation']['mode'] == 'generative':
+        if self.config['simulation']['mode'] == 'generative' and self.config['simulation']['boundaryScheme'] != 'none':
             nx = max(self.config['generative']['nd'][0], self.config['generative']['nd'][1]) * 2 + max(self.config['generative']['nb'][0], self.config['generative']['nb'][1]) * 2
             dx = 2 / (nx-1)
             area = dx**2
@@ -875,6 +876,16 @@ class SPHSimulation():
             # print('area: ', self.config['particle']['area'])
             # print('support: ', self.config['particle']['support'])
             # print('packing: ', self.config['particle']['packing'])
+        elif self.config['simulation']['mode'] == 'generative' and self.config['simulation']['boundaryScheme'] == 'none':
+            nx = max(self.config['generative']['nb'][0], self.config['generative']['nb'][1])
+            dx = 2 / (nx + 1)
+            area = dx**2
+            r = np.sqrt(area / np.pi)
+            ropt =  minimize(lambda r: evalRadius(r[0], dx, torch.float32, 'cpu'), r, method="nelder-mead").x[0]        
+            self.config['particle']['radius'] = ropt
+            self.config['particle']['area'] = np.pi * self.config['particle']['radius']**2
+            self.config['particle']['support'] = np.single(np.sqrt(self.config['particle']['area'] / np.pi * self.config['kernel']['targetNeighbors']))
+            self.config['particle']['packing'] = dx / self.config['particle']['support']        
         else:
             # self.config['particle']['packing'] = dx
             self.config['particle']['packing'] = minimize(lambda x: self.evalPacking(x), 0.5, method="nelder-mead").x[0]        
@@ -924,7 +935,8 @@ class SPHSimulation():
             self.config['domain']['max'][1] = self.config['domain']['min'][1] + ny * p
             
             if self.verbose: print('Domain  is: [%g %g] - [%g %g]' %(self.config['domain']['min'][0], self.config['domain']['min'][1], self.config['domain']['max'][0], self.config['domain']['max'][1]))
-        if self.config['simulation']['mode'] == 'generative':
+        if self.config['simulation']['mode'] == 'generative' and self.config['simulation']['boundaryScheme'] != 'none':
+
             ptcls, vel, domainPtcls, domainGhostPtcls, domainSDF, domainSDFDer, centerPtcls, centerGhostPtcls, centerSDF, centerSDFDer, minDomain, minCenter,_,_,_ = \
                 genNoisyParticles(nd = np.array(self.config['generative']['nd']), nb = np.array(self.config['generative']['nb']), \
                              border = self.config['generative']['border'], n = self.config['generative']['n'], res = self.config['generative']['res'], \
@@ -964,7 +976,47 @@ class SPHSimulation():
                               'domainPtcls': domainPtcls, 'domainGhostPtcls': domainGhostPtcls, 'domainSDF': domainSDF, 'domainSDFDer': domainSDFDer,\
                               'centerPtcls': centerPtcls, 'centerGhostPtcls': centerGhostPtcls, 'centerSDF': centerSDF, 'centerSDFDer': centerSDFDer,\
                               'minDomain': minDomain, 'minCenter': minCenter}
+        elif self.config['simulation']['mode'] == 'generative' and self.config['simulation']['boundaryScheme'] == 'none':
+            
+            ptcls, vel, domainPtcls, domainGhostPtcls, domainSDF, domainSDFDer, centerPtcls, centerGhostPtcls, centerSDF, centerSDFDer, minDomain, minCenter,_,_,_ = \
+                genNoisyParticles(nd = np.array(self.config['generative']['nd']), nb = np.array(self.config['generative']['nb']), \
+                             border = self.config['generative']['border'], n = self.config['generative']['n'], res = self.config['generative']['res'], \
+                                octaves = self.config['generative']['octaves'], lacunarity = self.config['generative']['lacunarity'], persistance = self.config['generative']['persistance'], \
+                                    seed = self.config['generative']['seed'], boundary = self.config['generative']['boundaryWidth'], dh = 1e-3)
+            dx = 2 / ((max(self.config['generative']['nb'][0], self.config['generative']['nb'][1])) + 1)
+            area = dx**2
+            r = np.sqrt(area/ np.pi)
+            ropt =  minimize(lambda r: evalRadius(r[0], dx, torch.float32, 'cpu'), r, method="nelder-mead").x[0]        
 
+            r = ropt * 0.999
+            area = np.pi * r**2
+            support = np.single(np.sqrt(area / np.pi * self.config['kernel']['targetNeighbors']))
+
+            self.config['particle']['radius'] = r
+            self.config['particle']['area'] = area
+            self.config['particle']['support'] = support
+
+            allPtcls = torch.tensor(np.vstack((ptcls, domainPtcls, centerPtcls)))
+            allVels = torch.tensor( np.vstack((vel, np.zeros_like(domainPtcls), np.zeros_like(centerPtcls))))
+                
+            xx, yy, noise = createPotentialField(n = self.config['generative']['n'], res = self.config['generative']['res'], \
+                                octaves = self.config['generative']['octaves'], lacunarity = self.config['generative']['lacunarity'], persistance = self.config['generative']['persistance'], \
+                                    seed = self.config['generative']['seed'])
+            filtered = filterNoise(noise, minDomain, minCenter, boundary = self.config['generative']['boundaryWidth'], nd = np.array(self.config['generative']['nd']), n = self.config['generative']['n'], dh = 1e-2)
+            noiseSampler = interpolate.RegularGridInterpolator((np.linspace(-1,1,self.config['generative']['n']), np.linspace(-1,1,self.config['generative']['n'])), filtered, bounds_error = False, fill_value = None, method = 'linear')
+
+            velocities, rho, potential, div = noisifyParticles(noiseSampler, allPtcls, area, support)
+            # print('mean divergence:', torch.mean(div))
+                
+
+
+            self.config['domain']['min'] = np.array([np.min(domainPtcls[:,0]) - dx / 2, np.min(domainPtcls[:,1]) + dx / 2])
+            self.config['domain']['max'] = np.array([np.max(domainPtcls[:,0]) - dx / 2, np.max(domainPtcls[:,1]) + dx / 2])
+            # velocities[:,:] = 0
+            self.generated = {'ptcls': ptcls, 'vel' : velocities[torch.arange(velocities.shape[0]) < ptcls.shape[0]], \
+                              'domainPtcls': domainPtcls, 'domainGhostPtcls': domainGhostPtcls, 'domainSDF': domainSDF, 'domainSDFDer': domainSDFDer,\
+                              'centerPtcls': centerPtcls, 'centerGhostPtcls': centerGhostPtcls, 'centerSDF': centerSDF, 'centerSDFDer': centerSDFDer,\
+                              'minDomain': minDomain, 'minCenter': minCenter}
         else:
             self.processEmitters()
             self.processVelocitySources()
