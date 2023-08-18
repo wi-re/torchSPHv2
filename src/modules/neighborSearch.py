@@ -250,3 +250,103 @@ class neighborSearchModule(Module):
             fluidRadialDistances /= querySupports[rows]
 
             return fluidNeighbors, fluidDistances, fluidRadialDistances
+
+
+def radiusCompactHashMap(x: torch.Tensor, y: torch.Tensor, r: float, batch_x: Optional[torch.Tensor] = None, batch_y: Optional[torch.Tensor] = None):
+    r"""Finds for each element in :obj:`y` all points in :obj:`x` within
+    distance :obj:`r`.
+    """
+    if batch_x is not None:
+        batches = torch.unique(batch_x)
+        iList = []
+        jList = []
+        for i in batches:
+            xBatch = x[batch_x == i,:]
+            yBatch = y[batch_y == i,:]
+            xSupport = torch.ones_like(xBatch[:,0]) * r
+            ySupport = torch.ones_like(yBatch[:,0]) * r
+
+            searchRadius = 1
+
+            minPos = torch.minimum(torch.min(xBatch,dim=0)[0], torch.min(yBatch,dim=0)[0])
+            maxPos = torch.maximum(torch.max(xBatch,dim=0)[0], torch.max(yBatch,dim=0)[0])
+
+            hashMapLength = nextprime(xBatch.shape[0])
+
+            sortedPositions, sortedSupport, sortedLinearIndices, sortingIndices, cellCount, qMin, hMax = sortPositions(xBatch, xSupport, 1.0, minPos, maxPos)
+            hashTable, cellLinearIndices, cellOffsets, cellParticleCounters = constructHashMap(sortedPositions, sortedSupport, sortedLinearIndices, sortingIndices, hashMapLength, cellCount)
+            sortingIndices = sortingIndices.to(torch.int32)
+
+            if not x.is_cuda:
+                i, j = neighborSearch.buildNeighborListUnsortedPerParticle(
+                    yBatch, ySupport, 
+                    sortedPositions, sortedSupport,
+                    hashTable, cellLinearIndices, cellOffsets, cellParticleCounters, sortingIndices, cellCount, hashMapLength, 
+                    qMin.type(torch.float32), np.float32(hMax), searchRadius)
+            else:
+                i, j = neighborSearch.buildNeighborListCUDA(yBatch, ySupport, sortedPositions, sortedSupport, hashTable, cellLinearIndices, cellOffsets, cellParticleCounters, sortingIndices, qMin, hMax, cellCount, hashMapLength, searchRadius)
+            iList.append(i)
+            jList.append(j)
+        return torch.hstack(iList).to(torch.int64), torch.hstack(jList).to(torch.int64)
+        
+    xSupport = torch.ones_like(x[:,0]) * r
+    ySupport = torch.ones_like(y[:,0]) * r
+
+    searchRadius = 1
+
+    minPos = torch.minimum(torch.min(x,dim=0)[0], torch.min(y,dim=0)[0])
+    maxPos = torch.maximum(torch.max(x,dim=0)[0], torch.max(y,dim=0)[0])
+
+    hashMapLength = nextprime(x.shape[0])
+
+    sortedPositions, sortedSupport, sortedLinearIndices, sortingIndices, cellCount, qMin, hMax = sortPositions(x, xSupport, 1.0, minPos, maxPos)
+    hashTable, cellLinearIndices, cellOffsets, cellParticleCounters = constructHashMap(sortedPositions, sortedSupport, sortedLinearIndices, sortingIndices, hashMapLength, cellCount)
+    sortingIndices = sortingIndices.to(torch.int32)
+
+    if not x.is_cuda:
+        i, j = neighborSearch.buildNeighborListUnsortedPerParticle(
+            y, ySupport, 
+            sortedPositions, sortedSupport,
+            hashTable, cellLinearIndices, cellOffsets, cellParticleCounters, sortingIndices, cellCount, hashMapLength, 
+            qMin.type(torch.float32), np.float32(hMax), searchRadius)
+    else:
+        i, j = neighborSearch.buildNeighborListCUDA(y, ySupport, sortedPositions, sortedSupport, hashTable, cellLinearIndices, cellOffsets, cellParticleCounters, sortingIndices, qMin, hMax, cellCount, hashMapLength, searchRadius)
+    return i.to(torch.int64), j.to(torch.int64)
+# i are indices in x, j are indices in y
+
+from .periodicBC import createGhostParticlesKernel
+
+def periodicNeighborSearch(x, minDomain, maxDomain, support, periodicX, periodicY, useCompactHashMap = True):
+    # x = torch.tensor(ptcls).type(torch.float32)
+    ghostIndices, ghostOffsets = createGhostParticlesKernel(x, minDomain, maxDomain, 1, support, periodicX, periodicY)
+
+    indices = torch.cat(ghostIndices)
+    positions = torch.cat([x[g] + offset for g, offset in zip(ghostIndices, ghostOffsets)])
+
+    indices = torch.hstack((torch.arange(x.shape[0]).to(x.device), indices))
+    y = torch.vstack((x, positions))
+    if useCompactHashMap:
+        i, j = radiusCompactHashMap(x, y, support)
+    else:
+        i, j = radius(x,y,support)
+    i_t = indices[i]
+    ii, ni = torch.unique(i, return_counts = True)
+    jj, nj = torch.unique(j, return_counts = True)
+    i_ti, ni_t = torch.unique(i_t, return_counts = True)
+
+#     print(x.shape,y.shape)
+#     print(i, torch.min(i), torch.max(i), torch.unique(i).shape)
+#     print(j, torch.min(j), torch.max(j), torch.unique(j).shape)
+#     print(i_t, torch.min(i_t), torch.max(i_t), torch.unique(i_t).shape)
+#     print(ni, torch.min(ni), torch.median(ni), torch.max(ni))
+#     print(nj, torch.min(nj), torch.median(nj), torch.max(nj))
+#     print(ni_t, torch.min(ni_t), torch.median(ni_t), torch.max(ni_t))
+    
+    fluidDistances = y[i] - x[j]
+    fluidRadialDistances = torch.linalg.norm(fluidDistances,axis=1)
+
+    fluidDistances[fluidRadialDistances < 1e-4 * support,:] = 0
+    fluidDistances[fluidRadialDistances >= 1e-4 * support,:] /= fluidRadialDistances[fluidRadialDistances >= 1e-4 * support,None]
+    fluidRadialDistances /= support
+
+    return i_t, j, fluidDistances, fluidRadialDistances#, x, y, ii, ni, jj, nj

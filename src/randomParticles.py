@@ -722,3 +722,38 @@ def filterNoise(filtered, minDomain, minCenter, boundary, nd, n , dh):
         filtered = filterPotential((filtered).flatten(), (polySDF).flatten(), d0 = boundary).numpy().reshape(filtered.shape)
         filtered[polySDF.reshape(filtered.shape) < 0] = 0
     return filtered
+
+
+# from src.randomParticles import generate_fractal_noise_2d
+
+def createNoiseFunctionTileable(n = 256, res = 2, octaves = 2, lacunarity = 2, persistance = 0.5, seed = 1336):
+    noise = generate_fractal_noise_2d(shape = (n,n), res = (res,res), octaves = octaves, persistence = persistance, lacunarity = lacunarity, tileable = (True, True), seed = seed)
+#     noise = Octave(n, octaves = octaves, lacunarity = lacunarity, persistance = persistance, seed = seed)
+
+#     noise[:,0] = noise[:,1] - noise[:,2] + noise[:,1]
+#     noise[0,:] = noise[1,:] - noise[2,:] + noise[1,:]
+
+#     noise = noise[:n,:n] / 255
+    x = np.linspace(-1,1,n)
+    y = np.linspace(-1,1,n)
+    xx, yy = np.meshgrid(x,y)
+
+    f = interpolate.RegularGridInterpolator((x, y), noise, bounds_error = False, fill_value = None, method = 'linear')
+    
+    return f, noise
+
+def createPotentialFieldTileable(n = 256, res = 4, octaves = 2, lacunarity = 2, persistance = 0.5, seed = 1336):
+    f, noise = createNoiseFunctionTileable(n = n, res = res, octaves = octaves, lacunarity = lacunarity, persistance = persistance, seed = seed)
+#     noise = Octave(n, octaves = octaves, lacunarity = lacunarity, persistance = persistance, seed = seed)
+
+#     noise[:,0] = noise[:,1] - noise[:,2] + noise[:,1]
+#     noise[0,:] = noise[1,:] - noise[2,:] + noise[1,:]
+
+#     noise = noise[:n,:n] / 255
+    x = np.linspace(-1,1,n)
+    y = np.linspace(-1,1,n)
+    xx, yy = np.meshgrid(x,y)
+
+#     f = interpolate.RegularGridInterpolator((x, y), noise, bounds_error = False, fill_value = None, method = 'linear')
+    
+    return xx,yy,noise
