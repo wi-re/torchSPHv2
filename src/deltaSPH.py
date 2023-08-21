@@ -54,7 +54,7 @@ from src.modules.akinciTension import akinciTensionModule
 from src.modules.sdfBoundary import sdfBoundaryModule, sdPolyDerAndIntegral
 from src.modules.akinciBoundary import akinciBoundaryModule
 from src.modules.solidBoundary import solidBoundaryModule
-from src.modules.periodicBC import periodicBCModule
+# from src.modules.periodicBC import periodicBCModule
 from src.modules.velocityBC import velocityBCModule
 from src.modules.implicitShifting import implicitIterativeShiftModule
 from src.modules.gravity import gravityModule
@@ -83,7 +83,7 @@ class deltaSPHSimulation(SPHSimulation):
         # Default module imports that are always needed
         self.neighborSearch = neighborSearchModule()
         self.sphDensity = densityModule()
-        self.periodicBC = periodicBCModule()
+        # self.periodicBC = periodicBCModule()
         self.deltaSPH = deltaSPHModule()
         self.velocityBC = velocityBCModule()
         self.gravityModule = gravityModule()
@@ -94,7 +94,7 @@ class deltaSPHSimulation(SPHSimulation):
         # Add modules to the module list
         self.modules.append(self.neighborSearch)
         self.modules.append(self.sphDensity)
-        self.modules.append(self.periodicBC)
+        # self.modules.append(self.periodicBC)
         self.modules.append(self.velocityBC)
         self.modules.append(self.deltaSPH)
         self.modules.append(self.momentumModule)
@@ -148,24 +148,26 @@ class deltaSPHSimulation(SPHSimulation):
         
     # Evaluate updates for a single timestep, returns dudt, dxdt and drhodt
     def timestep(self):
-        step = ' 1 - Enforcing periodic boundary conditions'
-        if self.verbose: print(step)
-        with record_function(step):
-            self.periodicBC.enforcePeriodicBC(self.simulationState, self)            
+        # step = ' 1 - Enforcing periodic boundary conditions'
+        # if self.verbose: print(step)
+        # with record_function(step):
+            # self.periodicBC.enforcePeriodicBC(self.simulationState, self)            
         step = ' 2 - Fluid neighborhood search'
         if self.verbose: print(step)
         with record_function(step):
             self.neighborSearch.search(self.simulationState, self)            
         step = ' 3 - Boundary neighborhood search'
         if self.verbose: print(step)
-        with record_function(step):
-            self.boundaryModule.boundaryFilterNeighborhoods(self.simulationState, self)
-            self.boundaryModule.boundaryNeighborhoodSearch(self.simulationState, self)
+        if hasattr(self, 'boundaryModule'):
+            with record_function(step):
+                self.boundaryModule.boundaryFilterNeighborhoods(self.simulationState, self)
+                self.boundaryModule.boundaryNeighborhoodSearch(self.simulationState, self)
         step = '4 - density  evaluation'
         if self.verbose: print(step)
         with record_function(step):             
             self.sphDensity.evaluate(self.simulationState, self)    
-            self.boundaryModule.evalBoundaryDensity(self.simulationState, self)
+            if hasattr(self, 'boundaryModule'):
+                self.boundaryModule.evalBoundaryDensity(self.simulationState, self)
         step = '5 - surface detection'
         if self.verbose: print(step)
         # with record_function(step):           

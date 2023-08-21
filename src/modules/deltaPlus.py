@@ -224,8 +224,8 @@ def computeShiftAmount(i, j, volume, lambdas, L, expandedFSM, cartesianDistances
     du = -fac * computeShiftingTerm(i, j, volume, volume, cartesianDistances, radialDistances, kernel(dx / h, h), h, numParticles, 1e-4)
 
     shiftTermA = torch.zeros_like(du)
-    shiftTermB = kappa[:,None] * torch.bmm((torch.eye(2).reshape((1,2,2)).repeat(numParticles,1,1) - torch.einsum('nu, nv -> nuv', normals, normals)), du.unsqueeze(2))[:,:,0]
-    shiftTermB = torch.bmm((torch.eye(2).reshape((1,2,2)).repeat(numParticles,1,1) - torch.einsum('nu, nv -> nuv', normals, normals)), du.unsqueeze(2))[:,:,0]
+    shiftTermB = kappa[:,None] * torch.bmm((torch.eye(2).reshape((1,2,2)).repeat(numParticles,1,1).to(normals.device) - torch.einsum('nu, nv -> nuv', normals, normals)), du.unsqueeze(2))[:,:,0]
+    shiftTermB = torch.bmm((torch.eye(2).reshape((1,2,2)).repeat(numParticles,1,1).to(normals.device) - torch.einsum('nu, nv -> nuv', normals, normals)), du.unsqueeze(2))[:,:,0]
     shiftTermC = du
 
     prodTerm = -(normals * du).sum(1)
@@ -349,7 +349,7 @@ class deltaPlusModule(Module):
         term = (kernelTerm * massTerm * phi_ij )[:,None] * gradientTerm
 
         simulationState['shiftAmount'] = - CFL * Ma * supportTerm * scatter_sum(term, i, dim=0, dim_size = simulationState['fluidDensity'].shape[0])
-        if simulation.boundaryModule.active:
+        if hasattr(self, 'boundaryModule') and simulation.boundaryModule.active:
             bb, bf = simulation.boundaryModule.boundaryToFluidNeighbors
 
             kernelTerm = 1 + R * torch.pow(kernel(simulation.boundaryModule.boundaryToFluidNeighborRadialDistances, support) / k0, n)
@@ -374,7 +374,7 @@ class deltaPlusModule(Module):
                                                                                           simulationState['fluidPosition'], simulationState['fluidPosition'], simulationState['fluidVolume'], simulationState['fluidVolume'],\
                                                                                           simulationState['fluidDistances'], simulationState['fluidRadialDistances'],\
                                                                                           support, simulationState['fluidDensity'].shape[0], eps)     
-            if simulation.boundaryModule.active:
+            if hasattr(self, 'boundaryModule') and simulation.boundaryModule.active:
                 simulationState['normalizationMatrix'] += simulation.boundaryModule.computeNormalizationMatrices(simulationState, simulation)
             simulationState['fluidL'], simulationState['eigVals'] = pinv2x2(simulationState['normalizationMatrix'])
         simulationState['fluidLambda'] = simulationState['eigVals'][:,1]
@@ -395,7 +395,7 @@ class deltaPlusModule(Module):
         term = -(volume * factor)[:,None] * correctedKernel[:,:,0]
 
         simulationState['lambdaGrad'] = scatter(term, i, dim=0, dim_size=simulationState['numParticles'], reduce="add")
-        if simulation.boundaryModule.active:
+        if hasattr(self, 'boundaryModule') and simulation.boundaryModule.active:
             bb, bf = simulation.boundaryModule.boundaryToFluidNeighbors
             volume = simulationState['fluidArea'][bb] / simulationState['fluidDensity'][bb]
             factor = simulation.boundaryModule.eigVals[:,1][bb] - simulationState['fluidLambda'][bf]
@@ -427,7 +427,7 @@ class deltaPlusModule(Module):
         simulationState['angleMin'] = torch.arccos(scatter(dotProducts, i, dim = 0, dim_size = simulationState['numParticles'], reduce='min'))
         simulationState['angleMax'] = torch.arccos(scatter(dotProducts, i, dim = 0, dim_size = simulationState['numParticles'], reduce='max'))
 
-        if simulation.boundaryModule.active:
+        if hasattr(self, 'boundaryModule') and simulation.boundaryModule.active:
             bb, bf = simulation.boundaryModule.boundaryToFluidNeighbors
 
             dotProducts = torch.einsum('nd, nd -> n', simulation.boundaryModule.boundaryToFluidNeighborDistances, simulationState['fluidNormal'][bf])

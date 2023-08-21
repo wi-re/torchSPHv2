@@ -92,6 +92,6 @@ class laminarViscosityModule(Module):
             # if self.boundaryDiffusion:
                 # self.laminarViscosity += simulation.boundaryModule.computeLaminarViscosity(simulationState, simulation)
             simulationState['fluidAcceleration'] += self.laminarViscosity
-            simulation.sync(simulationState['fluidAcceleration'])
+            # simulation.sync(simulationState['fluidAcceleration'])
             # return self.laminarViscosity
         

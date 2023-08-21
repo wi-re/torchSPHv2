@@ -16,7 +16,7 @@ from .parameter import Parameter
 from .util import *
 from .kernels import getKernelFunctions
 from .modules.sdfBoundary import sdPolyDerAndIntegral
-from .randomParticles import genNoisyParticles, filterNoise, noisifyParticles, createPotentialField
+from .randomParticles import genNoisyParticles, filterNoise, noisifyParticles, createPotentialField, generatePeriodicRandomParticles
 
 class SPHSimulation():
     def getBasicParameters(self):
@@ -433,7 +433,7 @@ class SPHSimulation():
             self.simulationState[ 'fluidRestDensity'] = torch.cat(emitterDensities)
             self.simulationState[ 'dpdt'] = torch.zeros_like(self.simulationState[     'fluidSupport'])
             self.simulationState[     'numParticles'] = self.simulationState['fluidPosition'].shape[0]
-            self.simulationState[    'realParticles'] = self.simulationState['fluidPosition'].shape[0]
+            # self.simulationState[    'realParticles'] = self.simulationState['fluidPosition'].shape[0]
             self.simulationState[             'time'] = 0.
             self.simulationState[         'timestep'] = int(0)
             self.simulationState[               'dt'] = self.config['integration']['dt']
@@ -504,9 +504,9 @@ class SPHSimulation():
 
         self.simulationState.pop('fluidAcceleration', None)
 
-    def sync(self, tensor):
-        if hasattr(self, 'periodicBC'):
-            self.periodicBC.syncToGhost(tensor, self.simulationState, self)
+    # def sync(self, tensor):
+        # if hasattr(self, 'periodicBC'):
+            # self.periodicBC.syncToGhost(tensor, self.simulationState, self)
 
     def saveState(self, copy = False):
         mask = (self.simulationState['ghostIndices'] == -1) if 'ghostIndices' in self.simulationState else self.simulationState['UID'] > -1
@@ -527,7 +527,7 @@ class SPHSimulation():
 
 
         perennialState['numParticles'] = perennialState['fluidPosition'].shape[0]
-        perennialState['realParticles'] = perennialState['fluidPosition'].shape[0]
+        # perennialState['realParticles'] = perennialState['fluidPosition'].shape[0]
         
         perennialState['dt'] = self.simulationState['dt']
         perennialState['time'] = self.simulationState['time']
@@ -553,7 +553,7 @@ class SPHSimulation():
             simulationState['dpdt'] = torch.clone(perennialState['dpdt'])
         
         simulationState['numParticles'] = perennialState['numParticles']
-        simulationState['realParticles'] = perennialState['realParticles']
+        # simulationState['realParticles'] = perennialState['realParticles']
         
         simulationState['dt'] = perennialState['dt']
         simulationState['time'] = perennialState['time']
@@ -646,39 +646,39 @@ class SPHSimulation():
         if self.config['integration']['scheme'] == 'explicitEuler':
             dudt, dxdt, dpdt = self.timestep()     
             self.integrateValues(dt, dudt, dxdt, dpdt)
-            if not self.config['export']['staticBoundary']:
+            if hasattr(self, 'boundaryModule') and not self.config['export']['staticBoundary']:
                 bdudt, bdxdt, bdpdt = self.getBodyUpdate()
                 self.integrateBoundaryValues(dt, bdudt, bdxdt, bdpdt)
 
         if self.config['integration']['scheme'] == 'semiImplicitEuler':
             dudt, dxdt, dpdt = self.timestep()     
             self.integrateValues(dt, dudt, dxdt + dt * dudt, dpdt)        
-            if not self.config['export']['staticBoundary']:
+            if hasattr(self, 'boundaryModule') and not self.config['export']['staticBoundary']:
                 bdudt, bdxdt, bdpdt = self.getBodyUpdate()
                 self.integrateBoundaryValues(dt, bdudt, bdxdt + dt * bdudt, bdpdt)       
         if self.config['integration']['scheme'] == 'PECE':
             dudt, dxdt, dpdt = self.timestep()     
             self.integrateValues(dt, dudt, dxdt, dpdt)       
-            if not self.config['export']['staticBoundary']:
+            if hasattr(self, 'boundaryModule') and not self.config['export']['staticBoundary']:
                 bdudt, bdxdt, bdpdt = self.getBodyUpdate()
                 self.integrateBoundaryValues(dt, bdudt, bdxdt, bdpdt)     
 
             dudt2, dxdt2, dpdt2 = self.timestep()  
             self.integrateValues(dt, 0.5 * ( dudt + dudt2), 0.5 * ( dxdt + dxdt2), 0.5 * ( dpdt + dpdt2) if continuumDensity else None)  
-            if not self.config['export']['staticBoundary']:
+            if hasattr(self, 'boundaryModule') and not self.config['export']['staticBoundary']:
                 bdudt2, bdxdt2, bdpdt2 = self.getBodyUpdate()
                 self.integrateBoundaryValues(dt, 0.5 * ( bdudt + bdudt2), 0.5 * ( bdxdt + bdxdt2), 0.5 * ( bdpdt + bdpdt2) if continuumDensity else None)               
             
         if self.config['integration']['scheme'] == 'PEC':
             dudt, dxdt, dpdt = self.perennialState['fluidAcceleration'], self.perennialState['fluidVelocity'], self.perennialState['dpdt'] if self.config['simulation']['densityScheme'] == 'continuum' else None
             self.integrateValues(dt, dudt, dxdt, dpdt)             
-            if not self.config['export']['staticBoundary']:
+            if hasattr(self, 'boundaryModule') and not self.config['export']['staticBoundary']:
                 bdudt, bdxdt, bdpdt = self.getBodyUpdate()
                 self.integrateBoundaryValues(dt, bdudt, bdxdt, bdpdt)   
 
             dudt2, dxdt2, dpdt2 = self.timestep()  
             self.integrateValues(dt, 0.5 * ( dudt + dudt2), 0.5 * ( dxdt + dxdt2), (0.5 * ( dpdt + dpdt2)) if continuumDensity else None)   
-            if not self.config['export']['staticBoundary']:
+            if hasattr(self, 'boundaryModule') and not self.config['export']['staticBoundary']:
                 bdudt2, bdxdt2, bdpdt2 = self.getBodyUpdate()
                 self.integrateBoundaryValues(dt, 0.5 * ( bdudt + bdudt2), 0.5 * ( bdxdt + bdxdt2), (0.5 * ( bdpdt + bdpdt2)) if continuumDensity else None) 
             
@@ -686,27 +686,27 @@ class SPHSimulation():
             dudt_k1, dxdt_k1, dpdt_k1 = self.timestep()    
             self.simulationState = self.setupSimulationState(self.perennialState)
             self.integrateValues(0.5 * dt, dudt_k1, dxdt_k1, dpdt_k1)    
-            if not self.config['export']['staticBoundary']:
+            if hasattr(self, 'boundaryModule') and not self.config['export']['staticBoundary']:
                 bdudt_k1, bdxdt_k1, bdpdt_k1 = self.getBodyUpdate()
                 self.integrateBoundaryValues(0.5 * dt, bdudt_k1, bdxdt_k1, bdpdt_k1)
 
             dudt_k2, dxdt_k2, dpdt_k2 = self.timestep()     
             self.simulationState = self.setupSimulationState(self.perennialState)
             self.integrateValues(0.5 * dt, dudt_k2, dxdt_k2, dpdt_k2)    
-            if not self.config['export']['staticBoundary']:
+            if hasattr(self, 'boundaryModule') and not self.config['export']['staticBoundary']:
                 bdudt_k2, bdxdt_k2, bdpdt_k2 = self.getBodyUpdate()
                 self.integrateBoundaryValues(0.5 * dt, bdudt_k2, bdxdt_k2, bdpdt_k2)
 
             dudt_k3, dxdt_k3, dpdt_k3 = self.timestep()     
             self.simulationState = self.setupSimulationState(self.perennialState)
             self.integrateValues(dt, dudt_k3, dxdt_k3, dpdt_k3)   
-            if not self.config['export']['staticBoundary']:
+            if hasattr(self, 'boundaryModule') and not self.config['export']['staticBoundary']:
                 bdudt_k3, bdxdt_k3, bdpdt_k3 = self.getBodyUpdate()
                 self.integrateBoundaryValues(dt, bdudt_k3, bdxdt_k3, bdpdt_k3) 
 
             dudt_k4, dxdt_k4, dpdt_k4 = self.timestep()     
             self.integrateValues(1/6 * dt, dudt_k1 + 2 * dudt_k2 + 2 * dudt_k3 + dudt_k4, dxdt_k1 + 2 * dxdt_k2 + 2 * dxdt_k3 + dxdt_k4, (dpdt_k1 + 2 * dpdt_k2 + 2 * dpdt_k3 + dpdt_k4) if continuumDensity else None)   
-            if not self.config['export']['staticBoundary']:
+            if hasattr(self, 'boundaryModule') and not self.config['export']['staticBoundary']:
                 bdudt_k4, bdxdt_k4, bdpdt_k4 = self.getBodyUpdate()
                 self.integrateBoundaryValues(1/6 * dt, bdudt_k1 + 2 * bdudt_k2 + 2 * bdudt_k3 + bdudt_k4, bdxdt_k1 + 2 * bdxdt_k2 + 2 * bdxdt_k3 + bdxdt_k4, (bdpdt_k1 + 2 * bdpdt_k2 + 2 * bdpdt_k3 + bdpdt_k4) if continuumDensity else None)
 
@@ -717,22 +717,24 @@ class SPHSimulation():
             if self.config['shifting']['enabled']:
                 step = ' s1 - Enforcing periodic boundary conditions'
                 if self.verbose: print(step)
-                with record_function(step):
-                    self.periodicBC.enforcePeriodicBC(self.simulationState, self)            
+                # with record_function(step):
+                    # self.periodicBC.enforcePeriodicBC(self.simulationState, self)            
                 step = ' s2 - Fluid neighborhood search'
                 if self.verbose: print(step)
                 with record_function(step):
-                    self.neighborSearch.search(self.simulationState, self)            
-                step = ' s3 - Boundary neighborhood search'
-                if self.verbose: print(step)
-                with record_function(step):
-                    self.boundaryModule.boundaryFilterNeighborhoods(self.simulationState, self)
-                    self.boundaryModule.boundaryNeighborhoodSearch(self.simulationState, self)
+                    self.neighborSearch.search(self.simulationState, self)       
+                if hasattr(self, 'boundaryModule'):        
+                    step = ' s3 - Boundary neighborhood search'
+                    if self.verbose: print(step)
+                    with record_function(step):
+                        self.boundaryModule.boundaryFilterNeighborhoods(self.simulationState, self)
+                        self.boundaryModule.boundaryNeighborhoodSearch(self.simulationState, self)
                 step = ' s4 - density  evaluation'
                 if self.verbose: print(step)
                 with record_function(step):             
-                    self.sphDensity.evaluate(self.simulationState, self)    
-                    self.boundaryModule.evalBoundaryDensity(self.simulationState, self)
+                    self.sphDensity.evaluate(self.simulationState, self) 
+                    if hasattr(self, 'boundaryModule'):   
+                        self.boundaryModule.evalBoundaryDensity(self.simulationState, self)
                 self.shiftingModule.shift(self.simulationState, self)
 
                 self.simulationState['fluidPosition'] += dt * self.simulationState['fluidUpdate']
@@ -976,47 +978,23 @@ class SPHSimulation():
                               'domainPtcls': domainPtcls, 'domainGhostPtcls': domainGhostPtcls, 'domainSDF': domainSDF, 'domainSDFDer': domainSDFDer,\
                               'centerPtcls': centerPtcls, 'centerGhostPtcls': centerGhostPtcls, 'centerSDF': centerSDF, 'centerSDFDer': centerSDFDer,\
                               'minDomain': minDomain, 'minCenter': minCenter}
-        elif self.config['simulation']['mode'] == 'generative' and self.config['simulation']['boundaryScheme'] == 'none':
-            
-            ptcls, vel, domainPtcls, domainGhostPtcls, domainSDF, domainSDFDer, centerPtcls, centerGhostPtcls, centerSDF, centerSDFDer, minDomain, minCenter,_,_,_ = \
-                genNoisyParticles(nd = np.array(self.config['generative']['nd']), nb = np.array(self.config['generative']['nb']), \
-                             border = self.config['generative']['border'], n = self.config['generative']['n'], res = self.config['generative']['res'], \
-                                octaves = self.config['generative']['octaves'], lacunarity = self.config['generative']['lacunarity'], persistance = self.config['generative']['persistance'], \
-                                    seed = self.config['generative']['seed'], boundary = self.config['generative']['boundaryWidth'], dh = 1e-3)
-            dx = 2 / ((max(self.config['generative']['nb'][0], self.config['generative']['nb'][1])) + 1)
-            area = dx**2
-            r = np.sqrt(area/ np.pi)
-            ropt =  minimize(lambda r: evalRadius(r[0], dx, torch.float32, 'cpu'), r, method="nelder-mead").x[0]        
-
-            r = ropt * 0.999
-            area = np.pi * r**2
-            support = np.single(np.sqrt(area / np.pi * self.config['kernel']['targetNeighbors']))
-
-            self.config['particle']['radius'] = r
+        elif self.config['simulation']['mode'] == 'generative' and self.config['simulation']['boundaryScheme'] == 'none':        
+            ptcls, dx, area, support, potential, rho, velocities, div = generatePeriodicRandomParticles(
+                nx = self.config['generative']['nb'][0], 
+                minDomain = self.config['domain']['min'], maxDomain = self.config['domain']['max'], 
+                targetNeighbors = self.config['kernel']['targetNeighbors'],
+                noiseN = self.config['generative']['nb'][0] * 2, noiseResolution = self.config['generative']['res'], 
+                noiseOctaves = self.config['generative']['octaves'], noiseLacunarity = self.config['generative']['lacunarity'], noisePersistance = self.config['generative']['persistance'],
+                noiseSeed = self.config['generative']['seed']
+                )
+            self.config['particle']['radius'] = np.sqrt(area / np.pi)
             self.config['particle']['area'] = area
             self.config['particle']['support'] = support
 
-            allPtcls = torch.tensor(np.vstack((ptcls, domainPtcls, centerPtcls)))
-            allVels = torch.tensor( np.vstack((vel, np.zeros_like(domainPtcls), np.zeros_like(centerPtcls))))
-                
-            xx, yy, noise = createPotentialField(n = self.config['generative']['n'], res = self.config['generative']['res'], \
-                                octaves = self.config['generative']['octaves'], lacunarity = self.config['generative']['lacunarity'], persistance = self.config['generative']['persistance'], \
-                                    seed = self.config['generative']['seed'])
-            filtered = filterNoise(noise, minDomain, minCenter, boundary = self.config['generative']['boundaryWidth'], nd = np.array(self.config['generative']['nd']), n = self.config['generative']['n'], dh = 1e-2)
-            noiseSampler = interpolate.RegularGridInterpolator((np.linspace(-1,1,self.config['generative']['n']), np.linspace(-1,1,self.config['generative']['n'])), filtered, bounds_error = False, fill_value = None, method = 'linear')
-
-            velocities, rho, potential, div = noisifyParticles(noiseSampler, allPtcls, area, support)
-            # print('mean divergence:', torch.mean(div))
-                
-
-
-            self.config['domain']['min'] = np.array([np.min(domainPtcls[:,0]) - dx / 2, np.min(domainPtcls[:,1]) + dx / 2])
-            self.config['domain']['max'] = np.array([np.max(domainPtcls[:,0]) - dx / 2, np.max(domainPtcls[:,1]) + dx / 2])
+            # self.config['domain']['min'] = np.array([np.min(domainPtcls[:,0]) - dx / 2, np.min(domainPtcls[:,1]) + dx / 2])
+            # self.config['domain']['max'] = np.array([np.max(domainPtcls[:,0]) - dx / 2, np.max(domainPtcls[:,1]) + dx / 2])
             # velocities[:,:] = 0
-            self.generated = {'ptcls': ptcls, 'vel' : velocities[torch.arange(velocities.shape[0]) < ptcls.shape[0]], \
-                              'domainPtcls': domainPtcls, 'domainGhostPtcls': domainGhostPtcls, 'domainSDF': domainSDF, 'domainSDFDer': domainSDFDer,\
-                              'centerPtcls': centerPtcls, 'centerGhostPtcls': centerGhostPtcls, 'centerSDF': centerSDF, 'centerSDFDer': centerSDFDer,\
-                              'minDomain': minDomain, 'minCenter': minCenter}
+            self.generated = {'ptcls': ptcls, 'vel' : velocities}
         else:
             self.processEmitters()
             self.processVelocitySources()

@@ -292,6 +292,6 @@ class densityDiffusionModule(Module):
                                                                                                   simulationState['fluidDensity'] * self.restDensity,simulationState['fluidDensity'] * self.restDensity,\
                                                                                                   self.delta, self.c0)
                 simulationState['dpdt'] += self.densityDiffusion
-            simulation.sync(simulationState['dpdt'])
+            # simulation.sync(simulationState['dpdt'])
 
             # self.densityDiffusion += simulation.boundaryModule.computeDensityDiffusion(simulationState, simulation)

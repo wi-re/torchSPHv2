@@ -41,7 +41,7 @@ scheme = 'deltaSPH'
 mode = 'generative'
 
 [pressure]
-fluidPressureTerm = 'TaitEOS'
+fluidPressureTerm = 'deltaSPH'
 boundaryPressureTerm = 'PBSPH'
 gamma = 7.0
 
@@ -64,9 +64,16 @@ prefix = 'generative'
 staticBoundary = true
 interval = 1
 
+[shifting]
+enabled = true
+scheme = 'deltaPlus'
+
+[kernel]
+targetNeighbors = 50
+
 [generative]
 nd = [0,0]
-nb = [32,32]
+nb = [64,64]
 border = 3
 n = 256
 res = 2

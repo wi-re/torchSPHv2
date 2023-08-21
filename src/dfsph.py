@@ -54,7 +54,7 @@ from src.modules.akinciTension import akinciTensionModule
 from src.modules.sdfBoundary import sdfBoundaryModule, sdPolyDerAndIntegral
 from src.modules.akinciBoundary import akinciBoundaryModule
 from src.modules.solidBoundary import solidBoundaryModule
-from src.modules.periodicBC import periodicBCModule
+# from src.modules.periodicBC import periodicBCModule
 from src.modules.velocityBC import velocityBCModule
 from src.modules.implicitShifting import implicitIterativeShiftModule
 from src.modules.gravity import gravityModule
@@ -77,7 +77,7 @@ class dfsphSimulation(SPHSimulation):
         # Default module imports that are always needed
         self.neighborSearch = neighborSearchModule()
         self.sphDensity = densityModule()
-        self.periodicBC = periodicBCModule()
+        # self.periodicBC = periodicBCModule()
         self.DFSPH = dfsphModule()
         self.XSPH = xsphModule()
         self.velocityBC = velocityBCModule()
@@ -132,10 +132,10 @@ class dfsphSimulation(SPHSimulation):
         
     # Evaluate updates for a single timestep, returns dudt, dxdt and drhodt
     def timestep(self):
-        step = ' 1 - Enforcing periodic boundary conditions'
-        if self.verbose: print(step)
-        with record_function(step):
-            self.periodicBC.enforcePeriodicBC(self.simulationState, self)
+        # step = ' 1 - Enforcing periodic boundary conditions'
+        # if self.verbose: print(step)
+        # with record_function(step):
+            # self.periodicBC.enforcePeriodicBC(self.simulationState, self)
             
         step = ' 2 - Fluid neighborhood search'
         if self.verbose: print(step)
