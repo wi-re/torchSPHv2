@@ -262,7 +262,7 @@ def evalBasisFunction(n : int, x : torch.Tensor, which : str = 'chebyshev', peri
     if s[0] == 'linear':
         return evalRBFSeries(n, x, which = 'linear', epsilon = 1., periodic = periodic)        
     if s[0] == 'dmcf':
-        return torch.sign(x) * evalRBFSeries(n, torch.abs(x) * 2 - 1, which = 'linear', epsilon = 1., periodic = periodic)        
+        return evalRBFSeries(n, x, which = 'linear', epsilon = 1., periodic = periodic)      #torch.sign(x) * evalRBFSeries(n, torch.abs(x) * 2 - 1, which = 'linear', epsilon = 1., periodic = periodic)        
     if s[0] == 'rbf':
         eps = 1. if len(s) < 3 else float(s[2])
         return evalRBFSeries(n, x, which = s[1], epsilon = eps, periodic = periodic)     
@@ -372,8 +372,16 @@ class cutlass(torch.autograd.Function):
                 if ctx.dimensions == 2:
                     with record_function("cutlass forward batch"): 
                         with record_function("cutlass forward basis"): 
-                            u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
-                            v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
+                            x = edge_attr[batch,0]
+                            y = edge_attr[batch,1]
+                            if ctx.rbfs[0] == 'dmcf':
+                                y[x<0] = -y[x<0]
+                                x[x<0] = -x[x<0]
+                                x = x * 2.0 - 1.0
+                                # y = y * 2.0 - 1.0
+
+                            u = evalBasisFunction(ctx.size[0], x, which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+                            v = evalBasisFunction(ctx.size[1], y, which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
 
                         with record_function("cutlass forward einsum"): 
 
@@ -473,8 +481,16 @@ class cutlass(torch.autograd.Function):
                         if ctx.dimensions == 2:
                             with record_function("cutlass backward feature grad batch"):    
                                 with record_function("cutlass backward feature grad basis"):    
-                                    u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
-                                    v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
+                                    x = edge_attr[batch,0]
+                                    y = edge_attr[batch,1]
+                                    if ctx.rbfs[0] == 'dmcf':
+                                        y[x<0] = -y[x<0]
+                                        x[x<0] = -x[x<0]
+                                        x = x * 2.0 - 1.0
+                                        # y = y * 2.0 - 1.0
+
+                                    u = evalBasisFunction(ctx.size[0], x, which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+                                    v = evalBasisFunction(ctx.size[1], y, which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
                                 
                                 with record_function("cutlass backward feature grad einsum"):    
                                     if ctx.normalized:
@@ -525,8 +541,16 @@ class cutlass(torch.autograd.Function):
                         if ctx.dimensions == 2:
                             with record_function("cutlass backward weight grad batch"):   
                                 with record_function("cutlass backward weight grad batch basis"):   
-                                    u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
-                                    v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
+                                    x = edge_attr[batch,0]
+                                    y = edge_attr[batch,1]
+                                    if ctx.rbfs[0] == 'dmcf':
+                                        y[x<0] = -y[x<0]
+                                        x[x<0] = -x[x<0]
+                                        x = x * 2.0 - 1.0
+                                        # y = y * 2.0 - 1.0
+
+                                    u = evalBasisFunction(ctx.size[0], x, which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+                                    v = evalBasisFunction(ctx.size[1], y, which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
 
                                 with record_function("cutlass backward weight grad batch einsum"):   
                                     if ctx.normalized:
@@ -587,8 +611,16 @@ class cutlass(torch.autograd.Function):
                         if ctx.dimensions == 2:
                             with record_function("cutlass backward batch"):   
                                 with record_function("cutlass backward basis"):   
-                                    u = evalBasisFunction(ctx.size[0], edge_attr[batch,0], which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
-                                    v = evalBasisFunction(ctx.size[1], edge_attr[batch,1], which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
+                                    x = edge_attr[batch,0]
+                                    y = edge_attr[batch,1]
+                                    if ctx.rbfs[0] == 'dmcf':
+                                        y[x<0] = -y[x<0]
+                                        x[x<0] = -x[x<0]
+                                        x = x * 2.0 - 1.0
+                                        # y = y * 2.0 - 1.0
+
+                                    u = evalBasisFunction(ctx.size[0], x, which=ctx.rbfs[0], periodic = ctx.periodic[0]).T
+                                    v = evalBasisFunction(ctx.size[1], y, which=ctx.rbfs[1], periodic = ctx.periodic[1]).T
                             with record_function("cutlass backward einsum uvw"):   
                                 if ctx.normalized:
                                     normalizationFactor = 1 / torch.einsum('nu,nv -> nuv',u, v).sum(-1).sum(-1)

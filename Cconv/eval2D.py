@@ -127,60 +127,60 @@ if args.verbose:
 
 import pandas as pd
 
-# dataSet = pd.DataFrame()
-# counter = 0
-# if args.verbose:
-#     print('Processing training data...')
-#     for epoch in tqdm(decodedArray['epochData']):
-#         trainingData = decodedArray['epochData'][epoch]['training']
-#         for it in tqdm(range(len(trainingData)), leave = False):
-#             data = np.array(trainingData[it])
-#             stepLosses = np.mean(data, axis = 1)
-#             dataFrame = pd.DataFrame([{
-#                 'rbf_x' : decodedArray['hyperParameters']['rbf_x'], 
-#                 'rbf_y' : decodedArray['hyperParameters']['rbf_y'], 
-#                 'n'     : decodedArray['hyperParameters']['n'], 
-#                 'm'     : decodedArray['hyperParameters']['m'],
-#                 'window': decodedArray['hyperParameters']['windowFunction'],
-#                 'map'   : decodedArray['hyperParameters']['coordinateMapping'],
-#                 'seed'  : decodedArray['hyperParameters']['networkSeed'],
-#                 'arch'  : decodedArray['hyperParameters']['arch'],
-#                 'epoch' : int(epoch),
-#                 'epochIteration' : it,
-#                 'iteration': counter + 1,
-#                 'firstStepLoss': stepLosses[0],
-#                 'lastStepLoss': stepLosses[-1],
-#                 'meanLoss': np.mean(stepLosses)
-#                                     }])
-#             counter = counter + 1
-#             dataSet = pd.concat([dataSet, dataFrame], ignore_index = True)
-#     print('Training data processed, writing to file "%s - training.csv"' % inputFile)
-# else:    
-#     for epoch in decodedArray['epochData']:
-#         trainingData = decodedArray['epochData'][epoch]['training']
-#         for it in range(len(trainingData)):
-#             data = np.array(trainingData[it])
-#             stepLosses = np.mean(data, axis = 1)
-#             dataFrame = pd.DataFrame([{
-#                 'rbf_x' : decodedArray['hyperParameters']['rbf_x'], 
-#                 'rbf_y' : decodedArray['hyperParameters']['rbf_y'], 
-#                 'n'     : decodedArray['hyperParameters']['n'], 
-#                 'm'     : decodedArray['hyperParameters']['m'],
-#                 'window': decodedArray['hyperParameters']['windowFunction'],
-#                 'map'   : decodedArray['hyperParameters']['coordinateMapping'],
-#                 'seed'  : decodedArray['hyperParameters']['networkSeed'],
-#                 'arch'  : decodedArray['hyperParameters']['arch'],
-#                 'epoch' : int(epoch),
-#                 'epochIteration' : it,
-#                 'iteration': counter + 1,
-#                 'firstStepLoss': stepLosses[0],
-#                 'lastStepLoss': stepLosses[-1],
-#                 'meanLoss': np.mean(stepLosses)
-#                                     }])
-#             counter = counter + 1
-#             dataSet = pd.concat([dataSet, dataFrame], ignore_index = True)
+dataSet = pd.DataFrame()
+counter = 0
+if args.verbose:
+    print('Processing training data...')
+    for epoch in tqdm(decodedArray['epochData']):
+        trainingData = decodedArray['epochData'][epoch]['training']
+        for it in tqdm(range(len(trainingData)), leave = False):
+            data = np.array(trainingData[it])
+            stepLosses = np.mean(data, axis = 1)
+            dataFrame = pd.DataFrame([{
+                'rbf_x' : decodedArray['hyperParameters']['rbf_x'], 
+                'rbf_y' : decodedArray['hyperParameters']['rbf_y'], 
+                'n'     : decodedArray['hyperParameters']['n'], 
+                'm'     : decodedArray['hyperParameters']['m'],
+                'window': decodedArray['hyperParameters']['windowFunction'],
+                'map'   : decodedArray['hyperParameters']['coordinateMapping'],
+                'seed'  : decodedArray['hyperParameters']['networkSeed'],
+                'arch'  : decodedArray['hyperParameters']['arch'],
+                'epoch' : int(epoch),
+                'epochIteration' : it,
+                'iteration': counter + 1,
+                'firstStepLoss': stepLosses[0],
+                'lastStepLoss': stepLosses[-1],
+                'meanLoss': np.mean(stepLosses)
+                                    }])
+            counter = counter + 1
+            dataSet = pd.concat([dataSet, dataFrame], ignore_index = True)
+    print('Training data processed, writing to file "%s - training.csv"' % inputFile)
+else:    
+    for epoch in decodedArray['epochData']:
+        trainingData = decodedArray['epochData'][epoch]['training']
+        for it in range(len(trainingData)):
+            data = np.array(trainingData[it])
+            stepLosses = np.mean(data, axis = 1)
+            dataFrame = pd.DataFrame([{
+                'rbf_x' : decodedArray['hyperParameters']['rbf_x'], 
+                'rbf_y' : decodedArray['hyperParameters']['rbf_y'], 
+                'n'     : decodedArray['hyperParameters']['n'], 
+                'm'     : decodedArray['hyperParameters']['m'],
+                'window': decodedArray['hyperParameters']['windowFunction'],
+                'map'   : decodedArray['hyperParameters']['coordinateMapping'],
+                'seed'  : decodedArray['hyperParameters']['networkSeed'],
+                'arch'  : decodedArray['hyperParameters']['arch'],
+                'epoch' : int(epoch),
+                'epochIteration' : it,
+                'iteration': counter + 1,
+                'firstStepLoss': stepLosses[0],
+                'lastStepLoss': stepLosses[-1],
+                'meanLoss': np.mean(stepLosses)
+                                    }])
+            counter = counter + 1
+            dataSet = pd.concat([dataSet, dataFrame], ignore_index = True)
 
-# dataSet.to_csv('%s - training.csv' % inputFile)
+dataSet.to_csv('%s - training.csv' % inputFile)
 from rbfConv import *
 from datautils import *
 from rbfNet import *

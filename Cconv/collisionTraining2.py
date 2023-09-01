@@ -92,8 +92,8 @@ parser.add_argument('-e','--epochs', type=int, default=25)
 parser.add_argument('-cmap','--coordinateMapping', type=str, default='cartesian')
 parser.add_argument('-w','--windowFunction', type=str, default='None')
 parser.add_argument('-c','--cutoff', type=int, default=127)
-parser.add_argument('-b','--batch_size', type=int, default=2)
-parser.add_argument('-o','--output', type = str, default = 'paperData_collisionAblations')
+parser.add_argument('-b','--batch_size', type=int, default=4)
+parser.add_argument('-o','--output', type = str, default = 'paperData_collisionAblationsBase3')
 # parser.add_argument('-i','--input', type = str, default = '/mnt/data/datasets/generativeCollisions')
 parser.add_argument('-i','--input', type = str, default = '~/dev/datasets/generativeCollisions')
 parser.add_argument('--cutlassBatchSize', type=int, default=128)
@@ -116,13 +116,13 @@ parser.add_argument('-v','--verbose', type=bool, default=False)
 parser.add_argument('-l','--li', type=bool, default=True)
 parser.add_argument('-a','--activation', type=str, default='relu')
 
-parser.add_argument('--widths', type=str, default='1 2 4 8 16 32')
-parser.add_argument('--depths', type=str, default='1 2 3 4 5 6 7 8 16 32')
+parser.add_argument('--widths', type=str, default='32')
+parser.add_argument('--depths', type=str, default='6')
 parser.add_argument('--limitData', type=int, default=-1)
 parser.add_argument('--iterations', type=int, default=1000)
 parser.add_argument('-u', '--maxUnroll', type=int, default=10)
 parser.add_argument('--minUnroll', type=int, default=2)
-parser.add_argument('--overfit', type=bool, default=True)
+parser.add_argument('--overfit', type=bool, default=False)
 
 parser.add_argument('-augj', '--augmentJitter', type=bool, default=False)
 parser.add_argument('-j', '--jitterAmount', type=float, default=0.01)
@@ -139,7 +139,7 @@ def verbosePrint(string):
 
 verbosePrint('Collision Layout Ablation Testing')
 
-exportLabel = 'collisionTrainingAblation - n %2d - base %8s - window %10s - widths %s - depths %s - seeds %s - angle %s - jitter %s - overfit %s.csv' %(
+exportLabel = 'collisionTrainingAblation - n %2d - base %8s - window %10s - widths %s - depths %s - seeds %s - angle %s - jitter %s - overfit %s' %(
     args.n,
     args.rbf_x,
     args.windowFunction,
@@ -477,6 +477,23 @@ def trainNetwork(layers, n, m, rbf_x, rbf_y, seed):
             pb.update()
         if i % lrStep == 0 and i > 0:
             scheduler.step()
+        if i % unrollIncrement == 0 and i > 0:
+            unrollSteps = unrollSteps + 1
+        if i % iterationsPerEpoch == 0:
+            exportLabel2 = 'collisionTrainingAblation - n %2d - base %8s - window %10s - width %s - depth %s - seed %s - angle %s - jitter %s - overfit %s' %(
+                n,
+                rbf_x,
+                args.windowFunction,
+                layers[0],
+                len(layers),
+                seed,
+                1 if args.augmentAngle else 0,
+                1 if args.augmentJitter else 0,
+                1 if args.overfit else 0
+            )
+
+
+            torch.save(model.state_dict(), './%s/%s_model_%03d.torch' % (args.output, exportLabel2, i//iterationsPerEpoch))
             
     processedLosses = [np.mean(l, axis = 1).tolist() for l in losses]
     longestUnroll = losses[-1].shape[0]
@@ -497,17 +514,17 @@ from tqdm import trange, tqdm
 # rbf_x = rbf_y = 'fourier'
 # print(rbf_x, rbf_y)
 
-epochs = 1
+epochs = 10
 batch_size = args.batch_size
-iterationsPerEpoch = 3000
+iterationsPerEpoch = 2000
 totalIterations = epochs * iterationsPerEpoch
 initialUnroll = 1
-unrollIncrement = 4000
+unrollIncrement = 2000
 unrollSteps = (epochs * iterationsPerEpoch) // unrollIncrement - 1
 finalUnroll = initialUnroll + unrollSteps
-initialLR = 1e-4
-finalLR = 1e-2
-lrStep = 50
+initialLR = 1e-3
+finalLR = 1e-5
+lrStep = 100
 lrSteps = int(np.ceil((totalIterations - lrStep) / lrStep))
 gamma = np.power(finalLR / initialLR, 1/lrSteps)
 
