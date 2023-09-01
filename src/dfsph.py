@@ -87,7 +87,7 @@ class dfsphSimulation(SPHSimulation):
         # Add modules to the module list        
         self.modules.append(self.neighborSearch)
         self.modules.append(self.sphDensity)
-        self.modules.append(self.periodicBC)
+        # self.modules.append(self.periodicBC)
         self.modules.append(self.velocityBC)
         self.modules.append(self.DFSPH)
         self.modules.append(self.gravityModule)
@@ -142,23 +142,25 @@ class dfsphSimulation(SPHSimulation):
         with record_function(step):
             self.simulationState['fluidNeighbors'], self.simulationState['fluidDistances'], self.simulationState['fluidRadialDistances'] = self.neighborSearch.search(self.simulationState, self)
             
-        step = ' 3 - Boundary neighborhood search'
-        if self.verbose: print(step)
-        with record_function(step):
-            self.boundaryModule.boundaryFilterNeighborhoods(self.simulationState, self)
-            self.boundaryModule.boundaryNeighborhoodSearch(self.simulationState, self)
+        if hasattr(self, 'boundaryModule') and self.boundaryModule.active:
+            step = ' 3 - Boundary neighborhood search'
+            if self.verbose: print(step)
+            with record_function(step):
+                self.boundaryModule.boundaryFilterNeighborhoods(self.simulationState, self)
+                self.boundaryModule.boundaryNeighborhoodSearch(self.simulationState, self)
 
         step = ' 4 - Fluid - Fluid density evaluation'
         if self.verbose: print(step)
         with record_function(step):
             self.sphDensity.evaluate(self.simulationState, self)    
-            self.sync(self.simulationState['fluidDensity'])
+            # self.sync(self.simulationState['fluidDensity'])
         
         step = ' 5 - Fluid - Boundary density evaluation'
         if self.verbose: print(step)
-        with record_function(step):
-            self.boundaryModule.evalBoundaryDensity(self.simulationState, self) 
-            self.sync(self.simulationState['fluidDensity'])                   
+        if hasattr(self, 'boundaryModule') and self.boundaryModule.active:
+            with record_function(step):
+                self.boundaryModule.evalBoundaryDensity(self.simulationState, self) 
+                # self.sync(self.simulationState['fluidDensity'])                   
             
         step = ' 6 - Initializing acceleration'
         if self.verbose: print(step)
@@ -169,7 +171,7 @@ class dfsphSimulation(SPHSimulation):
         if self.verbose: print(step)
         with record_function(step):
             self.gravityModule.evaluate(self.simulationState, self)
-            self.sync(self.simulationState['fluidAcceleration'])
+            # self.sync(self.simulationState['fluidAcceleration'])
         
         step = ' 8 - Divergence free solver step'
         if self.verbose: print(step)
@@ -188,15 +190,15 @@ class dfsphSimulation(SPHSimulation):
         if self.verbose: print(step)
         with record_function(step):     
             self.velocityDiffusionModule.evaluate(self.simulationState, self)    
-        # step = '12 - laminar viscosity'
-        # if self.verbose: print(step)
-        # with record_function(step):       
-            # self.laminarViscosityModule.computeLaminarViscosity(self.simulationState, self)   
+        step = '12 - laminar viscosity'
+        if self.verbose: print(step)
+        with record_function(step):       
+            self.laminarViscosityModule.computeLaminarViscosity(self.simulationState, self)   
 
         step = '13 - Velocity source contribution'
         if self.verbose: print(step)
         with record_function(step):
             self.velocityBC.enforce(self.simulationState, self)
-            self.sync(self.simulationState['fluidVelocity'])
+            # self.sync(self.simulationState['fluidVelocity'])
         
         return self.simulationState['fluidAcceleration'], self.simulationState['fluidVelocity'], self.simulationState['dpdt'] if self.config['simulation']['densityScheme'] == 'continuum' else None

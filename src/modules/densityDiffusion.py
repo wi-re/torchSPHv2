@@ -31,7 +31,8 @@ import matplotlib.ticker as mticker
 def computeNormalizationMatrix(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float):
     gradW = kernelGradient(radialDistances, distances, support)
 
-    r_ba = rj[j] - ri[i]
+    # r_ba = rj[j] - ri[i]
+    r_ba = -distances * radialDistances[:,None] * support
     fac = Vj[j] * 2
 
     term = torch.einsum('nu,nv -> nuv', r_ba, gradW)
@@ -64,7 +65,8 @@ def computeRenormalizedDensityGradient(i, j, ri, rj, Vi, Vj, distances, radialDi
 @torch.jit.script
 def computeDensityDiffusionDeltaSPH(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float, gradRhoi, gradRhoj, rhoi, rhoj, delta : float, c0 : float):
     gradW = kernelGradient(radialDistances, distances, support)
-    rji = ri[j] - rj[i]
+    rji = -distances * radialDistances[:,None] * support
+    # rji = ri[j] - rj[i]
     rji2 = torch.linalg.norm(rji, dim=1)**2 + eps
 
     # delta SPH Term
@@ -87,7 +89,7 @@ def computeDensityDiffusionDeltaSPH(i, j, ri, rj, Vi, Vj, distances, radialDista
 @torch.jit.script
 def computeDensityDiffusionMOG(i, j, ri, rj, Vi, Vj, distances, radialDistances, support, numParticles : int, eps : float, rhoi, rhoj, delta : float, c0 : float):
     gradW = kernelGradient(radialDistances, distances, support)
-    rji = ri[j] - rj[i]
+    rji = -distances * radialDistances[:,None] * support # ri[j] - rj[i]
     rji2 = torch.linalg.norm(rji, dim=1)**2 + eps
 
     psi_ij = (2 * (rhoj[j] - rhoi[i]) / rji2)[:,None] * rji

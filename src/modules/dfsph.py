@@ -142,10 +142,10 @@ class dfsphModule(Module):
     def computeAlpha(self, simulationState, simulation, density = True):
         with record_function("DFSPH - alpha"): 
             kSum1, kSum2 = computeAlphaFluidTerm(simulationState['fluidArea'], simulationState['fluidRestDensity'], simulationState['fluidActualArea'], simulationState['fluidNeighbors'], simulationState['fluidRadialDistances'], simulationState['fluidDistances'], self.support)
-
-            bdykSum1, bdykSum2 = simulation.boundaryModule.dfsphBoundaryAlphaTerm(simulationState, simulation, density)
-            kSum1 += bdykSum1
-            kSum2 += bdykSum2
+            if hasattr(simulation, 'boundaryModule') and simulation.boundaryModule.active:
+                bdykSum1, bdykSum2 = simulation.boundaryModule.dfsphBoundaryAlphaTerm(simulationState, simulation, density)
+                kSum1 += bdykSum1
+                kSum2 += bdykSum2
             
             return computeAlphaFinal(kSum1, kSum2, simulationState['dt'], simulationState['fluidArea'], simulationState['fluidActualArea'], simulationState['fluidRestDensity'])
         
@@ -154,8 +154,8 @@ class dfsphModule(Module):
     def computeSourceTerm(self, simulationState, simulation, density = True):
         with record_function("DFSPH - source"): 
             source = computeSourceTermFluid(simulationState['fluidActualArea'], simulationState['fluidPredictedVelocity'], simulationState['fluidNeighbors'], simulationState['fluidRadialDistances'], simulationState['fluidDistances'], self.support, simulationState['dt'])
-            
-            source = source + simulation.boundaryModule.dfsphBoundarySourceTerm(simulationState, simulation, density)
+            if hasattr(simulation, 'boundaryModule') and simulation.boundaryModule.active:
+                source = source + simulation.boundaryModule.dfsphBoundarySourceTerm(simulationState, simulation, density)
 
                                 
             return 1. - simulationState['fluidDensity'] + source if density else source            
@@ -164,9 +164,9 @@ class dfsphModule(Module):
     def computeUpdatedPressure(self, simulationState, simulation, density = True):
         with record_function("DFSPH - pressure"): 
             kernelSum = computeUpdatedPressureFluidSum(simulationState['fluidActualArea'], simulationState['fluidPredAccel'], simulationState['fluidNeighbors'], simulationState['fluidRadialDistances'], simulationState['fluidDistances'], self.support, simulationState['dt'])
-
-            bdyKernelSum = simulation.boundaryModule.dfsphBoundaryPressureSum(simulationState, simulation, density)
-            kernelSum += bdyKernelSum
+            if hasattr(simulation, 'boundaryModule') and simulation.boundaryModule.active:
+                bdyKernelSum = simulation.boundaryModule.dfsphBoundaryPressureSum(simulationState, simulation, density)
+                kernelSum += bdyKernelSum
             # kernelSum = -kernelSum
 
 
@@ -186,8 +186,10 @@ class dfsphModule(Module):
     def computeAcceleration(self, simulationState, simulation, density = True):
         with record_function("DFSPH - accel"):
             fluidAccelTerm = computeFluidAcceleration(simulationState['fluidArea'], simulationState['fluidDensity'], simulationState['fluidRestDensity'], simulationState['fluidPressure2'], simulationState['fluidNeighbors'], simulationState['fluidDistances'], simulationState['fluidRadialDistances'], self.support)
+            if hasattr(simulation, 'boundaryModule') and simulation.boundaryModule.active:
+                return fluidAccelTerm + simulation.boundaryModule.dfsphBoundaryAccelTerm(simulationState, simulation, density)
 
-            return fluidAccelTerm + simulation.boundaryModule.dfsphBoundaryAccelTerm(simulationState, simulation, density)
+            return fluidAccelTerm 
 
 
 
@@ -219,7 +221,7 @@ class dfsphModule(Module):
                         # simulation.periodicBC.syncQuantity(simulationState['fluidPressure2'], simulationState, simulation)
                         # debugPrint(self.boundaryScheme)
                         # debugPrint(self.pressureScheme)
-                        if self.pressureScheme == 'PBSPH':
+                        if hasattr(simulation, 'boundaryModule') and simulation.boundaryModule.active and self.pressureScheme == 'PBSPH':
                             boundaryError = torch.sum(torch.clamp(simulation.boundaryModule.boundaryResidual, min = -self.densityThreshold))
                             fluidError = torch.sum(torch.clamp(simulationState['residual'], min = -self.densityThreshold))
                             error = (fluidError + boundaryError) / (simulation.boundaryModule.numPtcls + simulationState['residual'].shape[0])
@@ -268,7 +270,8 @@ class dfsphModule(Module):
                 simulationState['fluidActualArea'] = simulationState['fluidArea'] / simulationState['fluidDensity']
 
             with record_function("DFSPH - compute alpha"): 
-                simulation.boundaryModule.dfsphPrepareSolver(simulationState, simulation, density)
+                if hasattr(simulation, 'boundaryModule') and simulation.boundaryModule.active:
+                    simulation.boundaryModule.dfsphPrepareSolver(simulationState, simulation, density)
 
                 simulationState['fluidAlpha'] = self.computeAlpha(simulationState, simulation, density)
                 # simulation.sync(simulationState['fluidAlpha'])

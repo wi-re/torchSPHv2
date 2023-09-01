@@ -22,7 +22,7 @@ relaxedJacobiOmega = 0.5
 device='cuda'
 
 [particle]
-nx = 32
+nx = 128
 # radius = 0.025
 
 [gravity]
@@ -49,10 +49,10 @@ gamma = 7.0
 velocityScheme = 'deltaSPH'
 densityScheme = 'MOG'
 boundaryDiffusion = 0.001
-fluidDiffusion = 0.001
-alpha = 0.01
+fluidDiffusion = 0.000
+alpha = 0.001
 delta = 0.1
-kinematic = 0.001
+kinematic = 0.0
 
 [integration]
 scheme = 'RK4'

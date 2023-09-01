@@ -32,7 +32,8 @@ def computeLaminarViscosity(i, j, ri, rj, Vi, Vj, distances, radialDistances, su
     gradW = kernelGradient(radialDistances, distances, support)
 
     uij = ui[i] - uj[j]
-    rij = ri[j] - rj[i]
+    # rij = ri[j] - rj[i]
+    rij = -distances * radialDistances[:,None] * support
     rij2 = torch.linalg.norm(rij, dim=1)**2 + eps
 
     mui = rhoi[i] * alpha

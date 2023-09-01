@@ -31,10 +31,16 @@ from .densityDiffusion import *
 
 from src.modules.densityDiffusion import *
 from src.kernels import kernel, kernelGradient, spikyGrad, wendland, wendlandGrad, cohesionKernel, getKernelFunctions
+from src.modules.neighborSearch import periodicNeighborSearch
 
-def neighborhood(positions, h):
-    j, i = radius(positions, positions, h,max_num_neighbors = 1000)
+
+def neighborhood(positions, h, minDomain, maxDomain, periodicX, periodicY):
+    i, j, fluidDistances, fluidRadialDistances = periodicNeighborSearch(positions, minDomain, maxDomain, h, periodicX, periodicY, useCompactHashMap = True)
+
+    # j, i = radius(positions, positions, h,max_num_neighbors = 1000)
     cartesianDistances = positions[j] - positions[i]
+    cartesianDistances[:,0] = torch.remainder(cartesianDistances[:,0] + minDomain[0], maxDomain[0] - minDomain[0]) - maxDomain[0]
+    cartesianDistances[:,1] = torch.remainder(cartesianDistances[:,1] + minDomain[1], maxDomain[1] - minDomain[1]) - maxDomain[1]
     radialDistances = torch.linalg.norm(cartesianDistances, dim = 1) / h
     cDistances = cartesianDistances / ((radialDistances * h)[:,None] + 0.0001 * h**2)
     
@@ -120,9 +126,9 @@ def computeTerm(i, j, Vi, Vj, distances, radialDistances, support, numParticles 
     return fluidNormalizationMatrix
 
 # sqrt2 = np.sqrt(2)
-
+from typing import List
 @torch.jit.script
-def computeFreeSurface(i, j, positions, L, lambdas, volume, rij, cartesianDistances, radialDistances, h, numParticles):
+def computeFreeSurface(i, j, positions, L, lambdas, volume, rij, cartesianDistances, radialDistances, h, numParticles, minDomain: List[float], maxDomain: List[float]):
     term = computeTerm(i, j, volume, volume, cartesianDistances, radialDistances, h, numParticles, 1e-4)
 
     nu = torch.bmm(L, term.unsqueeze(2))[:,:,0]
@@ -142,6 +148,10 @@ def computeFreeSurface(i, j, positions, L, lambdas, volume, rij, cartesianDistan
     tau = torch.vstack((-n[:,1], n[:,0])).mT
     xji = -rij
     xjt = positions[j] - T[i]
+    # xjt = torch.remainder(xjt + minDomain, maxDomain - minDomain) - maxDomain
+    xjt[:,0] = torch.remainder(xjt[:,0] + minDomain[0], maxDomain[0] - minDomain[0]) - maxDomain[0]
+    xjt[:,1] = torch.remainder(xjt[:,1] + minDomain[1], maxDomain[1] - minDomain[1]) - maxDomain[1]
+
     condA1 = torch.linalg.norm(xji, dim = 1) >= torch.sqrt(torch.tensor(2)) * h /3
     condA2 = torch.linalg.norm(xjt, dim = 1) < h / 3
     condA = torch.logical_and(torch.logical_and(condA1, condA2), i != j)
@@ -294,6 +304,10 @@ class deltaPlusModule(Module):
 
         self.support = np.sqrt(50 / np.pi * simulationConfig['particle']['area'])
 
+        self.minDomain = simulationConfig['domain']['min']
+        self.maxDomain = simulationConfig['domain']['max']
+        self.periodicX = simulationConfig['periodicBC']['periodicX']
+        self.periodicY = simulationConfig['periodicBC']['periodicY']
         # self.dx = simulationConfig['particle']['packing'] *
         
 
@@ -304,7 +318,7 @@ class deltaPlusModule(Module):
         numParticles = positions.shape[0]
         area = simulationState['fluidArea']
 
-        i, j, radialDistances, cartesianDistances, rij = neighborhood(positions, h)
+        i, j, radialDistances, cartesianDistances, rij = neighborhood(positions, h, self.minDomain, self.maxDomain, self.periodicX, self.periodicY)
         # rho = scatter(area * kernel(radialDistances, h), i, dim = 0, dim_size = numParticles, reduce = 'sum')
         # neighs = scatter(torch.ones_like(radialDistances), i, dim = 0, dim_size = numParticles, reduce = 'sum')
         volume = area / simulationState['fluidDensity']
@@ -313,7 +327,7 @@ class deltaPlusModule(Module):
         L, lambdas = pinv2x2(normalizationMatrices)
         # Linv, invLambdas = pinv2x2(L)
         # invLambdas = 1 / lambdas
-        fs = computeFreeSurface(i,j, positions, L, lambdas, volume, rij, cartesianDistances, radialDistances, h, numParticles)
+        fs = computeFreeSurface(i,j, positions, L, lambdas, volume, rij, cartesianDistances, radialDistances, h, numParticles, self.minDomain, self.maxDomain)
         expandedFSM = scatter(fs[j], i, dim = 0, dim_size = numParticles, reduce = 'max')
         du, normals = computeShiftAmount(i, j, volume, lambdas, L, expandedFSM, cartesianDistances, radialDistances, h, numParticles, self.umax / self.c0, simulation.config['fluid']['c0'], self.dx)
         
