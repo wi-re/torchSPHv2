@@ -60,5 +60,8 @@ images/
 Cconv/train_log
 Cconv/logs
 Cconv/DMCF
-Cconv/DeepLagrangianFluids/
 paperData*/
+Cconv/paper
+Cconv/DeepLagrangianFluids/
+
+ablationStudy_*

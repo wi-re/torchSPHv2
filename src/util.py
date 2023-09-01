@@ -595,3 +595,43 @@ def evalRadius(arg, packing, dtype, device):
 #     print(rho)
 
     return ((1 - rho)**2).detach().cpu().numpy()[0]
+
+
+def evalArea(arg, packing, dtype, device, targetNeighbors):
+    area = torch.tensor(arg, dtype = dtype, device = device)
+#     print('arg', arg)
+
+
+#     area = np.pi * r**2
+    support = np.single(np.sqrt(area / np.pi * targetNeighbors))
+    
+    minDomain = torch.tensor([\
+            -2 * support,\
+            -2 * support\
+        ], device = device, dtype = dtype)
+    maxDomain = torch.tensor([\
+             2 * support,\
+             2 * support\
+        ], device = device, dtype = dtype)
+
+    fluidPosition = genParticlesCentered(minDomain, maxDomain, \
+                        arg, support, packing / support, \
+                        dtype, device)
+
+    fluidArea = torch.ones(fluidPosition.shape[0], device = device, dtype=dtype) * area
+    centralPosition = torch.tensor([[0,0]], device = device, dtype=dtype)
+
+    row, col = radius(centralPosition, fluidPosition, \
+                      support, max_num_neighbors = 256)
+    fluidNeighbors = torch.stack([row, col], dim = 0)
+
+    fluidDistances = (centralPosition - fluidPosition[fluidNeighbors[0]])
+    fluidRadialDistances = torch.linalg.norm(fluidDistances,axis=1)
+
+    fluidRadialDistances /= support
+    rho = scatter_sum(\
+            kernel(fluidRadialDistances, support) * fluidArea[fluidNeighbors[1]], \
+            fluidNeighbors[1], dim=0, dim_size=centralPosition.size(0))
+#     print('rho', rho)
+
+    return ((1 - rho)**2).detach().cpu().numpy()[0]

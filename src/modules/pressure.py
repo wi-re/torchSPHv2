@@ -105,11 +105,11 @@ class pressureModule(Module):
             if self.fluidPressureScheme == "compressible":
                 self.pressure = self.kappa * (simulationState['fluidDensity'] * self.restDensity  - self.restDensity )
 
-            if simulation.boundaryModule.active:
+            if hasattr(simulation, 'boundaryModule') and simulation.boundaryModule.active:
                 simulation.boundaryModule.computePressure(simulationState, simulation)
 
             simulationState['fluidPressure'] = self.pressure
-            simulation.sync(simulationState['fluidPressure'])
+            # simulation.sync(simulationState['fluidPressure'])
             return self.pressure
 
     def resetState(self, simulationState):
@@ -132,9 +132,9 @@ class pressureModule(Module):
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps,\
                                                                                                   simulationState['fluidDensity'] * self.restDensity, simulationState['fluidDensity'] * self.restDensity, \
                                                                                                   self.pressure, self.pressure, simulationState['fluidSurfaceMask'])
-            if simulation.boundaryModule.active:
+            if hasattr(simulation, 'boundaryModule') and simulation.boundaryModule.active:
                 self.pressureAccel += simulation.boundaryModule.computePressureAcceleration(simulationState, simulation)
 
             simulationState['fluidAcceleration'] += self.pressureAccel
-            simulation.sync(simulationState['fluidAcceleration'])
+            # simulation.sync(simulationState['fluidAcceleration'])
         

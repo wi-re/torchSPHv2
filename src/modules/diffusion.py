@@ -32,7 +32,8 @@ def computeVelocityDiffusionA(i, j, ri, rj, Vi, Vj, distances, radialDistances, 
     gradW = kernelGradient(radialDistances, distances, support)
 
     uji = uj[j] - ui[i]
-    rji = rj[j] - ri[i]
+    # rji = rj[j] - ri[i]
+    rji = -distances * radialDistances[:,None] * support
     rji2 = torch.linalg.norm(rji, dim=1)**2 + eps
 
     pi_ij = torch.einsum('nu, nu -> n', uji, rji) 
@@ -48,7 +49,8 @@ def computeVelocityDiffusion(i, j, ri, rj, Vi, Vj, distances, radialDistances, s
     gradW = kernelGradient(radialDistances, distances, support)
 
     uji = uj[j] - ui[i]
-    rji = rj[j] - ri[i]
+    # rji = rj[j] - ri[i]
+    rji = -distances * radialDistances[:,None] * support
     rji2 = torch.linalg.norm(rji, dim=1)**2 + eps
 
     pi_ij = torch.einsum('nu, nu -> n', uji, rji) 
@@ -107,5 +109,5 @@ class diffusionModule(Module):
             # if self.boundaryDiffusion:
                 # self.velocityDiffusion += simulation.boundaryModule.computeVelocityDiffusion(simulationState, simulation)
             simulationState['fluidAcceleration'] += self.velocityDiffusion
-            simulation.sync(simulationState['fluidAcceleration'])
+            # simulation.sync(simulationState['fluidAcceleration'])
             # return self.velocityDiffusion

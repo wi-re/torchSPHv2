@@ -105,11 +105,11 @@ class momentumModule(Module):
                                                                                                   self.support, simulationState['fluidDensity'].shape[0], self.eps,\
                                                                                                   simulationState['fluidDensity'] * self.restDensity, simulationState['fluidDensity'] * self.restDensity,\
                                                                                                   simulationState['fluidVelocity'], simulationState['fluidVelocity'])
-            if simulation.boundaryModule.active:
+            if hasattr(simulation, 'boundaryModule') and simulation.boundaryModule.active:
                 self.divergenceTerm += simulation.boundaryModule.computeDpDt(simulationState, simulation)
             
             self.dpdt = self.divergenceTerm #+ self.densityDiffusion
             simulationState['dpdt'] = self.dpdt
-            simulation.sync(simulationState['dpdt'])
+            # simulation.sync(simulationState['dpdt'])
             # return self.dpdt
 
